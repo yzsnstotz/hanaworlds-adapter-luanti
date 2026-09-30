@@ -1,0 +1,38 @@
+{
+  "name": "hanaworlds-adapter-luanti",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "description": "HanaWorlds Stage 1 Luanti adapter candidate; recoverable transport and v2 authority gated",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yzsnstotz/hanaworlds-adapter-luanti.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "src",
+    "payload",
+    "cordis.patch.yml",
+    "GADGET.md",
+    "NOTICE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "node --check src/index.mjs && node --check src/local-worlds.mjs && node --check src/journal.mjs && node --check src/bridge.mjs && node --check src/local-transport.mjs && node --check src/remote-transport.mjs && node --check src/v2-port.mjs && node --check src/v2-operations.mjs && node --check src/v2-transactions.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:lua": "lua test/payload.lua && lua test/engine.lua"
+  },
+  "dependencies": {
+    "canonicalize": "5.1.0"
+  }
+}

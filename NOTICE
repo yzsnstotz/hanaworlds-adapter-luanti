@@ -1,0 +1,21 @@
+The owner-authored HanaWorlds Luanti Adapter source is licensed under
+AGPL-3.0-only; see LICENSE. This 0.1.0 candidate is not a release. It does not
+embed or redistribute Luanti, WorldEdit, or hanaworlds-contracts code.
+It depends on the published canonicalize@5.1.0 package (Apache-2.0) for the
+approved JCS digest pipeline; its exact registry tarball integrity is pinned
+in package-lock.json. No private contracts package is imported.
+
+The separately installed engine-side WorldEdit integration was inspected against
+Uberi/Minetest-WorldEdit revision 62ffafe3bcb386600c431ef3840d91c3c8f85639
+(AGPL-3.0). An operator installs WorldEdit separately under its own license.
+The diagnostic test copies that pinned source only into ignored isolated
+worlds. The distribution package contains neither those bytes nor the test
+worldmod. The installed Adapter/WorldEdit combination still needs a review of
+the applicable AGPL source-offer and attribution obligations before release;
+separate installation alone does not decide whether it is a combined work.
+The tested Luanti engine was the separately installed 5.17.0 macOS application;
+the frozen source input is luanti-org/luanti revision
+bdc785b6832afa0db9b3686d0987d9c12e69b709 (LGPL-2.1-or-later engine).
+
+The private hanaworlds-contracts@0.1.1 technical input is not a runtime or
+packaged dependency. Full public contract conformance remains open.
