@@ -51,6 +51,22 @@ test('DSH host registers loopback status and a fail-closed v2 provider', async (
   assert.equal(allowed.body.includes('/Users/'), false);
 });
 
+test('DSH context can load without unprovided optional HanaWorlds services', () => {
+  const context = new Proxy({
+    webServer: { register() {} },
+    get: () => undefined,
+    provide() {},
+    on() {},
+  }, {
+    get(target, property) {
+      if (property in target) return target[property];
+      throw new Error(`cannot get property "${String(property)}" without inject`);
+    },
+  });
+  const service = apply(context, {});
+  assert.equal(service.status().productReadiness, 'UNPROVEN');
+});
+
 test('DSH source seam assembles its own journal backend after remote loaded-byte binding and gates frame delivery', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hw-adapter-owned-'));
   const profile = { connectionRef: 'remote:one', worldRef: 'luanti:one',

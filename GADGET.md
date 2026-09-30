@@ -63,9 +63,9 @@ contacted.
   conformance against the published package. The current port implements the
   approved profile independently and exercises selected fixtures; official
   package conformance remains `NOT_RUN`.
-- DSH lifecycle installation/provisioning in a fresh profile; real local
-  player/operator binding verifier, remote operator handshake and Workshop
-  action owner. The current isolated local test uses a generated diagnostic
+- Formal HanaWorlds Shell profile composition, real local player/operator
+  binding verifier, remote operator handshake and Workshop action owner. The
+  current isolated local test uses a generated diagnostic
   operator account and synthetic `admit`/`verifyBinding` callbacks. Its true
   loaded-byte handshake passes, but current player binding is false.
 - Real engine per-cell permission/protection, complete state profile and
@@ -86,12 +86,31 @@ live operator verifier for the exact world path and provisioning action. The
 diagnostic verifier in tests is a fixture, not product authority. It rejects
 missing permission, bad world paths and mismatched
 installed bytes. It writes a new payload under that world's `worldmods` and
-optionally a mode-0600 per-world pairing secret outside the package. It never
-modifies a running world. Stop the world before provisioning and retain
-its backup. Roll back by restoring the prior complete worldmod snapshot after
-stopping the engine; keep world identity and any pending journal. The current
-candidate has no automated rollback for an already installed payload, so
+optionally a mode-0600 per-world pairing secret outside the package. This
+function does not check whether the server is running. Stop the world before
+provisioning and retain its backup. Roll back by restoring the prior complete
+worldmod snapshot after stopping the engine; keep world identity and any
+pending journal. The current candidate has no automated rollback for an
+already installed payload, so
 release rollback is `NOT_RUN`.
+
+An isolated diagnostic DSH `web` profile has installed and loaded the packed
+Adapter through the supported `dsh plugin` route. Removing that package made
+the Adapter status route unavailable; adding the same package restored it.
+This used no Shell composition or real operator verifier. In an isolated real
+Luanti 5.17.0 world, stopped-server removal and same-version reprovisioning
+created a new worldRef. Restoring the complete prior worldmod snapshot restored
+the original worldRef and left the outside-world journal unchanged. The frozen
+acceptance text does not specify identity continuity after a full payload
+removal, so new installation and snapshot rollback are reported separately.
+The source diagnostic is `test/real-lifecycle.mjs`; it requires an installed
+package path and the pinned WorldEdit source in ignored `.runtime/` data.
+
+Two native client diagnostics reached a player in an isolated world. In the
+first, `/hanaworlds` was not delivered intact and the disposable world later
+hit a full-disk SQLite error. In the second, the UI controller selected an
+unrelated existing Luanti window and timed out before entering the command.
+The form was not observed; `REAL_UI` remains `NOT_RUN` for this renderer path.
 
 The `.runtime/` smoke profile is disposable test data, never a runtime
 dependency. No developer absolute path or sibling repository is referenced by

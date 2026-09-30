@@ -16,6 +16,10 @@ import { V2TransactionBackend } from './v2-transactions.mjs';
 export const name = 'hanaworlds-adapter-luanti';
 export const inject = ['webServer'];
 
+function optionalHostService(ctx, name) {
+  return typeof ctx.get === 'function' ? ctx.get(name) : ctx[name];
+}
+
 function loopback(address) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
@@ -23,11 +27,11 @@ function loopback(address) {
 /** DSH host plugin. Missing host identity/owner services fail closed. */
 export function apply(ctx, config = {}) {
   async function createBackend({ worldRef, transport, proof }) {
-    const authority = ctx.hanaworldsAuthority;
-    const storage = ctx.hanaworldsProfileStorage;
-    const revisionOracle = ctx.hanaworldsWorldRevisionOracle;
-    const capacity = ctx.hanaworldsLuantiCapacity;
-    const state = ctx.hanaworldsLuantiStateProfile;
+    const authority = optionalHostService(ctx, 'hanaworldsAuthority');
+    const storage = optionalHostService(ctx, 'hanaworldsProfileStorage');
+    const revisionOracle = optionalHostService(ctx, 'hanaworldsWorldRevisionOracle');
+    const capacity = optionalHostService(ctx, 'hanaworldsLuantiCapacity');
+    const state = optionalHostService(ctx, 'hanaworldsLuantiStateProfile');
     if (typeof authority?.verifyEngineBinding !== 'function' ||
         typeof authority?.verifyService !== 'function' ||
         typeof storage?.adapterJournalDirectory !== 'function' ||
@@ -60,24 +64,24 @@ export function apply(ctx, config = {}) {
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
-    operatorAuthority: ctx.hanaworldsOperatorAuthority,
-    remoteTunnelFactory: ctx.hanaworldsRemoteTunnelFactory,
+    operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'),
+    remoteTunnelFactory: optionalHostService(ctx, 'hanaworldsRemoteTunnelFactory'),
     createBackend,
-    inspectContext: ctx.hanaworldsLuantiInspectionContext,
+    inspectContext: optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
     serviceName: config.serviceName,
-    onAction: typeof ctx.hanaworldsWorkshop?.invokeAction === 'function'
-      ? (request, principal) => ctx.hanaworldsWorkshop.invokeAction(request, principal) : undefined,
+    onAction: typeof optionalHostService(ctx, 'hanaworldsWorkshop')?.invokeAction === 'function'
+      ? (request, principal) => optionalHostService(ctx, 'hanaworldsWorkshop').invokeAction(request, principal) : undefined,
   });
-  const worldAdapter = new WorldAdapterV2({ authority: ctx.hanaworldsAuthority,
+  const worldAdapter = new WorldAdapterV2({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
     operations: runtime.operations });
   const service = {
     worldAdapter,
     async provisionLocal(worldPath, transportPort) {
       return provisionLocalPayload(worldPath, {
-        operatorAuthority: ctx.hanaworldsOperatorAuthority, transportPort });
+        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort });
     },
     async presentFrame({ worldRef, engineActorName, frame, authorizationRef }) {
-      const verify = ctx.hanaworldsWorkshop?.verifyFrameDelivery;
+      const verify = optionalHostService(ctx, 'hanaworldsWorkshop')?.verifyFrameDelivery;
       if (typeof verify !== 'function') throw new Error('RENDERER_CAPABILITY_UNAVAILABLE');
       const proof = await verify({ worldRef, engineActorName, frame, authorizationRef });
       if (proof?.current !== true || proof.worldRef !== worldRef ||
