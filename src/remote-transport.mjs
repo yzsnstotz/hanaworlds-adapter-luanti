@@ -28,7 +28,7 @@ export class RemoteEngineTransport {
       fault('ADAPTER_UNAVAILABLE');
     try {
       const reply = await tunnel.request({ operation: 'handshake', worldRef: profile.worldRef });
-      if (reply?.worldRef !== profile.worldRef || reply.payloadVersion !== '0.1.0' ||
+      if (reply?.worldRef !== profile.worldRef || reply.payloadVersion !== '0.1.1' ||
           reply.loadedSourceDigest !== await payloadDigest() || reply.payloadMatches !== true ||
           reply.manifestDigest !== reply.loadedSourceDigest ||
           reply.worldeditAvailable !== true) fault('PAYLOAD_VERSION_MISMATCH');
@@ -69,6 +69,12 @@ export class RemoteEngineTransport {
       action: 'APPLY_RECOVERABLE', effects: request.effects,
       beforeImage: prepared.beforeImage,
       prepared: { status: 'PREPARED', operationDigest: prepared.operationDigest },
+      operationDigest: request.operationDigest });
+  }
+  async applyState(request, targetImage, beforeImage, binding) {
+    return this.request({ operation: 'apply_state', actorName: this.#actor(binding),
+      action: 'APPLY_RECOVERABLE', targetImage, beforeImage,
+      prepared: { status: 'PREPARED', operationDigest: request.operationDigest },
       operationDigest: request.operationDigest });
   }
   async readback(request, binding) {

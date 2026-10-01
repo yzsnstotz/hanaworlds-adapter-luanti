@@ -50,7 +50,7 @@ export class LocalEngineTransport {
         (transportInfo.mode & 0o077) !== 0) throw fault('CONNECTION_UNAUTHORIZED');
     const manifest = JSON.parse(await readFile(join(dir, 'payload.json'), 'utf8'));
     const config = JSON.parse(await readFile(join(dir, 'transport.json'), 'utf8'));
-    if (manifest.payloadVersion !== '0.1.0' || manifest.payloadDigest !== await payloadDigest() ||
+    if (manifest.payloadVersion !== '0.1.1' || manifest.payloadDigest !== await payloadDigest() ||
         config.worldRef !== manifest.worldRef || !/^luanti:[0-9a-f-]+$/.test(config.worldRef) ||
         !Number.isSafeInteger(config.port) || config.port < 1 || config.port > 65535 ||
         typeof config.token !== 'string' || !/^[0-9a-f]{64}$/.test(config.token))
@@ -182,7 +182,7 @@ export class LocalEngineTransport {
 
   async handshake() {
     const result = await this.#dispatch('handshake', {});
-    if (result?.payloadVersion !== '0.1.0' || result.worldRef !== this.#worldRef ||
+    if (result?.payloadVersion !== '0.1.1' || result.worldRef !== this.#worldRef ||
         result.loadedSourceDigest !== this.#expectedDigest ||
         result.manifestDigest !== this.#expectedDigest || result.payloadMatches !== true ||
         result.worldeditAvailable !== true) throw fault('PAYLOAD_VERSION_MISMATCH');
@@ -224,6 +224,12 @@ export class LocalEngineTransport {
     return this.#dispatch('apply', { actorName: this.#actor(binding), action: 'APPLY_RECOVERABLE',
       effects: request.effects, beforeImage: prepared.beforeImage,
       prepared: { status: 'PREPARED', operationDigest: prepared.operationDigest },
+      operationDigest: request.operationDigest });
+  }
+  applyState(request, targetImage, beforeImage, binding) {
+    return this.#dispatch('apply_state', { actorName: this.#actor(binding),
+      action: 'APPLY_RECOVERABLE', targetImage, beforeImage,
+      prepared: { status: 'PREPARED', operationDigest: request.operationDigest },
       operationDigest: request.operationDigest });
   }
   readback(request, binding) {

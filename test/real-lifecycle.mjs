@@ -13,7 +13,10 @@ const installed = process.env.HW_INSTALLED_PLUGIN_DIR;
 if (!installed) throw new Error('HW_INSTALLED_PLUGIN_DIR_REQUIRED');
 const { apply, DurableJournal, EngineBridge, LocalEngineTransport, payloadDigest } =
   await import(pathToFileURL(join(installed, 'src/index.mjs')).href);
-const root = resolve('.runtime/lifecycle-dsh/luanti-run', `run-${Date.now()}`);
+const isolatedRoot = process.env.HW_RUNTIME_ROOT;
+const worldEditDirectory = process.env.HW_WORLDEDIT_DIR;
+if (!isolatedRoot || !worldEditDirectory) throw new Error('ISOLATED_RUNTIME_AND_PUBLIC_WORLDEDIT_REQUIRED');
+const root = resolve(isolatedRoot, `run-${Date.now()}`);
 const profile = join(root, 'profile');
 const world = join(profile, 'worlds', 'world');
 const game = join(profile, 'games', 'hw_minimal');
@@ -39,20 +42,21 @@ async function freePort() {
   return port;
 }
 async function waitFor(path, phrase, child) {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 600; i++) {
     if (child.exitCode !== null) throw new Error(`LUANTI_EXITED_BEFORE_${phrase}`);
     const log = await readFile(path, 'utf8').catch(() => '');
     if (log.includes(phrase)) return;
     await delay(100);
   }
-  throw new Error(`LUANTI_READY_TIMEOUT_${phrase}`);
+  throw new Error(`LUANTI_READY_TIMEOUT_${phrase}; logPresent=${
+    (await readFile(path).catch(() => null)) !== null}; exit=${child.exitCode}; signal=${child.signalCode}`);
 }
 
 await mkdir(join(world, 'worldmods'), { recursive: true });
 await mkdir(game, { recursive: true });
 await writeFile(join(game, 'game.conf'), 'title = HanaWorlds lifecycle probe\n');
 await writeFile(join(world, 'world.mt'), 'gameid = hw_minimal\nbackend = sqlite3\n');
-await cp('.runtime/upstream-worldedit/worldedit', join(world, 'worldmods', 'worldedit'),
+await cp(worldEditDirectory, join(world, 'worldmods', 'worldedit'),
   { recursive: true });
 const probe = join(world, 'worldmods', 'hw_lifecycle_probe');
 await mkdir(probe);
@@ -78,7 +82,7 @@ const serverPort = await freePort();
 const config = join(root, 'luanti.conf');
 await writeFile(config, `bind_address = 127.0.0.1\nport = ${serverPort}\nserver_announce = false\nsecure.enable_security = true\nsecure.http_mods = hanaworlds_adapter\n`);
 const operatorAuthority = { verify: async ({ worldPath, action }) =>
-  ({ current: true, worldPath, action }) };
+  ({ current: true, worldPath, action, worldStopped: true }) };
 const service = apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
 const sourcePayloadDigest = await payloadDigest();
 const first = await service.provisionLocal(world, transportPort);
@@ -136,6 +140,52 @@ try {
     restoreAttemptIdentity: 'restore-lifecycle-real' })).status, 'ROLLED_BACK');
   assert.equal((await courier.readback({ coveredPositions: positions }, binding))
     .records[0].nodeName, 'air');
+  // A separately fsynced v3 history image retains full node state. The
+  // diagnostic fixture supplies the host authority; Luanti executes the real
+  // WorldEdit and metadata path under the isolated operator privilege.
+  const profileState = { profileVersion: 'state-profile/v2',
+    nodeFields: ['nodeName', 'param1', 'param2'], metadataMode: 'exact',
+    inventoryMode: 'exact', timerMode: 'exact',
+    derivedLightMode: 'recompute-with-readback' };
+  const historyBefore = await courier.snapshot({ coveredPositions: positions }, binding);
+  const historyTarget = { ...historyBefore, records: [{ ...historyBefore.records[0],
+    nodeName: 'hw_lifecycle_probe:stone', param1: 0, param2: 0,
+    metadata: { owner: 'operator' },
+    inventory: { main: ['hw_lifecycle_probe:stone'] },
+    timer: { timeout: 120, elapsed: 0 } }] };
+  const historyId = 'tx-v3-state-real';
+  const historyOperationDigest = digest(historyTarget);
+  await assert.rejects(courier.verifyPrincipal('other-player'),
+    /CONNECTION_UNAUTHORIZED/);
+  await assert.rejects(courier.applyState({ operationDigest: historyOperationDigest },
+    historyTarget, historyBefore, { ...binding, engineActorName: 'other-player' }),
+  /PERMISSION_DENIED/);
+  await assert.rejects(courier.applyState({ operationDigest: historyOperationDigest },
+    { ...historyTarget, records: [{ ...historyTarget.records[0], metadata: { owner: 4 } }] },
+    historyBefore, binding), /UNSUPPORTED_MUTATION_SEMANTICS/);
+  assert.equal((await courier.readback({ coveredPositions: positions }, binding))
+    .records[0].nodeName, 'air');
+  await journal.prepare({ transactionId: historyId,
+    operationDigest: historyOperationDigest,
+    transactionPayloadDigest: digest({ historyId, historyTarget }),
+    beforeImageDigest: digest(historyBefore),
+    beforeImage: { ...historyBefore, worldRevision: 'world:diagnostic',
+      stateProfile: profileState }, expectedWorldRevision: 'world:diagnostic',
+    stateProfile: profileState, authorRef: 'operator', originKind: 'HANAWORLDS',
+    targetImage: historyTarget, targetStateDigest: digest(historyTarget) });
+  await journal.transition(historyId, 'APPLYING');
+  assert.equal((await courier.applyState({ operationDigest: historyOperationDigest },
+    historyTarget, historyBefore, binding)).status, 'APPLIED_PENDING_READBACK');
+  await journal.transition(historyId, 'APPLIED_PENDING_READBACK');
+  const stateReadback = await courier.readback({ coveredPositions: positions }, binding);
+  assert.equal(stateReadback.records[0].nodeName, 'hw_lifecycle_probe:stone');
+  assert.equal(stateReadback.records[0].metadata.owner, 'operator');
+  assert.deepEqual(stateReadback.records[0].inventory.main,
+    ['hw_lifecycle_probe:stone']);
+  assert.equal(stateReadback.records[0].timer.timeout, 120);
+  await journal.recordAfterState(historyId, { ...stateReadback,
+    worldRevision: 'world:diagnostic', stateProfile: profileState },
+  digest(stateReadback), digest(historyBefore));
   await stop();
   assert.match(await readFile(firstLog, 'utf8'), /payload identity matched/);
 
@@ -178,8 +228,12 @@ try {
   assert.equal(reopened.query(request.transactionId).status, 'ROLLED_BACK');
   assert.equal(await journalDigest(), originalJournalDigest);
   assert.equal(await shaFile(join(worldmod, 'payload.json')), originalManifestDigest);
-  assert.equal((await courier.readback({ coveredPositions: positions }, binding))
-    .records[0].nodeName, 'air');
+  const retained = await courier.readback({ coveredPositions: positions }, binding);
+  assert.equal(retained.records[0].nodeName, 'hw_lifecycle_probe:stone');
+  assert.equal(retained.records[0].metadata.owner, 'operator');
+  assert.deepEqual(retained.records[0].inventory.main,
+    ['hw_lifecycle_probe:stone']);
+  assert.equal(retained.records[0].timer.timeout, 120);
   await stop();
   assert.match(await readFile(rollbackLog, 'utf8'), /payload identity matched/);
   console.log(JSON.stringify({ scenario: 'installed-payload-lifecycle', realLuanti: true,
@@ -187,6 +241,11 @@ try {
     firstWorldRef: first.worldRef, reinstalledWorldRef: second.worldRef,
     restoredWorldRef: restoredLoaded.worldRef, originalJournalDigest,
     journalStatus: reopened.query(request.transactionId).status,
+    historyJournalStatus: reopened.query(historyId).status,
+    retainedObjectNode: retained.records[0].nodeName,
+    retainedMetadataOwner: retained.records[0].metadata.owner,
+    retainedInventory: retained.records[0].inventory.main,
+    retainedTimerTimeout: retained.records[0].timer.timeout,
     installedPackage: installed, logs }));
 } finally {
   await stop();

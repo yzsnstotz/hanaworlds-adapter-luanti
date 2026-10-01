@@ -49,7 +49,7 @@ function receipt(record) {
 export class V2TransactionBackend {
   #journal; #engine; #revisionOracle; #stateProfile; #binding; #service; #bridge; #capacity;
   constructor({ journal, engine, revisionOracle, stateProfile, verifyBinding, verifyService,
-    capacity }) {
+    capacity, restoredProof }) {
     this.#journal = journal;
     this.#engine = engine;
     this.#revisionOracle = revisionOracle;
@@ -69,7 +69,7 @@ export class V2TransactionBackend {
     this.#bridge = new EngineBridge({ journal, engine: decorated,
       admit: (_, request) => request, verifyBinding, verifyService,
       digestBeforeImage: value => projectionDigest('before-image', value),
-      digestReadback: value => projectionDigest('readback', value) });
+      digestReadback: value => projectionDigest('readback', value), restoredProof });
   }
   async #checkCapacity(request) {
     if (typeof this.#capacity?.check !== 'function') fault('CAPABILITY_UNAVAILABLE');
@@ -165,7 +165,9 @@ export class V2TransactionBackend {
     const adapterExecutionRevision = projectionDigest('transaction-payload', payload);
     const privateRequest = { ...request, coveredPositions: positions, effects: request.operations.effects,
       beforeImageDigest, transactionPayloadDigest, payload, stateProfile: this.#stateProfile,
-      adapterExecutionRevision };
+      adapterExecutionRevision,
+      ...(binding.authorRef === undefined ? {} : { authorRef: binding.authorRef,
+        originKind: 'HANAWORLDS' }) };
     await this.#bridge.prepare(privateRequest);
     return { payload, transactionPayloadDigest, beforeImageDigest,
       guarantee: 'RECOVERABLE_VERIFIED', stateProfile: this.#stateProfile,

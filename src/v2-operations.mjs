@@ -36,13 +36,13 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       worldRef: world.worldRef,
       displayName: world.worldPath.split('/').at(-1),
       capabilityRevision: revision({ connectionRef: world.connectionRef, digest }),
-      payloadVersion: world.payloadVersion ?? '0.1.0',
+      payloadVersion: world.payloadVersion ?? '0.1.1',
       readiness: world.payloadDigest === digest ? 'CONNECTION_UNAUTHORIZED' :
         'PAYLOAD_VERSION_MISMATCH' }));
     for (const profile of remote.values()) connections.push({ adapterId,
       connectionRef: profile.connectionRef, worldRef: profile.worldRef,
       displayName: profile.displayName, capabilityRevision: profile.capabilityRevision,
-      payloadVersion: profile.payloadVersion ?? '0.1.0',
+      payloadVersion: profile.payloadVersion ?? '0.1.1',
       readiness: 'CONNECTION_UNAUTHORIZED' });
     connections.sort((a, b) => compare(a.adapterId, b.adapterId) ||
       compare(a.connectionRef, b.connectionRef) || compare(a.worldRef, b.worldRef));
@@ -83,7 +83,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           if (built) ownedBackends.set(request.worldRef, built);
         }
         return { connectionRef: request.connectionRef, worldRef: request.worldRef,
-          payloadVersion: '0.1.0', payloadDigest: await payloadDigest(),
+          payloadVersion: '0.1.1', payloadDigest: await payloadDigest(),
           binding: { authorizerRef: proof.authorizerRef, actorRef: request.actorRef,
             bindingRef: proof.bindingRef, worldRef: request.worldRef,
             grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions },
@@ -130,8 +130,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     async InspectWorld(request, proof) {
       // The frozen request has no objectRef. Only the authenticated consumer can
       // identify the selected object and provide its current catalogue/frame.
-      if (typeof inspectContext?.read !== 'function') fault('CAPABILITY_UNAVAILABLE');
-      const context = await inspectContext.read(request, proof);
+      const trustedContext = typeof inspectContext === 'function'
+        ? inspectContext() : inspectContext;
+      if (typeof trustedContext?.read !== 'function') fault('CAPABILITY_UNAVAILABLE');
+      const context = await trustedContext.read(request, proof);
       if (!context?.current || context.worldRef !== request.worldRef ||
           context.worldRevision !== request.expectedWorldRevision ||
           typeof context.objectRef !== 'string' || !context.objectRef ||
@@ -182,6 +184,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     Readback(request) { return backend(request).readback(request); },
     QueryTransaction(request) { return backend(request).query(request); },
     RestoreTransaction(request) { return backend(request).restore(request); },
+    QueryPreparedTransaction(request) { return backend(request).queryPrepared(request); },
+    PrepareHistoryTransaction(request) { return backend(request).prepareHistory(request); },
+    QueryPreparedHistoryTransaction(request) { return backend(request).queryPreparedHistory(request); },
+    ApplyHistoryTransaction(request) { return backend(request).applyHistory(request); },
+    AbortPreparedTransaction(request) { return backend(request).abortPrepared(request); },
+    AbortPreparedHistoryTransaction(request) { return backend(request).abortPreparedHistory(request); },
   };
   return { operations, open, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();

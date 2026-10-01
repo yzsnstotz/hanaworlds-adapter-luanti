@@ -45,4 +45,8 @@ test('journal rejects non-pure JSON and incomplete before-image coverage', async
   await assert.rejects(() => journal.prepare({ ...common,
     beforeImage: { ...before, records: [{ ...before.records[0], position: [1, 0, 0] }] } }), /TARGET_FACTS_INCOMPLETE/);
   assert.equal(journal.query('tx-1'), null);
+  const admitted = Object.assign(Object.create(null), { ...common,
+    transactionId: 'tx-admitted', beforeImage: Object.assign(Object.create(null), before) });
+  await journal.prepare(admitted);
+  assert.equal(journal.query('tx-admitted').status, 'PREPARED');
 });

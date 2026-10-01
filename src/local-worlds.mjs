@@ -33,8 +33,22 @@ async function readIdentity(world) {
   if (!raw) return null;
   let value;
   try { value = JSON.parse(raw); } catch { return null; }
-  if (value?.payloadVersion !== '0.1.0' || typeof value.worldRef !== 'string' || !value.worldRef) return null;
+  if (!['0.1.0', '0.1.1'].includes(value?.payloadVersion) ||
+      typeof value.worldRef !== 'string' || !/^luanti:[0-9a-f-]+$/.test(value.worldRef) ||
+      !/^[0-9a-f]{64}$/.test(value.payloadDigest ?? '')) return null;
   return value;
+}
+
+async function installedPayloadDigest(directory) {
+  const hash = createHash('sha256');
+  for (const name of payloadFiles) {
+    const path = join(directory, name);
+    const stat = await lstat(path).catch(() => null);
+    if (!stat?.isFile() || stat.isSymbolicLink()) throw fault('PAYLOAD_VERSION_MISMATCH');
+    hash.update(`${name}\n`);
+    hash.update(await readFile(path));
+  }
+  return hash.digest('hex');
 }
 
 export async function discoverLocalWorlds(configuredRoots) {
@@ -68,7 +82,8 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
   const operator = await operatorAuthority.verify({ worldPath: resolve(world),
     action: 'PROVISION_PAYLOAD' });
   if (!operator?.current || operator.worldPath !== resolve(world) ||
-      operator.action !== 'PROVISION_PAYLOAD') throw fault('CONNECTION_UNAUTHORIZED');
+      operator.action !== 'PROVISION_PAYLOAD' || operator.worldStopped !== true)
+    throw fault('CONNECTION_UNAUTHORIZED');
   if (transportPort !== null && (!Number.isSafeInteger(transportPort) || transportPort < 1 || transportPort > 65535))
     throw fault('SCHEMA_INVALID');
   await realDirectory(world, 'WORLD_NOT_FOUND');
@@ -85,6 +100,29 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     const identity = await readIdentity(world);
     if (!identity) throw fault('PAYLOAD_VERSION_MISMATCH');
     const digest = await payloadDigest();
+    if (identity.payloadVersion === '0.1.0') {
+      if (identity.payloadDigest !== await installedPayloadDigest(target))
+        throw fault('PAYLOAD_VERSION_MISMATCH');
+      const backup = join(mods, `.hanaworlds-adapter-backup-0.1.0-${identity.payloadDigest}`);
+      if (await lstat(backup).catch(() => null)) throw fault('PAYLOAD_VERSION_MISMATCH');
+      const staging = join(mods, `.hanaworlds-adapter-${randomUUID()}`);
+      await mkdir(staging, { mode: 0o700 });
+      try {
+        for (const name of payloadFiles)
+          await syncFile(join(staging, name), await readFile(join(payloadDir, name)));
+        const upgraded = { worldRef: identity.worldRef,
+          payloadVersion: '0.1.1', payloadDigest: digest };
+        await syncFile(join(staging, manifestName), `${JSON.stringify(upgraded)}\n`);
+        if (transportPort !== null) await syncFile(join(staging, 'transport.json'),
+          `${JSON.stringify({ worldRef: identity.worldRef, port: transportPort,
+            token: randomBytes(32).toString('hex') })}\n`);
+        await syncDirectory(staging);
+        await rename(target, backup);
+        try { await rename(staging, target); await syncDirectory(mods); }
+        catch (error) { await rename(backup, target); throw error; }
+        return upgraded;
+      } finally { await rm(staging, { recursive: true, force: true }); }
+    }
     if (identity.payloadDigest !== digest) throw fault('PAYLOAD_VERSION_MISMATCH');
     for (const name of payloadFiles) {
       const actual = await readFile(join(target, name)).catch(() => null);
@@ -99,7 +137,7 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     return identity;
   }
   const worldRef = `luanti:${randomUUID()}`;
-  const payloadVersion = '0.1.0';
+  const payloadVersion = '0.1.1';
   const digest = await payloadDigest();
   const staging = join(mods, `.hanaworlds-adapter-${randomUUID()}`);
   await mkdir(staging, { mode: 0o700 });

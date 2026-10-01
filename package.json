@@ -1,16 +1,16 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
-  "license": "AGPL-3.0-only",
-  "description": "HanaWorlds Stage 1 Luanti adapter candidate; recoverable transport and v2 authority gated",
+  "license": "MIT",
+  "description": "HanaWorlds Stage 1 Luanti adapter candidate; recoverable world-adapter/v3 provider",
   "repository": {
     "type": "git",
     "url": "https://github.com/yzsnstotz/hanaworlds-adapter-luanti.git"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.13.1 <25"
   },
   "exports": {
     ".": "./src/index.mjs"
@@ -20,6 +20,7 @@
     "payload",
     "cordis.patch.yml",
     "GADGET.md",
+    "LICENSE_AUDIT.md",
     "NOTICE"
   ],
   "dsh": {
@@ -28,11 +29,12 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/local-worlds.mjs && node --check src/journal.mjs && node --check src/bridge.mjs && node --check src/local-transport.mjs && node --check src/remote-transport.mjs && node --check src/v2-port.mjs && node --check src/v2-operations.mjs && node --check src/v2-transactions.mjs",
+    "build": "node --check src/index.mjs && node --check src/local-worlds.mjs && node --check src/journal.mjs && node --check src/bridge.mjs && node --check src/local-transport.mjs && node --check src/remote-transport.mjs && node --check src/v2-port.mjs && node --check src/v2-operations.mjs && node --check src/v2-transactions.mjs && node --check src/v3-port.mjs && node --check src/v3-transactions.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:lua": "lua test/payload.lua && lua test/engine.lua"
+    "test:lua": "lua test/payload.lua && lua test/engine.lua && lua test/engine-history.lua"
   },
   "dependencies": {
-    "canonicalize": "5.1.0"
+    "canonicalize": "5.1.0",
+    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/5ecfce1ba47530b42bba60a674bd16f7bc39c665"
   }
 }

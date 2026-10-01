@@ -6,12 +6,14 @@ export { RemoteEngineTransport } from './remote-transport.mjs';
 export { WorldAdapterV2, worldAdapterOperations } from './v2-port.mjs';
 export { createLuantiOperations } from './v2-operations.mjs';
 export { V2TransactionBackend, projectionDigest } from './v2-transactions.mjs';
+export { WorldAdapterV3, worldAdapterV3Operations } from './v3-port.mjs';
+export { V3TransactionBackend } from './v3-transactions.mjs';
 
 import { createLuantiOperations } from './v2-operations.mjs';
-import { WorldAdapterV2 } from './v2-port.mjs';
+import { WorldAdapterV3 } from './v3-port.mjs';
 import { provisionLocalPayload } from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
-import { V2TransactionBackend } from './v2-transactions.mjs';
+import { V3TransactionBackend } from './v3-transactions.mjs';
 
 export const name = 'hanaworlds-adapter-luanti';
 export const inject = ['webServer'];
@@ -32,6 +34,7 @@ export function apply(ctx, config = {}) {
     const revisionOracle = optionalHostService(ctx, 'hanaworldsWorldRevisionOracle');
     const capacity = optionalHostService(ctx, 'hanaworldsLuantiCapacity');
     const state = optionalHostService(ctx, 'hanaworldsLuantiStateProfile');
+    const historyAuthority = optionalHostService(ctx, 'hanaworldsHistoryOriginAuthority');
     if (typeof authority?.verifyEngineBinding !== 'function' ||
         typeof authority?.verifyService !== 'function' ||
         typeof storage?.adapterJournalDirectory !== 'function' ||
@@ -48,6 +51,7 @@ export function apply(ctx, config = {}) {
       const binding = await authority.verifyEngineBinding(request, action);
       if (!binding?.current || binding.worldRef !== worldRef ||
           binding.actorRef !== request.actorRef ||
+          typeof binding.authorRef !== 'string' || !binding.authorRef ||
           binding.sessionRef !== request.sessionRef ||
           binding.authorizationRef !== request.authorizationRef ||
           !binding.allowedActions?.includes(action)) return null;
@@ -59,20 +63,20 @@ export function apply(ctx, config = {}) {
       const verified = await authority.verifyService(recovery, 'RestoreTransaction');
       return verified?.current === true && verified.worldRef === worldRef;
     };
-    return new V2TransactionBackend({ journal, engine: transport, revisionOracle,
-      stateProfile: profile, verifyBinding, verifyService, capacity });
+    return new V3TransactionBackend({ journal, engine: transport, revisionOracle,
+      stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority });
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
     operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'),
     remoteTunnelFactory: optionalHostService(ctx, 'hanaworldsRemoteTunnelFactory'),
     createBackend,
-    inspectContext: optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
+    inspectContext: () => optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
     serviceName: config.serviceName,
     onAction: typeof optionalHostService(ctx, 'hanaworldsWorkshop')?.invokeAction === 'function'
       ? (request, principal) => optionalHostService(ctx, 'hanaworldsWorkshop').invokeAction(request, principal) : undefined,
   });
-  const worldAdapter = new WorldAdapterV2({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
+  const worldAdapter = new WorldAdapterV3({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
     operations: runtime.operations });
   const service = {
     worldAdapter,
@@ -99,9 +103,9 @@ export function apply(ctx, config = {}) {
     status() {
       return {
         component: name,
-        version: '0.1.0',
+        version: '0.1.1',
         payloadLifecycle: 'LOCAL_PROVISION_SOURCE',
-        worldAdapterContract: 'world-adapter/v2',
+        worldAdapterContract: 'world-adapter/v3',
         interactionSurfaceContract: 'interaction-surface/v2',
         recoverableTransport: 'GATED_BY_AUTHORITY_AND_STATE_PROFILE',
         currentBinding: 'CURRENT_NATIVE_PROOF_REQUIRED',
@@ -109,7 +113,7 @@ export function apply(ctx, config = {}) {
       };
     },
   };
-  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV2', worldAdapter);
+  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV3', worldAdapter);
   if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
   ctx.webServer.register({
     kind: 'prefix',

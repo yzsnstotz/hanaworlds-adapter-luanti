@@ -26,7 +26,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       return current and name == current.actorName and action == current.action
     end,
     verifyPrepared = function(_, _, _, prepared)
-      return current and current.operation == 'apply' and prepared == current.prepared
+      return current and (current.operation == 'apply' or current.operation == 'apply_state')
+        and prepared == current.prepared
         and prepared.status == 'PREPARED'
         and prepared.operationDigest == current.operationDigest
     end,
@@ -60,6 +61,9 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       result, code = engine:inspect(command.actorName, command.positions)
     elseif command.operation == 'apply' then
       result, code = engine:apply(command.actorName, command.effects,
+        command.beforeImage, command.prepared)
+    elseif command.operation == 'apply_state' then
+      result, code = engine:apply_state(command.actorName, command.targetImage,
         command.beforeImage, command.prepared)
     elseif command.operation == 'readback' then
       result, code = engine:readback(command.actorName, command.positions)

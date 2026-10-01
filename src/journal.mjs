@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open as openFile, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const settled = new Set(['ROLLED_BACK', 'VERIFIED']);
+const settled = new Set(['ROLLED_BACK', 'VERIFIED', 'VERIFIED_PENDING_HISTORY', 'ABORTED_PREPARED']);
 const transitions = {
-  PREPARED: new Set(['APPLYING']),
+  PREPARED: new Set(['APPLYING', 'ABORTED_PREPARED']),
   APPLYING: new Set(['APPLIED_PENDING_READBACK', 'RESTORING', 'RECOVERY_PENDING']),
   APPLIED_PENDING_READBACK: new Set(['VERIFIED_PENDING_HISTORY', 'RESTORING', 'RECOVERY_PENDING']),
   VERIFIED_PENDING_HISTORY: new Set(['RECOVERY_PENDING']),
@@ -24,7 +24,9 @@ function pureJson(value) {
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object' || Object.getOwnPropertySymbols(value).length) return false;
   if (Array.isArray(value)) return value.every(pureJson);
-  if (Object.getPrototypeOf(value) !== Object.prototype || Object.hasOwn(value, 'toJSON')) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if ((prototype !== Object.prototype && prototype !== null) ||
+      Object.hasOwn(value, 'toJSON')) return false;
   return Object.values(value).every(pureJson);
 }
 function samePosition(a, b) {
@@ -96,7 +98,10 @@ export class DurableJournal {
   async prepare(input) {
     return this.#exclusive(async () => {
       const { transactionId, operationDigest, transactionPayloadDigest, beforeImageDigest, beforeImage,
-        payload, expectedWorldRevision, stateProfile, adapterExecutionRevision } = input;
+        payload, expectedWorldRevision, stateProfile, adapterExecutionRevision,
+        authorRef, originKind, affectedObjectRefs, historySourceId, historyDirection,
+        historyOperationDigest, targetImage, targetStateDigest, effects,
+        originVerifiedReceiptDigest, expectedHistoryRevision } = input;
       if (!pureJson(input)) throw fault('SCHEMA_INVALID');
       if (typeof transactionId !== 'string' || !transactionId ||
           !Array.isArray(beforeImage?.coveredPositions) ||
@@ -120,6 +125,17 @@ export class DurableJournal {
       }
       const record = { transactionId, operationDigest, transactionPayloadDigest, beforeImageDigest,
         beforeImage: copy(beforeImage),
+        ...(authorRef === undefined ? {} : { authorRef }),
+        ...(originKind === undefined ? {} : { originKind }),
+        ...(affectedObjectRefs === undefined ? {} : { affectedObjectRefs: copy(affectedObjectRefs) }),
+        ...(historySourceId === undefined ? {} : { historySourceId }),
+        ...(historyDirection === undefined ? {} : { historyDirection }),
+        ...(historyOperationDigest === undefined ? {} : { historyOperationDigest }),
+        ...(originVerifiedReceiptDigest === undefined ? {} : { originVerifiedReceiptDigest }),
+        ...(expectedHistoryRevision === undefined ? {} : { expectedHistoryRevision }),
+        ...(targetImage === undefined ? {} : { targetImage: copy(targetImage) }),
+        ...(targetStateDigest === undefined ? {} : { targetStateDigest }),
+        ...(effects === undefined ? {} : { effects: copy(effects) }),
         ...(payload === undefined ? {} : { payload: copy(payload) }),
         ...(expectedWorldRevision === undefined ? {} : { expectedWorldRevision }),
         ...(stateProfile === undefined ? {} : { stateProfile: copy(stateProfile) }),
@@ -131,7 +147,8 @@ export class DurableJournal {
     });
   }
 
-  async transition(transactionId, nextStatus, { causeCode, restoreAttemptIdentity } = {}) {
+  async transition(transactionId, nextStatus, { causeCode, restoreAttemptIdentity,
+    observedWorldRevision, restoredReadbackDigest } = {}) {
     return this.#exclusive(async () => {
       const current = this.#records.get(transactionId);
       if (restoreAttemptIdentity !== undefined && current?.restoreAttemptIdentity !== undefined
@@ -149,6 +166,8 @@ export class DurableJournal {
       const record = { ...current, status: nextStatus,
         ...(causeCode === undefined ? {} : { causeCode }),
         ...(restoreAttemptIdentity === undefined ? {} : { restoreAttemptIdentity }),
+        ...(observedWorldRevision === undefined ? {} : { observedWorldRevision }),
+        ...(restoredReadbackDigest === undefined ? {} : { restoredReadbackDigest }),
         mutationState: nextStatus === 'ROLLED_BACK' ? 'ROLLED_BACK' :
           nextStatus === 'PREPARED' ? 'NONE' : 'UNKNOWN' };
       await this.#save(record);
@@ -156,4 +175,38 @@ export class DurableJournal {
       return this.query(transactionId);
     });
   }
+
+  async abortPrepared(transactionId, expectedAuthorRef) {
+    return this.#exclusive(async () => {
+      const current = this.#records.get(transactionId);
+      if (!current || current.authorRef !== expectedAuthorRef) throw fault('PERMISSION_DENIED');
+      if (current.status === 'ABORTED_PREPARED') return copy(current);
+      if (current.status !== 'PREPARED') throw fault('STALE_TRANSACTION');
+      const record = { ...current, status: 'ABORTED_PREPARED', mutationState: 'NONE' };
+      await this.#save(record);
+      this.#records.set(transactionId, record);
+      return copy(record);
+    });
+  }
+
+  async recordAfterState(transactionId, afterImage, afterReadbackDigest, beforeStateReadbackDigest) {
+    return this.#exclusive(async () => {
+      const current = this.#records.get(transactionId);
+      if (!current || current.status !== 'APPLIED_PENDING_READBACK' ||
+          !pureJson(afterImage) || !samePositionSet(current.beforeImage, afterImage))
+        throw fault('STALE_TRANSACTION');
+      const record = { ...current, afterImage: copy(afterImage), afterReadbackDigest,
+        beforeStateReadbackDigest, status: 'VERIFIED_PENDING_HISTORY', mutationState: 'VERIFIED' };
+      await this.#save(record);
+      this.#records.set(transactionId, record);
+      return copy(record);
+    });
+  }
+}
+
+function samePositionSet(before, after) {
+  return before.worldRef === after.worldRef &&
+    before.coveredPositions.length === after.coveredPositions?.length &&
+    before.coveredPositions.every((pos, i) => samePosition(pos, after.coveredPositions[i]) &&
+      samePosition(pos, after.records?.[i]?.position));
 }

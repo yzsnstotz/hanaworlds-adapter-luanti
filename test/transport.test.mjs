@@ -22,7 +22,7 @@ test('per-world courier refuses unpaired calls and delivers only queued in-proce
   await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
   const port = await freePort();
   const operatorAuthority = { verify: async ({ worldPath, action }) =>
-    ({ current: true, worldPath, action }) };
+    ({ current: true, worldPath, action, worldStopped: true }) };
   const manifest = await provisionLocalPayload(world, { operatorAuthority, transportPort: port });
   const config = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
   assert.equal(config.worldRef, manifest.worldRef);
@@ -61,7 +61,7 @@ test('paired frame action reaches only the trusted owner callback once', async (
   await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
   const port = await freePort();
   const operatorAuthority = { verify: async ({ worldPath, action }) =>
-    ({ current: true, worldPath, action }) };
+    ({ current: true, worldPath, action, worldStopped: true }) };
   const manifest = await provisionLocalPayload(world, { operatorAuthority, transportPort: port });
   const config = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
   const actions = [];

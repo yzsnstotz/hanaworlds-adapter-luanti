@@ -19,7 +19,8 @@ function publicStatus(record) {
  * admission, engine transport and current binding this module cannot write.
  */
 export class EngineBridge {
-  constructor({ journal, engine, admit, verifyBinding, verifyService, digestBeforeImage, digestReadback }) {
+  constructor({ journal, engine, admit, verifyBinding, verifyService, digestBeforeImage,
+    digestReadback, restoredProof }) {
     this.journal = journal;
     this.engine = engine;
     this.admit = admit;
@@ -27,6 +28,7 @@ export class EngineBridge {
     this.verifyService = verifyService;
     this.digestBeforeImage = digestBeforeImage;
     this.digestReadback = digestReadback;
+    this.restoredProof = restoredProof;
   }
 
   #admit(operation, request) {
@@ -59,7 +61,12 @@ export class EngineBridge {
         { expectedWorldRevision: request.expectedWorldRevision }),
       ...(request.stateProfile === undefined ? {} : { stateProfile: request.stateProfile }),
       ...(request.adapterExecutionRevision === undefined ? {} :
-        { adapterExecutionRevision: request.adapterExecutionRevision }) });
+        { adapterExecutionRevision: request.adapterExecutionRevision }),
+      ...(request.authorRef === undefined ? {} : { authorRef: request.authorRef }),
+      ...(request.originKind === undefined ? {} : { originKind: request.originKind }),
+      ...(request.affectedObjectRefs === undefined ? {} :
+        { affectedObjectRefs: request.affectedObjectRefs }),
+      ...(request.effects === undefined ? {} : { effects: request.effects }) });
     return publicStatus(prepared);
   }
 
@@ -101,7 +108,8 @@ export class EngineBridge {
     try {
       const result = await this.engine.restore({ ...recovery, status: 'RESTORING' }, prepared.beforeImage);
       if (result?.status !== 'ROLLED_BACK') throw new Error('RESTORE_FAILED');
-      await this.journal.transition(request.transactionId, 'ROLLED_BACK', { causeCode });
+      const proof = this.restoredProof ? await this.restoredProof(prepared.beforeImage) : {};
+      await this.journal.transition(request.transactionId, 'ROLLED_BACK', { causeCode, ...proof });
       return { status: 'ROLLED_BACK', causeCode };
     } catch {
       await this.journal.transition(request.transactionId, 'RESTORE_FAILED', { causeCode });
@@ -172,7 +180,8 @@ export class EngineBridge {
     try {
       const result = await this.engine.restore({ ...request, status: 'RESTORING' }, state.beforeImage);
       if (result?.status !== 'ROLLED_BACK') throw new Error('RESTORE_FAILED');
-      await this.journal.transition(request.originTransactionId, 'ROLLED_BACK');
+      const proof = this.restoredProof ? await this.restoredProof(state.beforeImage) : {};
+      await this.journal.transition(request.originTransactionId, 'ROLLED_BACK', proof);
       return result;
     } catch {
       await this.journal.transition(request.originTransactionId, 'RESTORE_FAILED');

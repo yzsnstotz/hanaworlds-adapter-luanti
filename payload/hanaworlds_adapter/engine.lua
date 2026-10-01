@@ -1,5 +1,5 @@
 -- Engine-side primitives. This module is held privately by init.lua; no
--- world mutation is exposed until a verified v2 transport supplies authority
+-- world mutation is exposed until a verified Adapter transport supplies authority
 -- and a host-fsynced PREPARED record.
 local M = {}
 local Engine = {}
@@ -193,6 +193,91 @@ function Engine:apply(player_name, effects, before_image, prepared)
     local param_ok, param_changed = pcall(editing.set_param2, pos, pos, effect.param2)
     if not param_ok or param_changed ~= 1 then return nil, 'APPLY_FAILED' end
     count = count + 1
+  end
+  return {status = 'APPLIED_PENDING_READBACK', writtenCells = count}
+end
+
+-- History targets are Adapter-private full-state images. The host has already
+-- fsynced PREPARED and proved the current author/source transaction; the Lua
+-- courier additionally binds this call to its one in-flight command.
+function Engine:apply_state(player_name, target_image, before_image, prepared)
+  if not self.authorize or not self.authorize(player_name, 'APPLY_RECOVERABLE')
+    or not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
+  if not prepared or prepared.status ~= 'PREPARED' or not self.verifyPrepared
+    or not self.verifyPrepared(player_name, target_image, before_image, prepared) then
+    return nil, 'CAPABILITY_UNAVAILABLE'
+  end
+  if type(target_image) ~= 'table' or type(before_image) ~= 'table'
+    or type(target_image.records) ~= 'table' or type(before_image.records) ~= 'table'
+    or type(target_image.coveredPositions) ~= 'table'
+    or type(before_image.coveredPositions) ~= 'table'
+    or #target_image.records == 0 or #target_image.records ~= #before_image.records
+    or #target_image.records ~= #target_image.coveredPositions
+    or #target_image.records ~= #before_image.coveredPositions then
+    return nil, 'SCHEMA_INVALID'
+  end
+  local editing = rawget(_G, 'worldedit')
+  if type(editing) ~= 'table' or type(editing.set) ~= 'function'
+    or type(editing.set_param2) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+  -- Check every cell and exact current state before the first write.
+  for i, target in ipairs(target_image.records) do
+    local prior = before_image.records[i]
+    local cell = target_image.coveredPositions[i]
+    local pos = position(cell)
+    if not pos or not equal(cell, target.position)
+      or not equal(cell, before_image.coveredPositions[i])
+      or not equal(cell, prior.position) then return nil, 'SCHEMA_INVALID' end
+    if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
+    if not static_node(target.nodeName) or not static_node(prior.nodeName)
+      or type(target.param1) ~= 'number' or target.param1 < 0 or target.param1 > 255
+      or target.param1 ~= math.floor(target.param1)
+      or type(target.param2) ~= 'number' or target.param2 < 0 or target.param2 > 255
+      or target.param2 ~= math.floor(target.param2)
+      or type(target.metadata) ~= 'table' or type(target.inventory) ~= 'table'
+      or (target.timer ~= nil and (type(target.timer) ~= 'table'
+        or type(target.timer.timeout) ~= 'number' or target.timer.timeout < 0
+        or type(target.timer.elapsed) ~= 'number' or target.timer.elapsed < 0)) then
+      return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+    for k, v in pairs(target.metadata) do
+      if type(k) ~= 'string' or type(v) ~= 'string' then
+        return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+    end
+    for k, slots in pairs(target.inventory) do
+      if type(k) ~= 'string' or type(slots) ~= 'table' then
+        return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+      for _, stack in ipairs(slots) do
+        if type(stack) ~= 'string' then return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+      end
+    end
+    local current, code = public_record(cell)
+    if not current then return nil, code end
+    if not equal(current, prior) then return nil, 'TRANSACTION_CONFLICT' end
+  end
+  local count = 0
+  for _, target in ipairs(target_image.records) do
+    local pos = position(target.position)
+    if not self.authorize(player_name, 'APPLY_RECOVERABLE')
+      or not has_privilege(player_name) or minetest.is_protected(pos, player_name) then
+      return nil, 'APPLY_FAILED' end
+    local ok, changed = pcall(editing.set, pos, pos, target.nodeName)
+    if not ok or changed ~= 1 then return nil, 'APPLY_FAILED' end
+    local p_ok, p_changed = pcall(editing.set_param2, pos, pos, target.param2)
+    if not p_ok or p_changed ~= 1 then return nil, 'APPLY_FAILED' end
+    local state_ok = pcall(function()
+      minetest.swap_node(pos, {name = target.nodeName,
+        param1 = target.param1, param2 = target.param2})
+      assert(minetest.get_meta(pos):from_table({fields = target.metadata,
+        inventory = target.inventory}) ~= false)
+      local timer = minetest.get_node_timer(pos)
+      if target.timer then timer:set(target.timer.timeout, target.timer.elapsed)
+      else timer:stop() end
+    end)
+    if not state_ok then return nil, 'APPLY_FAILED' end
+    count = count + 1
+  end
+  for _, target in ipairs(target_image.records) do
+    local current = public_record(target.position)
+    if not current or not equal(current, target) then return nil, 'READBACK_MISMATCH' end
   end
   return {status = 'APPLIED_PENDING_READBACK', writtenCells = count}
 end
