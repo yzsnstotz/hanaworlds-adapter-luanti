@@ -101,7 +101,7 @@ export class DurableJournal {
         payload, expectedWorldRevision, stateProfile, adapterExecutionRevision,
         authorRef, originKind, affectedObjectRefs, historySourceId, historyDirection,
         historyOperationDigest, targetImage, targetStateDigest, effects,
-        originVerifiedReceiptDigest, expectedHistoryRevision } = input;
+        originVerifiedReceiptDigest, expectedHistoryRevision, beforeStateReadbackDigest } = input;
       if (!pureJson(input)) throw fault('SCHEMA_INVALID');
       if (typeof transactionId !== 'string' || !transactionId ||
           !Array.isArray(beforeImage?.coveredPositions) ||
@@ -135,6 +135,7 @@ export class DurableJournal {
         ...(expectedHistoryRevision === undefined ? {} : { expectedHistoryRevision }),
         ...(targetImage === undefined ? {} : { targetImage: copy(targetImage) }),
         ...(targetStateDigest === undefined ? {} : { targetStateDigest }),
+        ...(beforeStateReadbackDigest === undefined ? {} : { beforeStateReadbackDigest }),
         ...(effects === undefined ? {} : { effects: copy(effects) }),
         ...(payload === undefined ? {} : { payload: copy(payload) }),
         ...(expectedWorldRevision === undefined ? {} : { expectedWorldRevision }),
@@ -195,6 +196,10 @@ export class DurableJournal {
       if (!current || current.status !== 'APPLIED_PENDING_READBACK' ||
           !pureJson(afterImage) || !samePositionSet(current.beforeImage, afterImage))
         throw fault('STALE_TRANSACTION');
+      // A digest saved at Prepare is authoritative and never replaced.
+      if (current.beforeStateReadbackDigest !== undefined &&
+          current.beforeStateReadbackDigest !== beforeStateReadbackDigest)
+        throw fault('SAVED_RESOURCE_UNAVAILABLE');
       const record = { ...current, afterImage: copy(afterImage), afterReadbackDigest,
         beforeStateReadbackDigest, status: 'VERIFIED_PENDING_HISTORY', mutationState: 'VERIFIED' };
       await this.#save(record);

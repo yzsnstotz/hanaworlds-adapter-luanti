@@ -12,7 +12,7 @@ function response() {
   return reply;
 }
 
-test('DSH host registers loopback status and a fail-closed v3 provider', async () => {
+test('DSH host registers loopback status and a fail-closed v4 provider', async () => {
   let route;
   let provided;
   const ctx = { webServer: { register(value) { route = value; } },
@@ -24,11 +24,11 @@ test('DSH host registers loopback status and a fail-closed v3 provider', async (
   assert.deepEqual(inject, ['webServer']);
   assert.equal(route.kind, 'prefix');
   assert.equal(route.path, '/api-hanaworlds-luanti');
-  assert.equal(provided.name, 'hanaworldsWorldAdapterV3');
+  assert.equal(provided.name, 'hanaworldsWorldAdapterV4');
   assert.equal(provided.value, service.worldAdapter);
   assert.equal(service.status().recoverableTransport, 'GATED_BY_AUTHORITY_AND_STATE_PROFILE');
   const noAuthority = await service.worldAdapter.call('DiscoverConnections', {
-    contractVersion: 'world-adapter/v3', actorRef: 'actor', sessionRef: 'session',
+    contractVersion: 'world-adapter/v4', actorRef: 'actor', sessionRef: 'session',
     requestId: 'request', authorizationRef: 'authorization', adapterId: name });
   assert.equal(noAuthority.error.code, 'PERMISSION_DENIED');
 
@@ -80,7 +80,7 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
     hanaworldsRemoteTunnelFactory: { open: async () => ({
       async request(command) {
         if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-          payloadVersion: '0.1.1', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.0', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: profile.worldRef,
           current: true, engineActorName: command.actorName, worldeditAvailable: true };
@@ -114,7 +114,7 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
   };
   const service = apply(ctx, { remoteProfiles: [profile] });
   const bound = await service.worldAdapter.call('AuthorizeBinding', {
-    contractVersion: 'world-adapter/v3', actorRef: 'actor:alice',
+    contractVersion: 'world-adapter/v4', actorRef: 'actor:alice',
     sessionRef: 'session:one', requestId: 'bind:one', authorizationRef: 'grant:one',
     worldRef: profile.worldRef, connectionRef: profile.connectionRef,
     expectedCapabilityRevision: profile.capabilityRevision });

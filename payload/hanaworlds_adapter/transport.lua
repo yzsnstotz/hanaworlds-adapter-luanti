@@ -2,7 +2,8 @@
 -- form or arbitrary HTTP caller; the host must possess the per-world secret.
 local M = {}
 
-function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame)
+function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
+  region)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -59,6 +60,22 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'inspect' then
       result, code = engine:inspect(command.actorName, command.positions)
+    elseif command.operation == 'prepare_check' then
+      result, code = region:prepare_check(command.actorName, command.positions)
+    elseif command.operation == 'inspect_region' then
+      if type(command.actorName) ~= 'string' or command.actorName == ''
+        or (minetest.player_exists and not minetest.player_exists(command.actorName)) then
+        code = 'PRINCIPAL_UNKNOWN'
+      elseif command.worldRef ~= manifest.worldRef then
+        code = 'CONNECTION_UNAUTHORIZED'
+      else
+        local raw
+        raw, code = region:inspect({worldRef = command.worldRef, sessionRef = command.sessionRef,
+          anchor = command.anchor, footprint = command.footprint, settings = command.settings,
+          actorName = command.actorName, walkable = command.walkable or {},
+          limitExceeded = command.limitExceeded == true})
+        if raw then result = {raw_json = raw} end
+      end
     elseif command.operation == 'apply' then
       result, code = engine:apply(command.actorName, command.effects,
         command.beforeImage, command.prepared)
@@ -113,8 +130,11 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   end
 
   local function encode_reply(id, result, code)
-    local encoded = result and json(result) or 'null'
-    if result and result.occupiedCells then
+    local encoded
+    if result and result.raw_json then encoded = result.raw_json
+    else encoded = result and json(result) or 'null' end
+    if result and result.raw_json then -- already explicit JSON
+    elseif result and result.occupiedCells then
       encoded = '{"occupiedCells":' .. array(result.occupiedCells, json)
         .. ',"knownEmptyCells":' .. array(result.knownEmptyCells,
           function(cell) return array(cell, json) end)

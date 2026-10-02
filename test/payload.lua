@@ -1,10 +1,27 @@
 local commands = {}
 local callbacks = {}
 local forms = {}
-local players = {alice = {get_player_name = function() return 'alice' end}}
+local chats = {}
+local world_dir = os.tmpname(); os.remove(world_dir); os.execute('mkdir -p ' .. world_dir)
+local players = {alice = {get_player_name = function() return 'alice' end,
+  get_pos = function() return {x = 0.2, y = 0.5, z = -0.3} end,
+  get_look_dir = function() return {x = 0, y = -0.5, z = 0.8} end,
+  get_look_horizontal = function() return 4.7 end,
+  get_properties = function() return {eye_height = 1.5, collisionbox = {-0.3, 0, -0.3, 0.3, 1.77, 0.3}} end,
+  get_wielded_item = function() return {get_name = function() return '' end} end}}
+local function encode(v)
+  if type(v) == 'table' then
+    if #v > 0 then local out = {} for i, x in ipairs(v) do out[i] = encode(x) end
+      return '[' .. table.concat(out, ',') .. ']' end
+    local out = {}
+    for k, x in pairs(v) do out[#out + 1] = string.format('%q', k) .. ':' .. encode(x) end
+    return next(v) == nil and 'null' or '{' .. table.concat(out, ',') .. '}'
+  elseif type(v) == 'string' then return string.format('%q', v) end
+  return tostring(v)
+end
 local prefix = 'payload/hanaworlds_adapter/'
 local source_bytes = ''
-for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua'}) do
+for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua'}) do
   local f = assert(io.open(prefix .. name, 'rb'))
   source_bytes = source_bytes .. name .. '\n' .. f:read('*a')
   f:close()
@@ -19,6 +36,24 @@ end
 _G.worldedit = {version_string = '1.3', set = function() end, set_param2 = function() end}
 _G.minetest = {
   get_modpath = function() return 'payload/hanaworlds_adapter' end,
+  get_worldpath = function() return world_dir end,
+  write_json = encode,
+  safe_file_write = function(path, content)
+    local f = assert(io.open(path, 'wb')); f:write(content); f:close(); return true
+  end,
+  chat_send_player = function(name, text) chats[#chats + 1] = {name, text} end,
+  registered_items = {[''] = {}},
+  registered_nodes = {['fixture:stone'] = {}},
+  get_node_or_nil = function() return {name = 'fixture:stone', param1 = 0, param2 = 0} end,
+  raycast = function(from, to)
+    assert(math.abs(to.z - from.z - 3.2) < 1e-9, 'pointing range is the engine item range')
+    local done = false
+    return function()
+      if done then return nil end
+      done = true
+      return {type = 'node', under = {x = 5, y = 0, z = 5}, above = {x = 5, y = 1, z = 5}}
+    end
+  end,
   get_current_modname = function() return 'hanaworlds_adapter' end,
   get_mod_storage = function() return {get_string = function() return '' end} end,
   register_chatcommand = function(name, spec) commands[name] = spec end,
@@ -60,7 +95,7 @@ assert(hanaworlds_adapter.present_frame('alice', frame), 'trusted matched payloa
 local invoked
 hanaworlds_adapter.invoke_action = function(request, name)
   invoked = {name = name, sessionRef = request.sessionRef, action = request.actionId,
-    input = request.input, contractVersion = request.contractVersion}
+    input = request.input, contractVersion = request.contractVersion, request = request}
 end
 local action_button = forms[#forms][3]:match('button%[[^;]+;[^;]+;([^;]+);reply%]')
 assert(action_button, 'current revision action button rendered')
@@ -112,4 +147,51 @@ assert(invoked.action == 'select' and invoked.input.kind == 'SELECT_OBJECTS'
   and invoked.input.orderedObjectRefs[1] == 'object:a'
   and invoked.input.orderedObjectRefs[2] == 'object:c',
   'selection transmits only listed objects in owner order')
+assert(invoked.contractVersion == 'interaction-surface/v3', 'in-world invocations use interaction-surface/v3')
+local region = hanaworlds_adapter.region
+assert(region.relays[invoked.request.invocationId].engineActorName == 'alice'
+  and region.relays[invoked.request.invocationId].sessionRef == 'session-1'
+  and region.relays[invoked.request.invocationId].worldRef == 'luanti:test',
+  'every relayed invocation is recorded before delivery')
+local state_file = assert(io.open(world_dir .. '/hanaworlds_adapter_engine_state.json', 'rb'))
+assert(state_file:read('*a'):find('hanaworlds-adapter-engine-state/1', 1, true), 'relay record persisted in engine state')
+state_file:close()
+
+-- Placement ask: in-world renderer offers PICK_WORLD_POINT only; the name list is chosen in Shell.
+local ask = {sessionRef = 'session-1', turnRevision = 'turn-5', frameRef = 'frame-5',
+  actorRef = 'player:alice', authorizationRef = 'grant:one',
+  frameRevision = 'frame-r5', content = 'Where should it go?', actions = {}}
+ask.actions[1] = frame_action(ask, 'place', 'PICK_WORLD_POINT', string.rep('e', 64))
+ask.actions[1].inputKinds = {'PICK_WORLD_POINT', 'SELECT_CHOICE'}
+assert(hanaworlds_adapter.present_frame('alice', ask))
+local ask_spec = forms[#forms][3]
+assert(ask_spec:find('place: choose in Shell', 1, true), 'SELECT_CHOICE is shown as choose in Shell')
+assert(not ask_spec:find('alice', 1, true) and not ask_spec:find('hw_choice_', 1, true),
+  'no player list and no choice control in game')
+local pick_button = ask_spec:match('button%[[^;]+;[^;]+;(hw_pick_[^;]+);')
+assert(pick_button, 'pick action rendered')
+local ask_nonce = pick_button:match('hw_pick_(.-)_1')
+local before_choice = invoked
+callbacks[1](players.alice, 'hanaworlds:session', {['hw_choice_' .. ask_nonce .. '_1'] = 'bob'})
+assert(invoked == before_choice, 'an in-world SELECT_CHOICE is answered locally and never relayed')
+assert(chats[#chats][2]:find('made in Shell', 1, true), 'player is told to choose in Shell')
+callbacks[1](players.alice, 'hanaworlds:session', {[pick_button] = true})
+assert(forms[#forms][2] == 'hanaworlds:pick', 'pick asks the player to confirm the pointed node')
+assert(invoked == before_choice, 'nothing is relayed before confirmation')
+callbacks[1](players.alice, 'hanaworlds:pick', {hw_pick_confirm = true})
+assert(invoked ~= before_choice and invoked.input.kind == 'PICK_WORLD_POINT', 'confirmed pick is relayed')
+local pick = region.picks[invoked.input.pickRef]
+assert(pick and pick.node[1] == 5 and pick.node[2] == 0 and pick.node[3] == 5
+  and pick.picker == 'alice' and pick.pickerYaw == 4.7 and pick.sessionRef == 'session-1'
+  and pick.worldRef == 'luanti:test', 'private pick record holds node, picker, facing and world')
+assert(region.relays[invoked.request.invocationId], 'pick invocation recorded before delivery')
+local function has_pose(v)
+  if type(v) ~= 'table' then return false end
+  for k, x in pairs(v) do
+    if k == 'pos' or k == 'yaw' or k == 'pickerYaw' or k == 'node' or k == 'collisionbox' or has_pose(x) then return true end
+  end
+  return false
+end
+assert(not has_pose(invoked.request), 'the relayed invocation carries no position or facing')
+os.remove(world_dir .. '/hanaworlds_adapter_engine_state.json'); os.remove(world_dir)
 print('payload smoke PASS')

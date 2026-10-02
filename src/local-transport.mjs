@@ -2,7 +2,18 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
+import { validateRequest } from 'hanaworlds-contracts/v4';
 import { payloadDigest } from './local-worlds.mjs';
+import { PAYLOAD_VERSION } from './version.mjs';
+
+const SURFACE = 'interaction-surface/v3';
+// rc.9 user decision: the in-world renderer answers SELECT_CHOICE itself and
+// never relays it; the choice is made in Shell.
+function rendererRefusal(requestId) {
+  return { contractVersion: SURFACE, requestId, result: null, error: {
+    code: 'RENDERER_CAPABILITY_UNAVAILABLE', phase: 'validate', retryability: 'NEVER',
+    mutationState: 'NONE', transactionRef: null, causeCode: null, reason: 'SCOPE_DENIED' } };
+}
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 function fault(code) { return new Error(code); }
@@ -50,7 +61,7 @@ export class LocalEngineTransport {
         (transportInfo.mode & 0o077) !== 0) throw fault('CONNECTION_UNAUTHORIZED');
     const manifest = JSON.parse(await readFile(join(dir, 'payload.json'), 'utf8'));
     const config = JSON.parse(await readFile(join(dir, 'transport.json'), 'utf8'));
-    if (manifest.payloadVersion !== '0.1.1' || manifest.payloadDigest !== await payloadDigest() ||
+    if (manifest.payloadVersion !== PAYLOAD_VERSION || manifest.payloadDigest !== await payloadDigest() ||
         config.worldRef !== manifest.worldRef || !/^luanti:[0-9a-f-]+$/.test(config.worldRef) ||
         !Number.isSafeInteger(config.port) || config.port < 1 || config.port > 65535 ||
         typeof config.token !== 'string' || !/^[0-9a-f]{64}$/.test(config.token))
@@ -104,14 +115,18 @@ export class LocalEngineTransport {
       const frame = this.#actionFrames.get(message?.engineActorName);
       const action = frame?.actions?.find(entry => entry.actionId === message?.request?.actionId);
       const request = message?.request;
+      if (request?.input?.kind === 'SELECT_CHOICE' && typeof request.requestId === 'string' &&
+          request.requestId) {
+        respond(res, 409, rendererRefusal(request.requestId)); return;
+      }
       if (message?.worldRef !== this.#worldRef || !frame || !action ||
-          request?.contractVersion !== 'interaction-surface/v2' ||
+          request?.contractVersion !== SURFACE ||
           request.actorRef !== frame.actorRef || request.sessionRef !== frame.sessionRef ||
           request.authorizationRef !== frame.authorizationRef ||
           request.turnRevision !== frame.turnRevision || request.frameRef !== frame.frameRef ||
           request.frameRevision !== frame.frameRevision ||
           request.surfaceActionDigest !== action.surfaceActionDigest ||
-          request.input?.kind !== action.inputKinds?.[0] ||
+          !action.inputKinds?.includes(request.input?.kind) ||
           typeof request.requestId !== 'string' || !request.requestId ||
           request.requestId !== request.invocationId) {
         respond(res, 409, { error: 'INVALID_FRAME' }); return;
@@ -129,7 +144,8 @@ export class LocalEngineTransport {
       try {
         // The pinned host copy supplies every nullable projection field.
         // Luanti's JSON parser may omit null keys when round-tripping Lua tables.
-        const ownerRequest = { ...request, surfaceAction: structuredClone(action.surfaceAction) };
+        const ownerRequest = validateRequest(SURFACE, 'InvokeAction',
+          { ...request, surfaceAction: structuredClone(action.surfaceAction) });
         const receipt = await this.#onAction(ownerRequest, { engineActorName: message.engineActorName,
           worldRef: this.#worldRef });
         if (receipt?.invocationId !== request.invocationId || receipt.accepted !== true ||
@@ -141,7 +157,7 @@ export class LocalEngineTransport {
             Object.keys(receipt).some(key => !['invocationId', 'resultRevision', 'ownerRef',
               'domainReceiptDigest', 'accepted'].includes(key)))
           throw fault('RENDERER_CAPABILITY_UNAVAILABLE');
-        respond(res, 200, { contractVersion: 'interaction-surface/v2',
+        respond(res, 200, { contractVersion: SURFACE,
           requestId: request.requestId, result: receipt, error: null });
       } catch {
         respond(res, 503, { error: 'RENDERER_CAPABILITY_UNAVAILABLE' });
@@ -182,7 +198,7 @@ export class LocalEngineTransport {
 
   async handshake() {
     const result = await this.#dispatch('handshake', {});
-    if (result?.payloadVersion !== '0.1.1' || result.worldRef !== this.#worldRef ||
+    if (result?.payloadVersion !== PAYLOAD_VERSION || result.worldRef !== this.#worldRef ||
         result.loadedSourceDigest !== this.#expectedDigest ||
         result.manifestDigest !== this.#expectedDigest || result.payloadMatches !== true ||
         result.worldeditAvailable !== true) throw fault('PAYLOAD_VERSION_MISMATCH');
@@ -219,6 +235,14 @@ export class LocalEngineTransport {
   inspect(positions, binding) {
     return this.#dispatch('inspect', { actorName: this.#actor(binding), action: 'INSPECT',
       positions });
+  }
+  prepareCheck(positions, binding) {
+    return this.#dispatch('prepare_check', { actorName: this.#actor(binding),
+      action: 'APPLY_RECOVERABLE', positions });
+  }
+  inspectRegion(args, binding) {
+    return this.#dispatch('inspect_region', { actorName: this.#actor(binding),
+      action: 'INSPECT', ...args });
   }
   apply(request, prepared, binding) {
     return this.#dispatch('apply', { actorName: this.#actor(binding), action: 'APPLY_RECOVERABLE',

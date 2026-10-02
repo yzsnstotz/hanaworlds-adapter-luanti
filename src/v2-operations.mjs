@@ -4,9 +4,10 @@ import { discoverLocalWorlds, payloadDigest } from './local-worlds.mjs';
 import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
+import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
 
 function fault(code) { throw new Error(code); }
-const adapterId = 'hanaworlds-adapter-luanti';
+const adapterId = ADAPTER_ID;
 const revision = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
@@ -36,13 +37,13 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       worldRef: world.worldRef,
       displayName: world.worldPath.split('/').at(-1),
       capabilityRevision: revision({ connectionRef: world.connectionRef, digest }),
-      payloadVersion: world.payloadVersion ?? '0.1.1',
+      payloadVersion: world.payloadVersion ?? PAYLOAD_VERSION,
       readiness: world.payloadDigest === digest ? 'CONNECTION_UNAUTHORIZED' :
         'PAYLOAD_VERSION_MISMATCH' }));
     for (const profile of remote.values()) connections.push({ adapterId,
       connectionRef: profile.connectionRef, worldRef: profile.worldRef,
       displayName: profile.displayName, capabilityRevision: profile.capabilityRevision,
-      payloadVersion: profile.payloadVersion ?? '0.1.1',
+      payloadVersion: profile.payloadVersion ?? PAYLOAD_VERSION,
       readiness: 'CONNECTION_UNAUTHORIZED' });
     connections.sort((a, b) => compare(a.adapterId, b.adapterId) ||
       compare(a.connectionRef, b.connectionRef) || compare(a.worldRef, b.worldRef));
@@ -75,6 +76,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         }
         await transport.verifyPrincipal(proof.engineActorName);
         if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
+            typeof proof.actorRef !== 'string' || !proof.actorRef ||
             typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
           fault('CONNECTION_UNAUTHORIZED');
         if (typeof createBackend === 'function' && !ownedBackends.has(request.worldRef)) {
@@ -83,8 +85,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           if (built) ownedBackends.set(request.worldRef, built);
         }
         return { connectionRef: request.connectionRef, worldRef: request.worldRef,
-          payloadVersion: '0.1.1', payloadDigest: await payloadDigest(),
-          binding: { authorizerRef: proof.authorizerRef, actorRef: request.actorRef,
+          payloadVersion: PAYLOAD_VERSION, payloadDigest: await payloadDigest(),
+          binding: { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
             bindingRef: proof.bindingRef, worldRef: request.worldRef,
             grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions },
           capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
@@ -110,9 +112,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       const principal = await transport.verifyPrincipal(proof.engineActorName);
       if (!principal.current) fault('CONNECTION_UNAUTHORIZED');
       if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
+          typeof proof.actorRef !== 'string' || !proof.actorRef ||
           typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
         fault('CONNECTION_UNAUTHORIZED');
-      const binding = { authorizerRef: proof.authorizerRef, actorRef: request.actorRef,
+      const binding = { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
         bindingRef: proof.bindingRef, worldRef: request.worldRef,
         grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions };
       if (typeof createBackend === 'function' && !ownedBackends.has(request.worldRef)) {
@@ -190,6 +193,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     ApplyHistoryTransaction(request) { return backend(request).applyHistory(request); },
     AbortPreparedTransaction(request) { return backend(request).abortPrepared(request); },
     AbortPreparedHistoryTransaction(request) { return backend(request).abortPreparedHistory(request); },
+    InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
   return { operations, open, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();

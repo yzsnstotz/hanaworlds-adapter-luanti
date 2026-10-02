@@ -3,9 +3,11 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PAYLOAD_FILES, PAYLOAD_VERSION, UPGRADABLE_PAYLOADS } from './version.mjs';
 
 const payloadDir = fileURLToPath(new URL('../payload/hanaworlds_adapter/', import.meta.url));
-const payloadFiles = ['mod.conf', 'init.lua', 'engine.lua', 'transport.lua'];
+const payloadFiles = PAYLOAD_FILES;
+const knownVersions = [...Object.keys(UPGRADABLE_PAYLOADS), PAYLOAD_VERSION];
 const manifestName = 'payload.json';
 
 function fault(code) { return new Error(code); }
@@ -33,15 +35,15 @@ async function readIdentity(world) {
   if (!raw) return null;
   let value;
   try { value = JSON.parse(raw); } catch { return null; }
-  if (!['0.1.0', '0.1.1'].includes(value?.payloadVersion) ||
+  if (!knownVersions.includes(value?.payloadVersion) ||
       typeof value.worldRef !== 'string' || !/^luanti:[0-9a-f-]+$/.test(value.worldRef) ||
       !/^[0-9a-f]{64}$/.test(value.payloadDigest ?? '')) return null;
   return value;
 }
 
-async function installedPayloadDigest(directory) {
+async function installedPayloadDigest(directory, files = payloadFiles) {
   const hash = createHash('sha256');
-  for (const name of payloadFiles) {
+  for (const name of files) {
     const path = join(directory, name);
     const stat = await lstat(path).catch(() => null);
     if (!stat?.isFile() || stat.isSymbolicLink()) throw fault('PAYLOAD_VERSION_MISMATCH');
@@ -100,22 +102,28 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     const identity = await readIdentity(world);
     if (!identity) throw fault('PAYLOAD_VERSION_MISMATCH');
     const digest = await payloadDigest();
-    if (identity.payloadVersion === '0.1.0') {
-      if (identity.payloadDigest !== await installedPayloadDigest(target))
+    const previousFiles = UPGRADABLE_PAYLOADS[identity.payloadVersion];
+    if (previousFiles) {
+      // Verified upgrade from an older payload: the complete old directory
+      // (identity, transport pairing) is kept as a versioned backup so a
+      // stopped-world rollback can restore exactly those bytes.
+      if (identity.payloadDigest !== await installedPayloadDigest(target, previousFiles))
         throw fault('PAYLOAD_VERSION_MISMATCH');
-      const backup = join(mods, `.hanaworlds-adapter-backup-0.1.0-${identity.payloadDigest}`);
+      const backup = join(mods, backupName(identity));
       if (await lstat(backup).catch(() => null)) throw fault('PAYLOAD_VERSION_MISMATCH');
+      const oldTransport = await readFile(join(target, 'transport.json'), 'utf8').catch(() => null);
       const staging = join(mods, `.hanaworlds-adapter-${randomUUID()}`);
       await mkdir(staging, { mode: 0o700 });
       try {
         for (const name of payloadFiles)
           await syncFile(join(staging, name), await readFile(join(payloadDir, name)));
         const upgraded = { worldRef: identity.worldRef,
-          payloadVersion: '0.1.1', payloadDigest: digest };
+          payloadVersion: PAYLOAD_VERSION, payloadDigest: digest };
         await syncFile(join(staging, manifestName), `${JSON.stringify(upgraded)}\n`);
         if (transportPort !== null) await syncFile(join(staging, 'transport.json'),
           `${JSON.stringify({ worldRef: identity.worldRef, port: transportPort,
             token: randomBytes(32).toString('hex') })}\n`);
+        else if (oldTransport !== null) await syncFile(join(staging, 'transport.json'), oldTransport);
         await syncDirectory(staging);
         await rename(target, backup);
         try { await rename(staging, target); await syncDirectory(mods); }
@@ -123,6 +131,7 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
         return upgraded;
       } finally { await rm(staging, { recursive: true, force: true }); }
     }
+    if (identity.payloadVersion !== PAYLOAD_VERSION) throw fault('PAYLOAD_VERSION_MISMATCH');
     if (identity.payloadDigest !== digest) throw fault('PAYLOAD_VERSION_MISMATCH');
     for (const name of payloadFiles) {
       const actual = await readFile(join(target, name)).catch(() => null);
@@ -137,7 +146,7 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     return identity;
   }
   const worldRef = `luanti:${randomUUID()}`;
-  const payloadVersion = '0.1.1';
+  const payloadVersion = PAYLOAD_VERSION;
   const digest = await payloadDigest();
   const staging = join(mods, `.hanaworlds-adapter-${randomUUID()}`);
   await mkdir(staging, { mode: 0o700 });
@@ -157,6 +166,53 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     await rm(staging, { recursive: true, force: true });
     throw error;
   }
+}
+
+function backupName(identity) {
+  return `.hanaworlds-adapter-backup-${identity.payloadVersion}-${identity.payloadDigest}`;
+}
+
+/**
+ * Stopped-world rollback to the exact payload this build upgraded from. The
+ * current payload directory is kept beside it (never deleted), the world
+ * identity and the Adapter engine-state file stay untouched, and the restored
+ * bytes are verified against the backup's own recorded digest first.
+ */
+export async function rollbackLocalPayload(world, { operatorAuthority, toVersion } = {}) {
+  if (typeof operatorAuthority?.verify !== 'function') throw fault('CONNECTION_UNAUTHORIZED');
+  const operator = await operatorAuthority.verify({ worldPath: resolve(world),
+    action: 'ROLLBACK_PAYLOAD' });
+  if (!operator?.current || operator.worldPath !== resolve(world) ||
+      operator.action !== 'ROLLBACK_PAYLOAD' || operator.worldStopped !== true)
+    throw fault('CONNECTION_UNAUTHORIZED');
+  const previousFiles = UPGRADABLE_PAYLOADS[toVersion];
+  if (!previousFiles) throw fault('PAYLOAD_VERSION_MISMATCH');
+  const mods = join(world, 'worldmods');
+  await realDirectory(mods, 'WORLD_NOT_FOUND');
+  const target = join(mods, 'hanaworlds_adapter');
+  await realDirectory(target, 'PAYLOAD_VERSION_MISMATCH');
+  const current = await readIdentity(world);
+  if (current?.payloadVersion !== PAYLOAD_VERSION ||
+      current.payloadDigest !== await installedPayloadDigest(target))
+    throw fault('PAYLOAD_VERSION_MISMATCH');
+  const prefix = `.hanaworlds-adapter-backup-${toVersion}-`;
+  const candidates = (await readdir(mods)).filter(name => name.startsWith(prefix));
+  if (candidates.length !== 1) throw fault('PAYLOAD_VERSION_MISMATCH');
+  const backup = join(mods, candidates[0]);
+  await realDirectory(backup, 'PAYLOAD_VERSION_MISMATCH');
+  const old = JSON.parse(await readFile(join(backup, manifestName), 'utf8').catch(() => 'null'));
+  if (old?.payloadVersion !== toVersion || old.worldRef !== current.worldRef ||
+      `${prefix}${old.payloadDigest}` !== candidates[0] ||
+      old.payloadDigest !== await installedPayloadDigest(backup, previousFiles))
+    throw fault('PAYLOAD_VERSION_MISMATCH');
+  const retainedName = `.hanaworlds-adapter-retained-${current.payloadVersion}-` +
+    `${current.payloadDigest}-${randomUUID()}`;
+  const retained = join(mods, retainedName);
+  await rename(target, retained);
+  try { await rename(backup, target); await syncDirectory(mods); }
+  catch (error) { await rename(retained, target); throw error; }
+  return { worldRef: old.worldRef, payloadVersion: old.payloadVersion,
+    payloadDigest: old.payloadDigest, retainedPayload: retainedName };
 }
 
 export async function payloadDigest() {

@@ -1,4 +1,5 @@
 import { payloadDigest } from './local-worlds.mjs';
+import { PAYLOAD_VERSION } from './version.mjs';
 
 function fault(code) { throw new Error(code); }
 
@@ -28,7 +29,7 @@ export class RemoteEngineTransport {
       fault('ADAPTER_UNAVAILABLE');
     try {
       const reply = await tunnel.request({ operation: 'handshake', worldRef: profile.worldRef });
-      if (reply?.worldRef !== profile.worldRef || reply.payloadVersion !== '0.1.1' ||
+      if (reply?.worldRef !== profile.worldRef || reply.payloadVersion !== PAYLOAD_VERSION ||
           reply.loadedSourceDigest !== await payloadDigest() || reply.payloadMatches !== true ||
           reply.manifestDigest !== reply.loadedSourceDigest ||
           reply.worldeditAvailable !== true) fault('PAYLOAD_VERSION_MISMATCH');
@@ -63,6 +64,14 @@ export class RemoteEngineTransport {
   async inspect(positions, binding) {
     return this.request({ operation: 'inspect', actorName: this.#actor(binding),
       action: 'INSPECT', positions });
+  }
+  async prepareCheck(positions, binding) {
+    return this.request({ operation: 'prepare_check', actorName: this.#actor(binding),
+      action: 'APPLY_RECOVERABLE', positions });
+  }
+  async inspectRegion(args, binding) {
+    return this.request({ operation: 'inspect_region', actorName: this.#actor(binding),
+      action: 'INSPECT', ...args });
   }
   async apply(request, prepared, binding) {
     return this.request({ operation: 'apply', actorName: this.#actor(binding),

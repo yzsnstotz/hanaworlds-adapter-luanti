@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import chain from 'hanaworlds-contracts/v4/fixtures/placement-region-chain-v4' with { type: 'json' };
 import { provisionLocalPayload } from '../src/local-worlds.mjs';
 import { LocalEngineTransport } from '../src/local-transport.mjs';
 
@@ -89,7 +90,7 @@ test('paired frame action reaches only the trusted owner callback once', async (
     await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
       id: polled.command.id, worldRef: manifest.worldRef, result: true, error: null }) });
     assert.equal(await pending, true);
-    const request = { contractVersion: 'interaction-surface/v2', actorRef: frame.actorRef,
+    const request = { contractVersion: 'interaction-surface/v3', actorRef: frame.actorRef,
       sessionRef: frame.sessionRef, requestId: 'invoke:one', authorizationRef: frame.authorizationRef,
       turnRevision: frame.turnRevision, frameRevision: frame.frameRevision,
       frameRef: frame.frameRef, actionId: 'continue', invocationId: 'invoke:one',
@@ -132,5 +133,21 @@ test('paired frame action reaches only the trusted owner callback once', async (
         request: selectRequest }) });
     assert.equal(selected.status, 200);
     assert.deepEqual(actions[1].request.input.orderedObjectRefs, ['object:b']);
+    // rc.9: an in-world SELECT_CHOICE is answered here and never relayed.
+    const refused = chain.invalidCases.find(c => c.id === 'INV-INWORLD-SELECT-CHOICE');
+    const choice = await fetch(`${base}/action`, { method: 'POST', headers,
+      body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice',
+        request: refused.materialized.message }) });
+    assert.equal(choice.status, 409);
+    assert.deepEqual(await choice.json(), refused.response);
+    assert.deepEqual(refused.response.error, refused.expected.error);
+    assert.equal(actions.length, 2, 'relayedToWorkshop: false');
+    // PICK_WORLD_POINT is relayed only for an action that declares it.
+    const pick = await fetch(`${base}/action`, { method: 'POST', headers,
+      body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice',
+        request: { ...selectRequest, requestId: 'invoke:pick', invocationId: 'invoke:pick',
+          input: { kind: 'PICK_WORLD_POINT', pickRef: 'luanti-pick:x' } } }) });
+    assert.equal(pick.status, 409);
+    assert.equal(actions.length, 2);
   } finally { await courier.close(); }
 });

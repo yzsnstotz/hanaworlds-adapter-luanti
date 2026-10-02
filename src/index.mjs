@@ -1,4 +1,5 @@
-export { discoverLocalWorlds, payloadDigest, provisionLocalPayload } from './local-worlds.mjs';
+export { discoverLocalWorlds, payloadDigest, provisionLocalPayload, rollbackLocalPayload }
+  from './local-worlds.mjs';
 export { DurableJournal } from './journal.mjs';
 export { EngineBridge } from './bridge.mjs';
 export { LocalEngineTransport } from './local-transport.mjs';
@@ -8,14 +9,23 @@ export { createLuantiOperations } from './v2-operations.mjs';
 export { V2TransactionBackend, projectionDigest } from './v2-transactions.mjs';
 export { WorldAdapterV3, worldAdapterV3Operations } from './v3-port.mjs';
 export { V3TransactionBackend } from './v3-transactions.mjs';
+export { WorldAdapterV4, worldAdapterV4Operations } from './v4-port.mjs';
+export { V4TransactionBackend } from './v4-transactions.mjs';
 
+import { placementInvariants } from 'hanaworlds-contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
-import { WorldAdapterV3 } from './v3-port.mjs';
-import { provisionLocalPayload } from './local-worlds.mjs';
+import { WorldAdapterV4 } from './v4-port.mjs';
+import { payloadDigest, provisionLocalPayload, rollbackLocalPayload } from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
-import { V3TransactionBackend } from './v3-transactions.mjs';
+import { V4TransactionBackend } from './v4-transactions.mjs';
+import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
-export const name = 'hanaworlds-adapter-luanti';
+export const name = ADAPTER_ID;
+
+// Correctness invariants this Adapter enforces, projected read-only into the
+// Shell management interface (HW-A023/HW-A030); none can be switched off.
+const ownedInvariants = placementInvariants.filter(row =>
+  row.owner.includes('hanaworlds-adapter-luanti'));
 export const inject = ['webServer'];
 
 function optionalHostService(ctx, name) {
@@ -47,24 +57,37 @@ export function apply(ctx, config = {}) {
     const directory = await storage.adapterJournalDirectory(worldRef);
     if (typeof directory !== 'string' || !directory) return null;
     const journal = await DurableJournal.open(directory);
-    const verifyBinding = async (request, action) => {
+    // world-adapter/v4: the grant (authorizationRef) and, where present, the
+    // request authorizationBinding identify the acting principal. The request
+    // actorRef is Canvas' service principal and is never trusted here.
+    const verifyBinding = async (request, action, { requireOnline = true } = {}) => {
       const binding = await authority.verifyEngineBinding(request, action);
       if (!binding?.current || binding.worldRef !== worldRef ||
-          binding.actorRef !== request.actorRef ||
+          typeof binding.actorRef !== 'string' || !binding.actorRef ||
+          (request.authorizationBinding !== undefined &&
+            binding.actorRef !== request.authorizationBinding.actorRef) ||
           typeof binding.authorRef !== 'string' || !binding.authorRef ||
           binding.sessionRef !== request.sessionRef ||
           binding.authorizationRef !== request.authorizationRef ||
           !binding.allowedActions?.includes(action)) return null;
-      try { await transport.verifyPrincipal(binding.engineActorName); }
-      catch { return null; }
+      // Mutation needs the principal connected with its privileges; a
+      // read-only region inspection for a Shell-started turn does not.
+      if (requireOnline) {
+        try { await transport.verifyPrincipal(binding.engineActorName); }
+        catch { return null; }
+      }
       return binding;
     };
+    const inspection = optionalHostService(ctx, 'hanaworldsLuantiInspectionContext');
+    const catalogue = typeof inspection?.readCatalogue === 'function'
+      ? { read: (ref, binding) => inspection.readCatalogue(ref, binding) } : null;
     const verifyService = async recovery => {
       const verified = await authority.verifyService(recovery, 'RestoreTransaction');
       return verified?.current === true && verified.worldRef === worldRef;
     };
-    return new V3TransactionBackend({ journal, engine: transport, revisionOracle,
-      stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority });
+    return new V4TransactionBackend({ journal, engine: transport, revisionOracle,
+      stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority,
+      catalogue, executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` });
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
@@ -76,13 +99,17 @@ export function apply(ctx, config = {}) {
     onAction: typeof optionalHostService(ctx, 'hanaworldsWorkshop')?.invokeAction === 'function'
       ? (request, principal) => optionalHostService(ctx, 'hanaworldsWorkshop').invokeAction(request, principal) : undefined,
   });
-  const worldAdapter = new WorldAdapterV3({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
+  const worldAdapter = new WorldAdapterV4({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
     operations: runtime.operations });
   const service = {
     worldAdapter,
     async provisionLocal(worldPath, transportPort) {
       return provisionLocalPayload(worldPath, {
         operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort });
+    },
+    async rollbackLocal(worldPath, toVersion) {
+      return rollbackLocalPayload(worldPath, {
+        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), toVersion });
     },
     async presentFrame({ worldRef, engineActorName, frame, authorizationRef }) {
       const verify = optionalHostService(ctx, 'hanaworldsWorkshop')?.verifyFrameDelivery;
@@ -103,17 +130,26 @@ export function apply(ctx, config = {}) {
     status() {
       return {
         component: name,
-        version: '0.1.1',
+        version: ADAPTER_VERSION,
         payloadLifecycle: 'LOCAL_PROVISION_SOURCE',
-        worldAdapterContract: 'world-adapter/v3',
-        interactionSurfaceContract: 'interaction-surface/v2',
+        worldAdapterContract: 'world-adapter/v4',
+        interactionSurfaceContract: 'interaction-surface/v3',
+        contractHandshake: worldAdapter.contractHandshake,
+        inWorldRenderer: { inputKinds: ['DECISION', 'NAME', 'PICK_WORLD_POINT',
+          'SELECT_OBJECTS', 'TEXT'], selectChoice: 'RENDERER_CAPABILITY_UNAVAILABLE (choose in Shell)' },
+        invariants: ownedInvariants.map(row => ({ id: row.id, owner: row.owner,
+          switchable: false, text: row.text, whyNotSwitchable: row.whyNotSwitchable,
+          consequence: row.consequence })),
+        attributedEngineCaps: [{ id: 'CAP-INSPECTION-CELLS',
+          source: 'host hanaworldsLuantiCapacity', settingOwner: null,
+          text: 'A region window beyond the host capacity is LIMIT_EXCEEDED; nothing is truncated.' }],
         recoverableTransport: 'GATED_BY_AUTHORITY_AND_STATE_PROFILE',
         currentBinding: 'CURRENT_NATIVE_PROOF_REQUIRED',
         productReadiness: 'UNPROVEN',
       };
     },
   };
-  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV3', worldAdapter);
+  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
   if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
   ctx.webServer.register({
     kind: 'prefix',

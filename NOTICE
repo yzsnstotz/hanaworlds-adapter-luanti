@@ -1,4 +1,4 @@
-HanaWorlds Luanti Adapter 0.1.1 owner source is offered under MIT; see LICENSE
+HanaWorlds Luanti Adapter 0.2.0 owner source is offered under MIT; see LICENSE
 and LICENSE_AUDIT.md. The prior 0.1.0 candidate remains available under its
 original AGPL-3.0-only terms. A package license change does not rewrite the
 license of prior distributed copies or any third-party work.
@@ -12,8 +12,8 @@ alone does not decide the combined-work question.
 
 The npm dependency canonicalize@5.1.0 is Apache-2.0, with its registry
 integrity pinned in package-lock.json. The public source dependency
-hanaworlds-contracts@0.2.1 at revision
-5ecfce1ba47530b42bba60a674bd16f7bc39c665 is MIT. Neither dependency's
+hanaworlds-contracts@0.3.0 at revision
+ce6d796cffee7d8596aef4b1d54e4ba577709dcf is MIT. Neither dependency's
 source is copied into this package. Keep their notices when installed or
 distributed according to each package license.
 
