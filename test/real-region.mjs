@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { cp, mkdir, readFile, rm, writeFile, readdir, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -21,8 +22,10 @@ if (!installed || !previous || !runtimeRoot || !worldEditDirectory)
   throw new Error('HW_INSTALLED_PLUGIN_DIR, HW_PREVIOUS_PLUGIN_DIR, HW_RUNTIME_ROOT, HW_WORLDEDIT_DIR required');
 const v2 = await import(pathToFileURL(join(installed, 'src/index.mjs')).href);
 const v1 = await import(pathToFileURL(join(previous, 'src/index.mjs')).href);
-const { digestValue } = await import(pathToFileURL(join(installed,
-  'node_modules/hanaworlds-contracts/dist/v4/index.mjs')).href);
+// The installed package's own contracts dependency (npm nests it; pnpm hoists it beside the package).
+const contractsDir = [join(installed, 'node_modules/hanaworlds-contracts'),
+  join(installed, '..', 'hanaworlds-contracts')].find(dir => existsSync(join(dir, 'package.json')));
+const { digestValue } = await import(pathToFileURL(join(contractsDir, 'dist/v4/index.mjs')).href);
 
 const root = resolve(runtimeRoot, `run-${Date.now()}`);
 const profile = join(root, 'profile');
