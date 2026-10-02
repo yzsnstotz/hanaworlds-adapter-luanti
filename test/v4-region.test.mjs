@@ -26,7 +26,10 @@ const counters = () => ({ worldWrites: 0, journalPrepares: 0, engineCalls: 0 });
 
 async function adapterFor({ world, online, principal, allowedActions, extra = {}, count }) {
   const journal = await DurableJournal.open(await mkdtemp(join(tmpdir(), 'hw-v4-region-')));
-  const engine = luaEngine(world, online, extra);
+  // Every engine write path is present and counted, so worldWrites is a real measurement.
+  const writes = Object.fromEntries(['apply', 'applyState', 'restore'].map(name =>
+    [name, async () => { count.worldWrites++; return { status: 'APPLIED_PENDING_READBACK' }; }]));
+  const engine = luaEngine(world, online, { ...writes, ...extra });
   const counted = Object.fromEntries(Object.entries(engine).map(([k, f]) =>
     [k, async (...a) => { count.engineCalls++; return f(...a); }]));
   const binding = request => ({ current: true, worldRef: request.worldRef,
@@ -177,8 +180,10 @@ test('stale world revision, missing catalogue and host capacity fail before any 
     const count = counters();
     let engineCalls = 0;
     const journal = await DurableJournal.open(await mkdtemp(join(tmpdir(), 'hw-v4-pre-')));
+    const logs = [];
     const backend = new V4TransactionBackend({ journal, stateProfile: profile,
-      engine: { inspectRegion: async (args, b) => { engineCalls++;
+      log: (level, message) => logs.push({ level, message }),
+      engine: { apply: async () => { count.worldWrites++; }, inspectRegion: async (args, b) => { engineCalls++;
         return luaEngine(chain.enginePrivate, ['alice']).inspectRegion(args, b); } },
       revisionOracle: { read: async () => variant === 'stale' ? 'fixture-world-11' : 'fixture-world-10' },
       verifyBinding: async request => ({ current: true, worldRef: request.worldRef,
@@ -187,7 +192,8 @@ test('stale world revision, missing catalogue and host capacity fail before any 
         allowedActions: ['INSPECT'] }),
       capacity: variant === 'capacity-missing' ? null :
         { check: async () => ({ allowed: variant !== 'limit', limit: 10 }) },
-      catalogue: variant === 'catalogue' ? null : { read: async () => catalogue },
+      catalogue: variant === 'catalogue' ? { read: async () => { throw new Error('catalogue host down'); } } :
+        { read: async () => catalogue },
       executionRevision: EXEC });
     const port = new WorldAdapterV4({ authority: { verify: async request => ({ current: true,
       sessionRef: request.sessionRef, authorizationRef: request.authorizationRef,
@@ -202,6 +208,8 @@ test('stale world revision, missing catalogue and host capacity fail before any 
     assert.deepEqual([response.error.code, response.error.reason], expected, variant);
     // A capacity breach is reported only after anchor/facing resolution in-engine.
     assert.equal(engineCalls, variant === 'limit' ? 1 : 0, variant);
+    if (variant === 'catalogue') assert.ok(logs.some(l => l.message.includes('catalogue host down') &&
+      l.message.includes('InspectRegion')), 'the catalogue failure cause is logged');
     assert.equal(count.worldWrites, 0);
   }
 });
@@ -280,4 +288,33 @@ test('Prepare authorizes on the grant and authorizationBinding, not on the reque
   const response = await port.call('PrepareRecoverableTransaction', bound);
   assert.equal(response.error?.phase, 'authorize');
   assert.equal(count.journalPrepares, 0);
+});
+
+test('QR-ADV4-05: a corrupt saved before image fails closed and logs its cause', async () => {
+  const count = counters();
+  const c = chain.validCases[0];
+  const logs = [];
+  const dir = await mkdtemp(join(tmpdir(), 'hw-v4-corrupt-'));
+  const journal = await DurableJournal.open(dir);
+  const backendFor = j => new V4TransactionBackend({ journal: j, stateProfile: profile,
+    engine: { ...luaEngine(chain.enginePrivate, c.onlinePlayers), ...snapshotEngine(count) },
+    revisionOracle: { read: async () => 'fixture-world-10', readObjects: async () => ({}) },
+    verifyBinding: async r => ({ current: true, worldRef: r.worldRef, sessionRef: r.sessionRef,
+      authorizationRef: r.authorizationRef, actorRef: 'fixture-actor', authorRef: 'fixture-actor',
+      engineActorName: 'alice', allowedActions: ['APPLY_RECOVERABLE'] }),
+    capacity: { check: async () => ({ allowed: true }) },
+    log: (level, message) => logs.push({ level, message }) });
+  await backendFor(journal).prepare(prepareRequest);
+  // Tamper with the saved digest on disk, then reopen as after a restart.
+  const { readdir, readFile, writeFile } = await import('node:fs/promises');
+  const file = join(dir, (await readdir(dir)).find(n => n.endsWith('.json')));
+  const record = JSON.parse(await readFile(file, 'utf8'));
+  record.beforeStateReadbackDigest = '0'.repeat(64);
+  await writeFile(file, JSON.stringify(record));
+  const reopened = backendFor(await DurableJournal.open(dir));
+  await assert.rejects(() => reopened.queryPrepared({ ...prepareRequest,
+    authorizationBindingDigest: digestValue('authorization-binding', prepareRequest.authorizationBinding).sha256 }),
+  /CAPABILITY_UNAVAILABLE/);
+  assert.ok(logs.some(l => l.level === 'error' && l.message.includes('fixture-tx-first-1') &&
+    l.message.includes('does not match')), JSON.stringify(logs));
 });

@@ -25,14 +25,20 @@ function prepared(record) {
     adapterExecutionRevision: record.adapterExecutionRevision,
     beforeStateReadbackDigest: record.beforeStateReadbackDigest };
 }
-function savedReadbackDigest(record) {
+// Returns null when the saved image and digest are intact, else the reason.
+function savedReadbackProblem(record) {
   try {
     validateType('BeforeImage', record.beforeImage);
-    return typeof record.beforeStateReadbackDigest === 'string' &&
-      hash('before-image', record.beforeImage) === record.beforeImageDigest &&
-      hash('readback', readbackView(record.beforeImage)) === record.beforeStateReadbackDigest;
-  } catch { return false; }
+    if (typeof record.beforeStateReadbackDigest !== 'string') return 'saved readback digest missing';
+    if (hash('before-image', record.beforeImage) !== record.beforeImageDigest)
+      return 'saved before image does not match its digest';
+    if (hash('readback', readbackView(record.beforeImage)) !== record.beforeStateReadbackDigest)
+      return 'saved readback digest does not match the saved before image';
+    return null;
+  } catch (error) { return `saved before image invalid: ${error?.message ?? error}`; }
 }
+// Host log line for a fail-closed path; carries no pose, position or owner data.
+function causeOf(error) { return String(error?.message ?? error); }
 const AXIS = ['+X', '+Y', '+Z'];
 function luantiFrame(worldRef, executionRevision) {
   return { profileVersion: 'frame/v2', frameId: `luanti-world-grid:${worldRef}`,
@@ -115,14 +121,16 @@ function savedStateReady(record) {
  */
 export class V4TransactionBackend {
   #journal; #engine; #oracle; #profile; #binding; #service; #capacity; #history;
-  #v2; #catalogue; #executionRevision;
+  #v2; #catalogue; #executionRevision; #log;
   constructor({ journal, engine, revisionOracle, stateProfile, verifyBinding,
-    verifyService, capacity, historyAuthority, catalogue, executionRevision }) {
+    verifyService, capacity, historyAuthority, catalogue, executionRevision, log }) {
     this.#journal = journal; this.#engine = engine; this.#oracle = revisionOracle;
     this.#profile = stateProfile; this.#binding = verifyBinding;
     this.#service = verifyService; this.#capacity = capacity;
     this.#history = historyAuthority; this.#catalogue = catalogue;
     this.#executionRevision = executionRevision;
+    this.#log = typeof log === 'function' ? log :
+      (level, message) => console.error(`[hanaworlds-adapter-luanti] ${level}: ${message}`);
     this.#v2 = new V2TransactionBackend({ journal, engine, revisionOracle,
       stateProfile, verifyBinding, verifyService, capacity,
       restoredProof: async before => {
@@ -132,6 +140,12 @@ export class V4TransactionBackend {
         return { observedWorldRevision,
           restoredReadbackDigest: hash('readback', readbackView(before)) };
       } });
+  }
+  #requireSaved(record, operation) {
+    const problem = savedReadbackProblem(record);
+    if (problem === null) return;
+    this.#log('error', `${operation} ${record.transactionId}: ${problem}`);
+    fault('CAPABILITY_UNAVAILABLE');
   }
   async #currentBinding(request, action, options) {
     if (typeof this.#binding !== 'function') fault('CAPABILITY_UNAVAILABLE');
@@ -182,7 +196,7 @@ export class V4TransactionBackend {
           !same(existing.payload?.expectedObjectRevisions, request.expectedObjectRevisions) ||
           existing.payload?.authorizationBindingDigest !== authorizationBindingDigest)
         fault('REPLAY_MISMATCH');
-      if (!savedReadbackDigest(existing)) fault('CAPABILITY_UNAVAILABLE');
+      this.#requireSaved(existing, 'PrepareRecoverableTransaction');
       return prepared(existing);
     }
     await this.#currentRevisions(request);
@@ -222,7 +236,11 @@ export class V4TransactionBackend {
       originKind: 'HANAWORLDS', effects: request.operations.effects,
       beforeStateReadbackDigest });
     const saved = this.#journal.query(request.transactionId);
-    if (!saved || !savedReadbackDigest(saved)) fault('CAPABILITY_UNAVAILABLE');
+    if (!saved) {
+      this.#log('error', `PrepareRecoverableTransaction ${request.transactionId}: journal record absent after prepare`);
+      fault('CAPABILITY_UNAVAILABLE');
+    }
+    this.#requireSaved(saved, 'PrepareRecoverableTransaction');
     return prepared(saved);
   }
   async queryPrepared(request) {
@@ -235,7 +253,7 @@ export class V4TransactionBackend {
       fault('REPLAY_MISMATCH');
     // The saved digest is returned as saved; it is never recomputed from the
     // live world. A record without an intact saved digest fails closed.
-    if (!savedReadbackDigest(record)) fault('CAPABILITY_UNAVAILABLE');
+    this.#requireSaved(record, 'QueryPreparedTransaction');
     return prepared(record);
   }
   async inspectRegion(request) {
@@ -251,7 +269,10 @@ export class V4TransactionBackend {
         typeof this.#capacity?.check !== 'function') fault('CAPABILITY_UNAVAILABLE');
     let catalogue;
     try { catalogue = validateType('Catalogue', await this.#catalogue.read(request.worldRef, binding)); }
-    catch { fault('CAPABILITY_UNAVAILABLE'); }
+    catch (error) {
+      this.#log('warn', `InspectRegion ${request.inspectionId}: catalogue unavailable: ${causeOf(error)}`);
+      fault('CAPABILITY_UNAVAILABLE');
+    }
     const walkable = {};
     for (const [name, node] of Object.entries(catalogue.nodes)) walkable[name] = node.walkable;
     const { footprint: fp, placementSettings: st } = request;

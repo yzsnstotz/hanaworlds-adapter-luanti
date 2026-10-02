@@ -351,12 +351,18 @@ try {
   await rm(worldmod, { recursive: true });
   await start('uninstalled', 'HanaWorlds region probe ready; payload=false');
   await stopAll();
-  const fresh = await service.provisionLocal(world, transportPort);
+  // Saved payloads (0.1.1 backup, retained 0.2.0) still carry the old identity:
+  // reinstall refuses until the operator chooses restore or a fresh identity.
+  const refused = await service.provisionLocal(world, transportPort).then(() => null, e => e);
+  assert.equal(refused?.message, 'RECOVERY_PENDING');
+  assert.ok(refused.directories.length >= 1);
+  const fresh = await service.provisionLocal(world, transportPort, { freshIdentity: true });
   courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
   await start('reinstalled', 'HanaWorlds region probe ready; payload=true; region=true');
   const reinstalled = await courier.handshake();
   assert.equal(reinstalled.payloadDigest, installedDigest);
-  note('uninstall-reinstall', { worldmodsBefore: before, newWorldRef: fresh.worldRef,
+  note('uninstall-reinstall', { worldmodsBefore: before, refusedWithoutChoice: refused.message,
+    refusedDirectories: refused.directories, newWorldRef: fresh.worldRef,
     loadedDigest: reinstalled.payloadDigest, engineStateRetained: (await stat(stateFile)).size > 0,
     journalRetained: (await readdir(journalDir)).length });
   await stopAll();

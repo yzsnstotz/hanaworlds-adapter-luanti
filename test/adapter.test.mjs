@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { discoverLocalWorlds, payloadDigest, provisionLocalPayload, rollbackLocalPayload } from '../src/local-worlds.mjs';
+import { discoverLocalWorlds, payloadDigest, provisionLocalPayload, restoreLocalPayload,
+  rollbackLocalPayload } from '../src/local-worlds.mjs';
+import { rename } from 'node:fs/promises';
 
 test('local discovery reports only configured worlds and does not fabricate a stable identity', async () => {
   const root = await mkdtemp(join(tmpdir(), 'hw-adapter-worlds-'));
@@ -123,3 +125,49 @@ test('0.1.1 upgrade keeps identity and pairing, then stopped-world rollback rest
   assert.equal(again.payloadVersion, '0.2.0');
 });
 
+
+// QR-ADV4-02 reviewer case: a crash between the two renames of a swap leaves
+// no current payload while the identity is still on disk. Provisioning must
+// refuse (naming the saved directories) instead of minting a new worldRef.
+test('crash between swap renames never mints a new identity; explicit restore or fresh identity only', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'hw-adapter-crash-'));
+  const world = join(root, 'one');
+  await mkdir(world);
+  await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
+  const operatorAuthority = { verify: async ({ worldPath, action }) =>
+    ({ current: true, worldPath, action, worldStopped: true }) };
+  const pairing = { worldRef: 'luanti:aaaaaaaa-2222-3333-4444-555555555555', port: 30111,
+    token: 'c'.repeat(64) };
+  const old = await installOldPayload(world, '0.1.1', pairing.worldRef, pairing);
+  const mods = join(world, 'worldmods');
+  const mod = join(mods, 'hanaworlds_adapter');
+  const upgraded = await provisionLocalPayload(world, { operatorAuthority });
+  // Rollback crashed after its first rename: current payload moved aside, backup not yet moved in.
+  const retained = `.hanaworlds-adapter-retained-0.2.0-${upgraded.payloadDigest}-crash`;
+  await rename(mod, join(mods, retained));
+  const backup = `.hanaworlds-adapter-backup-0.1.1-${old.payloadDigest}`;
+  await assert.rejects(() => rollbackLocalPayload(world, { operatorAuthority, toVersion: '0.1.1' }),
+    /PAYLOAD_VERSION_MISMATCH/);
+  const before = (await readdir(mods)).sort();
+  await assert.rejects(() => provisionLocalPayload(world, { operatorAuthority, transportPort: 30111 }),
+    error => error.message === 'RECOVERY_PENDING' &&
+      JSON.stringify(error.directories) === JSON.stringify([backup, retained].sort()) &&
+      error.savedPayloads.every(entry => entry.worldRef === old.worldRef));
+  assert.deepEqual((await readdir(mods)).sort(), before, 'refusal changes nothing on disk');
+  // Explicit restore of a named saved directory brings back the same identity and bytes.
+  await assert.rejects(() => restoreLocalPayload(world, { operatorAuthority, directory: '../escape' }),
+    /PAYLOAD_VERSION_MISMATCH/);
+  const restored = await restoreLocalPayload(world, { operatorAuthority, directory: backup });
+  assert.equal(restored.worldRef, old.worldRef);
+  assert.deepEqual(JSON.parse(await readFile(join(mod, 'payload.json'), 'utf8')), old);
+  // A current payload now exists, so restore refuses a second swap-in.
+  await assert.rejects(() => restoreLocalPayload(world, { operatorAuthority, directory: retained }),
+    /PAYLOAD_VERSION_MISMATCH/);
+  // Upgrade crashed after its first rename: same refusal; a fresh identity needs the explicit flag.
+  await provisionLocalPayload(world, { operatorAuthority });
+  await rm(join(mods, retained), { recursive: true });
+  await rename(mod, join(mods, `.hanaworlds-adapter-retained-0.2.0-${upgraded.payloadDigest}-again`));
+  await assert.rejects(() => provisionLocalPayload(world, { operatorAuthority }), /RECOVERY_PENDING/);
+  const fresh = await provisionLocalPayload(world, { operatorAuthority, freshIdentity: true });
+  assert.notEqual(fresh.worldRef, old.worldRef);
+});

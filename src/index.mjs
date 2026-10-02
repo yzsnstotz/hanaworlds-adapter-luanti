@@ -1,4 +1,5 @@
-export { discoverLocalWorlds, payloadDigest, provisionLocalPayload, rollbackLocalPayload }
+export { discoverLocalWorlds, payloadDigest, provisionLocalPayload, restoreLocalPayload,
+  rollbackLocalPayload }
   from './local-worlds.mjs';
 export { DurableJournal } from './journal.mjs';
 export { EngineBridge } from './bridge.mjs';
@@ -15,7 +16,8 @@ export { V4TransactionBackend } from './v4-transactions.mjs';
 import { placementInvariants } from 'hanaworlds-contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
 import { WorldAdapterV4 } from './v4-port.mjs';
-import { payloadDigest, provisionLocalPayload, rollbackLocalPayload } from './local-worlds.mjs';
+import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLocalPayload }
+  from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
 import { V4TransactionBackend } from './v4-transactions.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
@@ -38,6 +40,16 @@ function loopback(address) {
 
 /** DSH host plugin. Missing host identity/owner services fail closed. */
 export function apply(ctx, config = {}) {
+  // Fail-closed paths keep their cause in the host log (never pose or owner data).
+  // A strict host context may refuse un-injected properties; the console then
+  // remains the log sink, so a cause is never dropped.
+  let logger = null;
+  try { logger = typeof ctx.logger === 'function' ? ctx.logger(name) : null; }
+  catch { logger = null; }
+  const log = (level, message) => {
+    if (logger && typeof logger[level] === 'function') logger[level](message);
+    else console.error(`[${name}] ${level}: ${message}`);
+  };
   async function createBackend({ worldRef, transport, proof }) {
     const authority = optionalHostService(ctx, 'hanaworldsAuthority');
     const storage = optionalHostService(ctx, 'hanaworldsProfileStorage');
@@ -74,7 +86,10 @@ export function apply(ctx, config = {}) {
       // read-only region inspection for a Shell-started turn does not.
       if (requireOnline) {
         try { await transport.verifyPrincipal(binding.engineActorName); }
-        catch { return null; }
+        catch (error) {
+          log('warn', `${action}: grant principal not verifiable in engine: ${error?.message ?? error}`);
+          return null;
+        }
       }
       return binding;
     };
@@ -87,7 +102,8 @@ export function apply(ctx, config = {}) {
     };
     return new V4TransactionBackend({ journal, engine: transport, revisionOracle,
       stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority,
-      catalogue, executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` });
+      catalogue, log,
+      executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` });
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
@@ -103,9 +119,14 @@ export function apply(ctx, config = {}) {
     operations: runtime.operations });
   const service = {
     worldAdapter,
-    async provisionLocal(worldPath, transportPort) {
+    async provisionLocal(worldPath, transportPort, { freshIdentity = false } = {}) {
       return provisionLocalPayload(worldPath, {
-        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort });
+        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort,
+        freshIdentity });
+    },
+    async restoreLocal(worldPath, directory) {
+      return restoreLocalPayload(worldPath, {
+        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), directory });
     },
     async rollbackLocal(worldPath, toVersion) {
       return rollbackLocalPayload(worldPath, {

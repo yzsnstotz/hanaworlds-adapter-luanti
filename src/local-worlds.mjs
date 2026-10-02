@@ -11,6 +11,43 @@ const knownVersions = [...Object.keys(UPGRADABLE_PAYLOADS), PAYLOAD_VERSION];
 const manifestName = 'payload.json';
 
 function fault(code) { return new Error(code); }
+const SAVED_PREFIXES = ['.hanaworlds-adapter-backup-', '.hanaworlds-adapter-retained-'];
+
+// Saved Adapter payload directories that still carry a world identity.
+async function savedPayloads(mods) {
+  const found = [];
+  for (const name of (await readdir(mods).catch(() => [])).sort()) {
+    if (!SAVED_PREFIXES.some(prefix => name.startsWith(prefix))) continue;
+    const stat = await lstat(join(mods, name)).catch(() => null);
+    if (!stat?.isDirectory() || stat.isSymbolicLink()) continue;
+    let manifest = null;
+    try { manifest = JSON.parse(await readFile(join(mods, name, 'payload.json'), 'utf8')); }
+    catch { manifest = null; }
+    if (typeof manifest?.worldRef === 'string' && knownVersions.includes(manifest.payloadVersion))
+      found.push({ directory: name, worldRef: manifest.worldRef,
+        payloadVersion: manifest.payloadVersion, payloadDigest: manifest.payloadDigest });
+  }
+  return found;
+}
+function recoveryPending(saved) {
+  const error = fault('RECOVERY_PENDING');
+  error.directories = saved.map(entry => entry.directory);
+  error.savedPayloads = saved;
+  error.choices = ['RESTORE_SAVED_PAYLOAD (restoreLocalPayload with one named directory)',
+    'FRESH_IDENTITY (provisionLocalPayload with freshIdentity: true)'];
+  return error;
+}
+/**
+ * Replace `target` with `incoming`, keeping the old directory at `keep`.
+ * The undo rename runs only if the second rename itself failed; a failed
+ * directory sync after both renames is surfaced unchanged.
+ */
+async function swapDirectory(mods, target, incoming, keep) {
+  await rename(target, keep);
+  try { await rename(incoming, target); }
+  catch (error) { await rename(keep, target); throw error; }
+  await syncDirectory(mods);
+}
 async function realDirectory(path, code) {
   const stat = await lstat(path).catch(() => null);
   if (!stat?.isDirectory() || stat.isSymbolicLink()) throw fault(code);
@@ -79,7 +116,8 @@ export async function discoverLocalWorlds(configuredRoots) {
   return worlds.sort((a, b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0);
 }
 
-export async function provisionLocalPayload(world, { operatorAuthority, transportPort = null } = {}) {
+export async function provisionLocalPayload(world, { operatorAuthority, transportPort = null,
+  freshIdentity = false } = {}) {
   if (typeof operatorAuthority?.verify !== 'function') throw fault('CONNECTION_UNAUTHORIZED');
   const operator = await operatorAuthority.verify({ worldPath: resolve(world),
     action: 'PROVISION_PAYLOAD' });
@@ -125,9 +163,7 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
             token: randomBytes(32).toString('hex') })}\n`);
         else if (oldTransport !== null) await syncFile(join(staging, 'transport.json'), oldTransport);
         await syncDirectory(staging);
-        await rename(target, backup);
-        try { await rename(staging, target); await syncDirectory(mods); }
-        catch (error) { await rename(backup, target); throw error; }
+        await swapDirectory(mods, target, staging, backup);
         return upgraded;
       } finally { await rm(staging, { recursive: true, force: true }); }
     }
@@ -145,6 +181,11 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
     }
     return identity;
   }
+  // No current payload. A saved (backup/retained) payload means an earlier
+  // identity still exists, e.g. after a crash between the two renames of an
+  // upgrade or rollback. Never mint a new identity over it silently.
+  const saved = await savedPayloads(mods);
+  if (saved.length && freshIdentity !== true) throw recoveryPending(saved);
   const worldRef = `luanti:${randomUUID()}`;
   const payloadVersion = PAYLOAD_VERSION;
   const digest = await payloadDigest();
@@ -207,12 +248,38 @@ export async function rollbackLocalPayload(world, { operatorAuthority, toVersion
     throw fault('PAYLOAD_VERSION_MISMATCH');
   const retainedName = `.hanaworlds-adapter-retained-${current.payloadVersion}-` +
     `${current.payloadDigest}-${randomUUID()}`;
-  const retained = join(mods, retainedName);
-  await rename(target, retained);
-  try { await rename(backup, target); await syncDirectory(mods); }
-  catch (error) { await rename(retained, target); throw error; }
+  await swapDirectory(mods, target, backup, join(mods, retainedName));
   return { worldRef: old.worldRef, payloadVersion: old.payloadVersion,
     payloadDigest: old.payloadDigest, retainedPayload: retainedName };
+}
+
+/**
+ * Explicit operator restore of one named saved payload directory when no
+ * current payload exists (the RECOVERY_PENDING choice). Its bytes are
+ * verified against its own manifest before it becomes the payload again.
+ */
+export async function restoreLocalPayload(world, { operatorAuthority, directory } = {}) {
+  if (typeof operatorAuthority?.verify !== 'function') throw fault('CONNECTION_UNAUTHORIZED');
+  const operator = await operatorAuthority.verify({ worldPath: resolve(world),
+    action: 'RESTORE_PAYLOAD' });
+  if (!operator?.current || operator.worldPath !== resolve(world) ||
+      operator.action !== 'RESTORE_PAYLOAD' || operator.worldStopped !== true)
+    throw fault('CONNECTION_UNAUTHORIZED');
+  const mods = join(world, 'worldmods');
+  await realDirectory(mods, 'WORLD_NOT_FOUND');
+  const target = join(mods, 'hanaworlds_adapter');
+  if (await lstat(target).catch(() => null)) throw fault('PAYLOAD_VERSION_MISMATCH');
+  const entry = (await savedPayloads(mods)).find(item => item.directory === directory);
+  if (!entry) throw fault('PAYLOAD_VERSION_MISMATCH');
+  const source = join(mods, entry.directory);
+  const files = entry.payloadVersion === PAYLOAD_VERSION ? payloadFiles :
+    UPGRADABLE_PAYLOADS[entry.payloadVersion];
+  if (entry.payloadDigest !== await installedPayloadDigest(source, files))
+    throw fault('PAYLOAD_VERSION_MISMATCH');
+  await rename(source, target);
+  await syncDirectory(mods);
+  return { worldRef: entry.worldRef, payloadVersion: entry.payloadVersion,
+    payloadDigest: entry.payloadDigest, restoredFrom: entry.directory };
 }
 
 export async function payloadDigest() {

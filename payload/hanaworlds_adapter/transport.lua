@@ -2,6 +2,17 @@
 -- form or arbitrary HTTP caller; the host must possess the per-world secret.
 local M = {}
 
+-- Error text for the server log without positions, yaw or box values.
+function M.redact(message)
+  local text = tostring(message)
+  local tuple = '%-?[%d%.]+%s*,%s*%-?[%d%.]+%s*,%s*%-?[%d%.]+'
+  text = text:gsub('%(%s*' .. tuple .. '%s*%)', '(<redacted>)')
+  text = text:gsub('{[^{}]*}', '{<redacted>}')
+  text = text:gsub(tuple, '<redacted>')
+  text = text:gsub('%-?%d+%.%d+', '<redacted>')
+  return text
+end
+
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
   region)
   local raw = read_own_file('transport.json')
@@ -160,7 +171,15 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         on_ready(true)
         if not decoded.command then minetest.after(0.2, poll); return end
         local ok, result, code = pcall(run, decoded.command)
-        if not ok then result, code = nil, 'CAPABILITY_UNAVAILABLE' end
+        if not ok then
+          -- Fail closed but keep the root cause: log the operation and the Lua
+          -- error (file:line kept; coordinate tuples and fractional numbers,
+          -- which could carry pose, are redacted).
+          current = nil
+          minetest.log('error', 'HanaWorlds courier operation '
+            .. tostring(decoded.command.operation) .. ' failed: ' .. M.redact(result))
+          result, code = nil, 'CAPABILITY_UNAVAILABLE'
+        end
         local body = encode_reply(decoded.command.id, result, code)
         http.fetch({url = base .. '/result', method = 'POST', data = body,
           extra_headers = header, quiet = true}, function()
