@@ -8,7 +8,7 @@ This repository owns `world-adapter/v4`, its Luanti payload, and the native in-w
 
 ## Contract input
 
-`hanaworlds-contracts@0.3.0` is consumed from public git revision `ce6d796cffee7d8596aef4b1d54e4ba577709dcf`. `npm run verify:contracts` repacks the installed package and requires sha256 `68801d2439b8344184c0feeebb19e2771c4632d0286b51111925db53e7c598df`. The provider advertises the package's `ContractHandshake` (world-adapter/v4, interaction-surface/v3, target-facts/v2 and /v3); a 0.2.1 peer fails that handshake. No `file:` dependency, local tarball or sibling path is used.
+`hanaworlds-contracts@0.3.0` is consumed from public git revision `e82735780bdfd4ea8e662781455040a6e5306121`. `npm run verify:contracts` repacks the installed package and requires sha256 `47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c`. The provider advertises the package's `ContractHandshake` (world-adapter/v4, interaction-surface/v3, target-facts/v2 and /v3); a 0.2.1 peer fails that handshake. No `file:` dependency, local tarball or sibling path is used.
 
 ## Provider boundary (world-adapter/v4)
 

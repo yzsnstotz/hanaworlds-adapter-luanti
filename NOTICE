@@ -13,7 +13,7 @@ alone does not decide the combined-work question.
 The npm dependency canonicalize@5.1.0 is Apache-2.0, with its registry
 integrity pinned in package-lock.json. The public source dependency
 hanaworlds-contracts@0.3.0 at revision
-ce6d796cffee7d8596aef4b1d54e4ba577709dcf is MIT. Neither dependency's
+e82735780bdfd4ea8e662781455040a6e5306121 is MIT. Neither dependency's
 source is copied into this package. Keep their notices when installed or
 distributed according to each package license.
 

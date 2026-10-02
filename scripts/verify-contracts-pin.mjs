@@ -7,8 +7,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const PINNED = { version: '0.3.0', revision: 'ce6d796cffee7d8596aef4b1d54e4ba577709dcf',
-  sha256: '68801d2439b8344184c0feeebb19e2771c4632d0286b51111925db53e7c598df' };
+const PINNED = { version: '0.3.0', revision: 'e82735780bdfd4ea8e662781455040a6e5306121',
+  sha256: '47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c' };
 const dir = mkdtempSync(join(tmpdir(), 'hw-contracts-pin-'));
 try {
   const out = JSON.parse(execFileSync('npm', ['pack', './node_modules/hanaworlds-contracts',

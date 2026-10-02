@@ -13,7 +13,9 @@ const manifestName = 'payload.json';
 function fault(code) { return new Error(code); }
 const SAVED_PREFIXES = ['.hanaworlds-adapter-backup-', '.hanaworlds-adapter-retained-'];
 
-// Saved Adapter payload directories that still carry a world identity.
+// Saved Adapter payload directories. One whose manifest is unreadable,
+// corrupt or of an unknown version is still listed (MANIFEST_UNREADABLE):
+// it may hold an identity, so it is never skipped silently.
 async function savedPayloads(mods) {
   const found = [];
   for (const name of (await readdir(mods).catch(() => [])).sort()) {
@@ -23,9 +25,13 @@ async function savedPayloads(mods) {
     let manifest = null;
     try { manifest = JSON.parse(await readFile(join(mods, name, 'payload.json'), 'utf8')); }
     catch { manifest = null; }
-    if (typeof manifest?.worldRef === 'string' && knownVersions.includes(manifest.payloadVersion))
-      found.push({ directory: name, worldRef: manifest.worldRef,
+    if (typeof manifest?.worldRef === 'string' && manifest.worldRef &&
+        knownVersions.includes(manifest.payloadVersion) &&
+        typeof manifest.payloadDigest === 'string')
+      found.push({ directory: name, status: 'MANIFEST_READABLE', worldRef: manifest.worldRef,
         payloadVersion: manifest.payloadVersion, payloadDigest: manifest.payloadDigest });
+    else found.push({ directory: name, status: 'MANIFEST_UNREADABLE', worldRef: null,
+      payloadVersion: null, payloadDigest: null });
   }
   return found;
 }
@@ -270,7 +276,8 @@ export async function restoreLocalPayload(world, { operatorAuthority, directory 
   const target = join(mods, 'hanaworlds_adapter');
   if (await lstat(target).catch(() => null)) throw fault('PAYLOAD_VERSION_MISMATCH');
   const entry = (await savedPayloads(mods)).find(item => item.directory === directory);
-  if (!entry) throw fault('PAYLOAD_VERSION_MISMATCH');
+  // An unreadable manifest cannot be verified, so it cannot be restored here.
+  if (!entry || entry.status !== 'MANIFEST_READABLE') throw fault('PAYLOAD_VERSION_MISMATCH');
   const source = join(mods, entry.directory);
   const files = entry.payloadVersion === PAYLOAD_VERSION ? payloadFiles :
     UPGRADABLE_PAYLOADS[entry.payloadVersion];

@@ -60,8 +60,8 @@ ignored, isolated world data. The new v3 files were written for this origin.
 | `LICENSE` | Standard MIT permission text for owner source, based on the [OSI MIT license](https://opensource.org/license/mit). |
 
 The source dependency `hanaworlds-contracts@0.3.0` remains MIT at public
-revision `ce6d796cffee7d8596aef4b1d54e4ba577709dcf` (package sha256
-`68801d2439b8344184c0feeebb19e2771c4632d0286b51111925db53e7c598df`); the
+revision `e82735780bdfd4ea8e662781455040a6e5306121` (package sha256
+`47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c`); the
 package is not vendored. Its fixtures are read by tests from the installed
 package only. `canonicalize@5.1.0` remains Apache-2.0 and is installed through
 the lockfile; retain its license and notice in any distribution. WorldEdit

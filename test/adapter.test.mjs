@@ -171,3 +171,28 @@ test('crash between swap renames never mints a new identity; explicit restore or
   const fresh = await provisionLocalPayload(world, { operatorAuthority, freshIdentity: true });
   assert.notEqual(fresh.worldRef, old.worldRef);
 });
+
+// QRR-ADV4-01: a saved payload whose manifest is unreadable, corrupt or of an
+// unknown version is listed as MANIFEST_UNREADABLE, never skipped silently.
+test('unreadable saved payload manifests still stop provisioning and cannot be restored blindly', async () => {
+  const operatorAuthority = { verify: async ({ worldPath, action }) =>
+    ({ current: true, worldPath, action, worldStopped: true }) };
+  for (const [label, manifest] of [['missing', null], ['corrupt', '{not json'],
+    ['unknown-version', JSON.stringify({ worldRef: 'luanti:x', payloadVersion: '9.9.9',
+      payloadDigest: 'a'.repeat(64) })]]) {
+    const root = await mkdtemp(join(tmpdir(), `hw-adapter-unreadable-${label}-`));
+    const world = join(root, 'one');
+    const saved = `.hanaworlds-adapter-retained-0.2.0-${label}`;
+    await mkdir(join(world, 'worldmods', saved), { recursive: true });
+    await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
+    if (manifest !== null) await writeFile(join(world, 'worldmods', saved, 'payload.json'), manifest);
+    await assert.rejects(() => provisionLocalPayload(world, { operatorAuthority }), error =>
+      error.message === 'RECOVERY_PENDING' && error.directories.includes(saved) &&
+      error.savedPayloads.find(entry => entry.directory === saved).status === 'MANIFEST_UNREADABLE', label);
+    assert.deepEqual(await readdir(join(world, 'worldmods')), [saved], `${label}: nothing written`);
+    await assert.rejects(() => restoreLocalPayload(world, { operatorAuthority, directory: saved }),
+      /PAYLOAD_VERSION_MISMATCH/, label);
+    const fresh = await provisionLocalPayload(world, { operatorAuthority, freshIdentity: true });
+    assert.match(fresh.worldRef, /^luanti:/);
+  }
+});
