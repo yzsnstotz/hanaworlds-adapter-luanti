@@ -48,15 +48,38 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   // gated by the operator authority.
   const serviceRecovery = new Set(['RestoreTransaction', 'AbortPreparedTransaction',
     'AbortPreparedHistoryTransaction']);
+  // The local world's operator binding proof (the same BIND_RUNNING_WORLD
+  // check AuthorizeBinding makes) must still stand.
+  async function verifyLocalOperator(world) {
+    const operatorAuthority = currentOperatorAuthority();
+    if (typeof operatorAuthority?.verify !== 'function') return false;
+    const operator = await operatorAuthority.verify({ worldPath: world.worldPath,
+      worldRef: world.worldRef, action: 'BIND_RUNNING_WORLD' });
+    return operator?.current === true && operator.worldPath === world.worldPath &&
+      operator.worldRef === world.worldRef && operator.action === 'BIND_RUNNING_WORLD';
+  }
+  function localWorld(operation, request) {
+    if (operation === 'AuthorizeBinding') return local.get(request.connectionRef);
+    if (typeof request.worldRef !== 'string') return undefined;
+    for (const world of local.values()) if (world.worldRef === request.worldRef) return world;
+    return undefined;
+  }
   /**
-   * Current remote access, checked by the port after the grant and before the
-   * replay cache (revocation precedes replay) and before any remote effect:
-   * a remote world's operator authority and tunnel factory must still stand.
-   * Local worlds and trusted service recovery are unaffected, and the
-   * recovery handle (backend, journal, tunnel) is retained.
+   * Current operator access, checked by the port after the grant and before
+   * the replay cache (revocation precedes replay) and before any effect: a
+   * local world's operator binding proof, or a remote world's operator
+   * authority and tunnel factory, must still stand. Trusted service recovery
+   * is unaffected, and the recovery handle (backend, journal, transport) is
+   * retained.
    */
   async function currentAccess(operation, request) {
     if (serviceRecovery.has(operation)) return;
+    const world = localWorld(operation, request);
+    if (world?.worldRef) {
+      if (await verifyLocalOperator(world)) return;
+      if (operation === 'AuthorizeBinding') fault('CONNECTION_UNAUTHORIZED');
+      throw new ContractError('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
+    }
     const profile = operation === 'AuthorizeBinding' ? remote.get(request.connectionRef)
       : typeof request.worldRef === 'string' ? remoteWorlds.get(request.worldRef) : undefined;
     if (!profile) return;
@@ -151,15 +174,9 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
             sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
       }
       const world = local.get(request.connectionRef);
-      const operatorAuthority = currentOperatorAuthority();
       if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
           typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
-          typeof operatorAuthority?.verify !== 'function') fault('CONNECTION_UNAUTHORIZED');
-      const operator = await operatorAuthority.verify({ worldPath: world.worldPath,
-        worldRef: world.worldRef, action: 'BIND_RUNNING_WORLD' });
-      if (!operator?.current || operator.worldPath !== world.worldPath ||
-          operator.worldRef !== world.worldRef || operator.action !== 'BIND_RUNNING_WORLD')
-        fault('CONNECTION_UNAUTHORIZED');
+          !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
       let transport = open.get(world.worldRef);
       if (!transport) {
         transport = await LocalEngineTransport.open(world.worldPath, { serviceName, onAction });

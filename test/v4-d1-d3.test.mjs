@@ -527,3 +527,305 @@ test('D1 backend authority: an absent or incomplete current authority fails clos
   assert.deepEqual(world.engine.commands.slice(commandsBefore), []);
   await service.close();
 });
+
+// D1/D3 call-path matrix (ADAPTER_D1_D3_CALL_PATH_MATRIX_2026-10-03, cede86c1…):
+// probes for rows no earlier test proves, mainly the local path. Same frozen
+// D1/D3 criteria; FIXTURE providers and a courier double, not product proof.
+const prepareFor = (worldRef, requestId) => {
+  const request = remotePrepare(requestId);
+  const operations = { ...request.operations, worldRef };
+  const operationDigest = digestValue('operations', operations).sha256;
+  return { ...request, worldRef, operations, operationDigest,
+    authorizationBinding: { ...request.authorizationBinding, worldRef, operationDigest } };
+};
+const abortFor = (request, requestId) => ({ ...abortRequest(request, requestId),
+  worldRef: request.worldRef });
+const localAuthority = (counter = {}) => ({ verify: async r => grant(r),
+  verifyEngineBinding: async r => { counter.engine = (counter.engine ?? 0) + 1; return grant(r); },
+  verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef }) });
+async function localMatrix(services, { serviceCurrent = () => true } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'hw-matrix-local-'));
+  const worldPath = join(root, 'world');
+  await mkdir(worldPath);
+  await writeFile(join(worldPath, 'world.mt'), 'gameid = minimal\n');
+  const port = await freePort();
+  const manifest = await provisionLocalPayload(worldPath, { transportPort: port,
+    operatorAuthority: { verify: async input => ({ current: true, ...input, worldStopped: true }) } });
+  const config = JSON.parse(await readFile(join(worldPath, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
+  const service = apply(context(services), { localWorldRoots: [root], serviceName: 'operator' });
+  const worldRef = manifest.worldRef;
+  const digest = await payloadDigest();
+  const base = `http://127.0.0.1:${port}`;
+  const headers = { Authorization: `Bearer ${config.token}` };
+  const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
+    inventory: {}, timer: null });
+  const commands = [];
+  let running = true;
+  const reply = command => {
+    switch (command.operation) {
+      case 'handshake': return { result: { payloadVersion: '0.2.0', worldRef, loadedSourceDigest: digest,
+        manifestDigest: digest, payloadMatches: true, worldeditAvailable: true } };
+      case 'authorize': return { result: { current: true, engineActorName: command.actorName, worldRef,
+        worldeditAvailable: true } };
+      case 'prepare_check': return { result: { checked: command.positions.length } };
+      case 'snapshot': return { result: { worldRef, coveredPositions: command.positions,
+        records: command.positions.map(air) } };
+      case 'apply': return { error: 'APPLY_FAILED' };
+      case 'restore': return { result: { status: 'ROLLED_BACK' } };
+      default: return { error: `UNEXPECTED_ENGINE_COMMAND ${command.operation}` };
+    }
+  };
+  const loop = (async () => {
+    while (running) {
+      const polled = await (await fetch(`${base}/poll`, { headers }).catch(() => null))?.json().catch(() => null);
+      if (polled?.command) {
+        commands.push(polled.command.operation);
+        const { result = null, error = null } = reply(polled.command);
+        await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+          id: polled.command.id, worldRef, result, error }) }).catch(() => null);
+      } else await new Promise(done => setTimeout(done, 10));
+    }
+  })();
+  const call = (operation, request) => service.worldAdapter.call(operation, request);
+  const discover = async () => (await call('DiscoverConnections', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: `discover-${Math.random()}`, authorizationRef: 'grant:one',
+    adapterId: 'hanaworlds-adapter-luanti' })).result?.connections?.[0];
+  const bind = async requestId => {
+    const row = await discover() ?? { connectionRef: 'unknown', capabilityRevision: 'unknown' };
+    return call('AuthorizeBinding', bindRequest(requestId, row.connectionRef, worldRef,
+      row.capabilityRevision));
+  };
+  const journalFiles = async () => {
+    const dir = join(process.env.DSH_HOME, 'data', 'hanaworlds-adapter-luanti', 'journal');
+    const out = [];
+    for (const key of await readdir(dir).catch(() => [])) out.push(...await readdir(join(dir, key)));
+    return out.sort();
+  };
+  return { service, worldRef, call, bind, discover, commands, journalFiles, serviceCurrent,
+    async close() { running = false; await loop; await service.close(); } };
+}
+
+test('Matrix L01 local new bind: authority and operator provided after Adapter start are used', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority() });
+  const services = {};
+  const m = await localMatrix(services);
+  try {
+    const before = await m.call('AuthorizeBinding', bindRequest('l01-before', 'unknown', m.worldRef, 'x'));
+    assert.equal(before.error?.code, 'PERMISSION_DENIED', 'absent at start: denied');
+    assert.deepEqual(m.commands, []);
+    Object.assign(services, all.services);
+    const bound = await m.bind('l01');
+    assert.equal(bound.error, null, JSON.stringify(bound.error));
+    assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+  } finally { await m.close(); }
+});
+
+for (const [row, withdrawn, expected] of [
+  ['L02', 'hanaworldsAuthority', 'PERMISSION_DENIED'],
+  ['L03', 'hanaworldsOperatorAuthority', 'CONNECTION_UNAUTHORIZED'],
+]) {
+  test(`Matrix ${row} local same-requestId bind replay: ${withdrawn} withdrawn denies before the cached response`, async () => {
+    const home = await dshHome();
+    const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority() });
+    const services = { ...all.services };
+    const m = await localMatrix(services);
+    try {
+      const row1 = await m.discover();
+      const request = bindRequest('first', row1.connectionRef, m.worldRef, row1.capabilityRevision);
+      const first = await m.call('AuthorizeBinding', request);
+      assert.equal(first.error, null, JSON.stringify(first.error));
+      const commandsBefore = m.commands.length;
+      const journalBefore = await m.journalFiles();
+      delete services[withdrawn];
+      const replay = await m.call('AuthorizeBinding', request);
+      assert.equal(replay.result, null, 'no cached binding replayed');
+      assert.equal(replay.error?.code, expected, JSON.stringify(replay.error));
+      assert.equal(m.commands.length, commandsBefore, 'no engine command');
+      assert.deepEqual(await m.journalFiles(), journalBefore, 'no journal effect');
+    } finally { await m.close(); }
+  });
+}
+
+test('Matrix L04 local new-requestId bind: operator withdrawn denies with no binding or effect', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority() });
+  const services = { ...all.services };
+  const m = await localMatrix(services);
+  try {
+    assert.equal((await m.bind('first')).error, null);
+    const commandsBefore = m.commands.length;
+    const journalBefore = await m.journalFiles();
+    delete services.hanaworldsOperatorAuthority;
+    const after = await m.bind('second');
+    assert.equal(after.result, null);
+    assert.equal(after.error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(after.error));
+    assert.equal(m.commands.length, commandsBefore);
+    assert.deepEqual(await m.journalFiles(), journalBefore);
+  } finally { await m.close(); }
+});
+
+test('Matrix L05 local Prepare: operator withdrawn after binding denies before engine command or PREPARED journal', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority() });
+  const services = { ...all.services };
+  const m = await localMatrix(services);
+  try {
+    assert.equal((await m.bind('bind')).error, null);
+    const commandsBefore = m.commands.length;
+    delete services.hanaworldsOperatorAuthority;
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'l05'));
+    assert.deepEqual([prepared.error?.code, prepared.error?.phase, prepared.error?.reason],
+      ['AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED'], JSON.stringify(prepared.error));
+    assert.equal(prepared.error?.mutationState, 'NONE');
+    assert.equal(m.commands.length, commandsBefore, 'no engine command');
+    assert.deepEqual(await m.journalFiles(), ['world-binding'], 'no PREPARED record');
+  } finally { await m.close(); }
+});
+
+test('Matrix L06 local Prepare: replacement authority B with revoked engine binding denies; old A not called', async () => {
+  const home = await dshHome();
+  const oldA = {};
+  const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority(oldA) });
+  const services = { ...all.services };
+  const m = await localMatrix(services);
+  try {
+    assert.equal((await m.bind('bind')).error, null);
+    const oldBefore = oldA.engine ?? 0;
+    let newChecks = 0;
+    services.hanaworldsAuthority = { ...localAuthority(),
+      verifyEngineBinding: async r => { newChecks++; return { ...grant(r), current: false }; } };
+    const commandsBefore = m.commands.length;
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'l06'));
+    assert.equal(prepared.result, null);
+    assert.equal(prepared.error?.mutationState, 'NONE', JSON.stringify(prepared.error));
+    assert.equal(newChecks, 1, 'B consulted');
+    assert.equal((oldA.engine ?? 0) - oldBefore, 0, 'old A not called');
+    assert.equal(m.commands.length, commandsBefore);
+    assert.deepEqual(await m.journalFiles(), ['world-binding']);
+  } finally { await m.close(); }
+});
+
+test('Matrix R02 remote same-requestId bind replay: authority withdrawn denies before the cached response', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest());
+  const services = { ...all.services };
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  const request = bindRequest('first', remoteProfile.connectionRef, remoteProfile.worldRef,
+    remoteProfile.capabilityRevision);
+  assert.equal((await service.worldAdapter.call('AuthorizeBinding', request)).error, null);
+  const callsBefore = all.providerCalls();
+  const journalBefore = await readdir(join(home, 'data', 'hanaworlds-adapter-luanti', 'journal',
+    (await journals(home))[0]));
+  delete services.hanaworldsAuthority;
+  const replay = await service.worldAdapter.call('AuthorizeBinding', request);
+  assert.equal(replay.result, null);
+  assert.equal(replay.error?.code, 'PERMISSION_DENIED', JSON.stringify(replay.error));
+  assert.equal(all.providerCalls(), callsBefore);
+  assert.deepEqual(await readdir(join(home, 'data', 'hanaworlds-adapter-luanti', 'journal',
+    (await journals(home))[0])), journalBefore);
+  await service.close();
+});
+
+async function localPrepared(home, requestId, authority = localAuthority()) {
+  const all = providers(home, await payloadDigest(), { hanaworldsAuthority: authority });
+  const services = { ...all.services };
+  const m = await localMatrix(services);
+  assert.equal((await m.bind('bind')).error, null);
+  const request = prepareFor(m.worldRef, requestId);
+  const prepared = await m.call('PrepareRecoverableTransaction', request);
+  assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+  return { m, services, request, prepared: prepared.result };
+}
+
+test('Matrix S01 local trusted abort: prepared record aborted by the service after operator withdrawal', async () => {
+  const home = await dshHome();
+  const { m, services, request } = await localPrepared(home, 's01');
+  try {
+    delete services.hanaworldsOperatorAuthority;
+    const aborted = await m.call('AbortPreparedTransaction', abortFor(request, 'abort-s01'));
+    assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+    assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+    assert.equal(aborted.result.mutationState, 'NONE');
+  } finally { await m.close(); }
+});
+
+test('Matrix S02 local trusted restore: post-write pending record restored by the service after operator withdrawal', async () => {
+  const home = await dshHome();
+  let serviceCurrent = true;
+  const authority = { ...localAuthority(),
+    verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef, current: serviceCurrent }) };
+  const { m, services, request, prepared } = await localPrepared(home, 's02', authority);
+  try {
+    serviceCurrent = false;
+    const applied = await m.call('ApplyCompiledTransaction', {
+      contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+      requestId: 'apply-s02', authorizationRef: 'grant:one', worldRef: m.worldRef,
+      transactionId: request.transactionId, expectedWorldRevision: 'rev-1',
+      preparedTransaction: projectPreparedTransaction(prepared), operations: request.operations,
+      operationDigest: request.operationDigest, authorizationBinding: request.authorizationBinding,
+      guarantee: 'RECOVERABLE_VERIFIED' });
+    assert.equal(applied.error?.code, 'RECOVERY_PENDING', JSON.stringify(applied.error));
+    assert.equal(applied.error?.mutationState, 'UNKNOWN');
+    serviceCurrent = true;
+    delete services.hanaworldsOperatorAuthority;
+    const commandsBefore = m.commands.length;
+    const restored = await m.call('RestoreTransaction', {
+      contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+      requestId: 'restore-s02', authorizationRef: 'grant:one', worldRef: m.worldRef,
+      originTransactionId: request.transactionId, operationDigest: request.operationDigest,
+      beforeImageDigest: prepared.beforeImageDigest, restoreAttemptIdentity: 'f'.repeat(64),
+      guarantee: 'RECOVERABLE_VERIFIED' });
+    assert.equal(restored.error, null, JSON.stringify(restored.error));
+    assert.equal(restored.result.status, 'ROLLED_BACK');
+    assert.ok(m.commands.slice(commandsBefore).includes('restore'), 'restore reached the retained transport');
+  } finally { await m.close(); }
+});
+
+for (const [direction, oldAllows, newAllows] of [['A deny / B allow', false, true],
+  ['A allow / B deny', true, false]]) {
+  test(`Matrix S03 local trusted abort: ${direction} — backend uses the current B decision`, async () => {
+    const home = await dshHome();
+    let oldCalls = 0;
+    const oldA = { ...localAuthority(), verifyService: async r => { oldCalls++;
+      return { ...serviceProof(r), worldRef: r?.worldRef, current: oldAllows }; } };
+    const { m, services, request } = await localPrepared(home, `s03-${oldAllows}`, oldA);
+    try {
+      let newCalls = 0;
+      services.hanaworldsAuthority = { ...localAuthority(), verifyService: async r => {
+        newCalls++;
+        // The port's own check (first call) passes; the backend's follows B.
+        return { ...serviceProof(r), worldRef: r?.worldRef, current: newCalls === 1 || newAllows }; } };
+      const commandsBefore = m.commands.length;
+      const aborted = await m.call('AbortPreparedTransaction', abortFor(request, `abort-s03-${oldAllows}`));
+      if (newAllows) {
+        assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+        assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+      } else {
+        assert.equal(aborted.error?.code, 'PERMISSION_DENIED', JSON.stringify(aborted.error));
+        assert.equal(m.commands.length, commandsBefore);
+      }
+      assert.equal(newCalls, 2, 'port and backend both consulted B');
+      assert.equal(oldCalls, 0, 'stale A never consulted');
+    } finally { await m.close(); }
+  });
+}
+
+for (const [label, override] of [
+  ['state profile not state-profile/v2', { hanaworldsLuantiStateProfile: { read: async () => ({ ...profile, profileVersion: 'state-profile/v1' }) } }],
+  ['journal storage unavailable', { dshHomePath: undefined }],
+]) {
+  test(`Matrix D302 local negative (${label}): null guarantee and profile, nothing written`, async () => {
+    const home = await dshHome();
+    const all = providers(home, await payloadDigest(), { hanaworldsAuthority: localAuthority(), ...override });
+    const m = await localMatrix({ ...all.services });
+    try {
+      const bound = await m.bind('d302');
+      assert.equal(bound.error, null, JSON.stringify(bound.error));
+      assert.equal(bound.result.capabilities.recoveryGuarantee, null);
+      assert.equal(bound.result.capabilities.stateProfile, null);
+      assert.deepEqual(await readdir(home), [], 'nothing written under DSH_HOME');
+    } finally { await m.close(); }
+  });
+}
