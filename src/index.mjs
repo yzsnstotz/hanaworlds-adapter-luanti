@@ -12,6 +12,7 @@ export { WorldAdapterV3, worldAdapterV3Operations } from './v3-port.mjs';
 export { V3TransactionBackend } from './v3-transactions.mjs';
 export { WorldAdapterV4, worldAdapterV4Operations } from './v4-port.mjs';
 export { V4TransactionBackend } from './v4-transactions.mjs';
+export { workshopRelay } from './workshop-relay.mjs';
 
 import { placementInvariants } from 'hanaworlds-contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
@@ -20,6 +21,7 @@ import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLoca
   from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
 import { V4TransactionBackend } from './v4-transactions.mjs';
+import { workshopRelay } from './workshop-relay.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 export const name = ADAPTER_ID;
@@ -112,8 +114,7 @@ export function apply(ctx, config = {}) {
     createBackend,
     inspectContext: () => optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
     serviceName: config.serviceName,
-    onAction: typeof optionalHostService(ctx, 'hanaworldsWorkshop')?.invokeAction === 'function'
-      ? (request, principal) => optionalHostService(ctx, 'hanaworldsWorkshop').invokeAction(request, principal) : undefined,
+    onAction: workshopRelay(() => optionalHostService(ctx, 'hanaworldsWorkshop'), log),
   });
   const worldAdapter = new WorldAdapterV4({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
     operations: runtime.operations });
@@ -133,9 +134,14 @@ export function apply(ctx, config = {}) {
         operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), toVersion });
     },
     async presentFrame({ worldRef, engineActorName, frame, authorizationRef }) {
-      const verify = optionalHostService(ctx, 'hanaworldsWorkshop')?.verifyFrameDelivery;
-      if (typeof verify !== 'function') throw new Error('RENDERER_CAPABILITY_UNAVAILABLE');
-      const proof = await verify({ worldRef, engineActorName, frame, authorizationRef });
+      // Resolved now, not at start; called as a method of the current facade.
+      const workshop = optionalHostService(ctx, 'hanaworldsWorkshop');
+      if (typeof workshop?.verifyFrameDelivery !== 'function') {
+        log('warn', 'frame not delivered: hanaworldsWorkshop.verifyFrameDelivery is not provided');
+        throw new Error('RENDERER_CAPABILITY_UNAVAILABLE');
+      }
+      const proof = await workshop.verifyFrameDelivery({ worldRef, engineActorName, frame,
+        authorizationRef });
       if (proof?.current !== true || proof.worldRef !== worldRef ||
           proof.engineActorName !== engineActorName ||
           proof.sessionRef !== frame?.sessionRef ||

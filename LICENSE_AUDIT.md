@@ -27,8 +27,10 @@ ignored, isolated world data. The new v3 files were written for this origin.
 | `src/v4-port.mjs` | 0.2.0 Adapter implementation written for this origin; imports public Contracts 0.3.0 functions, no copied Contracts implementation. |
 | `src/v4-transactions.mjs` | 0.2.0 Adapter implementation derived from this origin's own `v3-transactions.mjs`; imports public Contracts 0.3.0 functions. |
 | `src/version.mjs` | 0.2.0 origin constants. |
+| `src/workshop-relay.mjs` | 0.2.0 origin glue (late-bound Workshop relay). |
 | `payload/hanaworlds_adapter/region.lua` | 0.2.0 Luanti API glue written for this origin (region search, relay/pick records, Prepare recheck). Calls engine APIs only; no WorldEdit, Luanti engine or areas source copied. The facing/search rules follow the approved HanaWorlds contract text, not third-party code. |
 | `scripts/verify-contracts-pin.mjs` | 0.2.0 origin tooling. |
+| `test/v4-workshop-relay.test.mjs` | 0.2.0 Adapter fixture test. |
 | `test/transport-errors.lua` | 0.2.0 Adapter test double for the courier error path. |
 | `test/real-region.mjs` | 0.2.0 diagnostic engine runner; refers to an ignored external WorldEdit copy and the admitted 0.1.1 package, never bundles them. |
 | `test/support/lua-world.mjs`, `test/v4-*.test.mjs` | 0.2.0 Adapter fixture tests; `v4-carried-*` are adaptations of this origin's v3 tests. |

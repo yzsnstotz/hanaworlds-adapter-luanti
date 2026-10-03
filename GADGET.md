@@ -25,6 +25,8 @@ This repository owns `world-adapter/v4`, its Luanti payload, and the native in-w
 
 Fail-closed paths keep their cause: a Lua error in a courier command is logged on the server with its operation and file:line (coordinate tuples and fractional numbers redacted); catalogue, saved-digest and principal-check failures are logged on the host with the operation and transaction/inspection id. No pose, position or owner data is logged.
 
+Workshop relay: the `hanaworldsWorkshop` facade (`invokeAction(request, principal)`, `verifyFrameDelivery({worldRef, engineActorName, frame, authorizationRef})`) is looked up when an in-world action or frame arrives, not when the Adapter starts, because the install order starts the Adapter before Workshop. A missing or withdrawn facade refuses with `RENDERER_CAPABILITY_UNAVAILABLE`, nothing is relayed and the cause is logged; a facade refusal (for example a revoked grant) is never turned into a receipt. Frame proofs must match the exact world, player, session and grant.
+
 ## Settings and invariants
 
 The Adapter has no product settings. Its correctness invariants (never guess a player, no silent relocation, names only to an authorized principal, pose stays in the engine, per-cell protection, body recheck at Prepare, Adapter-computed frame) are listed read-only in the loopback `status` projection with the reason each cannot be switched off. The pick range is the engine's own item pointing range (item definition `range`, engine default 4), not a HanaWorlds limit.

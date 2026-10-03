@@ -16,7 +16,7 @@ const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 export function createLuantiOperations({ roots = [], remoteProfiles = [], operatorAuthority,
   remoteTunnelFactory, serviceName, onAction, transactionBackends,
   createBackend, inspectContext } = {}) {
-  const rootPaths = roots.map(resolve);
+  const rootPaths = roots.map(root => resolve(root));
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
