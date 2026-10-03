@@ -1028,7 +1028,7 @@ function barrier() {
 }
 const SHARED = 'luanti:shared';
 async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true, stateRead, grantFor,
-  closeFailures = { remaining: 0 } } = {}) {
+  closeFailures = { remaining: 0 }, closeErrorText = 'CLOSE_REJECTED', logs } = {}) {
   const gate = barrier();
   const digest = await payloadDigest();
   const operator = { 'remote:a': true, 'remote:b': true };
@@ -1070,13 +1070,16 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
         async close() {
           t.closeAttempts++;
           // Injected failure: rejects before closing, the tunnel stays live.
-          if (closeFailures.remaining > 0) { closeFailures.remaining--; throw new Error('CLOSE_REJECTED'); }
+          if (closeFailures.remaining > 0) { closeFailures.remaining--; throw new Error(closeErrorText); }
           t.closes++;
         } };
     } },
   });
   const services = { ...all.services };
-  const service = apply(context(services), { remoteProfiles: profiles });
+  const ctx = context(services);
+  if (logs) ctx.logger = () => ({ warn: m => logs.push(String(m)), error: m => logs.push(String(m)),
+    info: m => logs.push(String(m)) });
+  const service = apply(ctx, { remoteProfiles: profiles });
   const bindRequestFor = (connectionRef, requestId) => bindRequest(requestId, connectionRef, SHARED,
     remoteProfile.capabilityRevision);
   const bind = (connectionRef, requestId) =>
@@ -1678,4 +1681,62 @@ test('C04 close failure at shutdown is reported and the transport stays managed 
     await r.gate.stop();
     await r.service.close().catch(() => {});
   }
+});
+
+// Provider close-exception privacy (quality FAIL f0f6bba3…): text thrown by an
+// untrusted tunnel close() never reaches host logs, public errors or the
+// shutdown error; the failure stays attributable by a fixed code.
+test('C04 close failure never logs or returns provider exception text (bind cleanup and shutdown)', async () => {
+  const home = await dshHome();
+  const marker = `SYNTHETIC-CANARY-${Math.random().toString(36).slice(2)}`;
+  const closeErrorText = `close failed at https://relay.invalid/?token=${marker} Authorization: Bearer ${marker}`;
+  const logs = [];
+  const consoleLines = [];
+  const realConsoleError = console.error;
+  console.error = (...args) => { consoleLines.push(args.map(String).join(' ')); };
+  const closeFailures = { remaining: 1 };
+  let broken = true;
+  const r = await remotePair(home, { closeFailures, closeErrorText, logs,
+    stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  const surfaces = [];
+  try {
+    // (B) bind cleanup: late failure, then the cleanup close is rejected.
+    const failed = await r.bind('remote:a', 'privacy-late');
+    surfaces.push(JSON.stringify(failed));
+    assert.notEqual(failed.error, null);
+    assert.equal(r.liveTunnels(), 1, 'handle still managed');
+    broken = false;
+    // A competing bind re-attempts the close, which is rejected again.
+    closeFailures.remaining = 1;
+    const refused = await r.bind('remote:b', 'privacy-refused');
+    surfaces.push(JSON.stringify(refused));
+    assert.equal(refused.error?.code, 'ADAPTER_UNAVAILABLE');
+    assert.equal(r.tunnels['remote:b'].opens, 0, 'no second tunnel');
+    // Later successful close; then the authorized connection binds.
+    const bound = await r.bind('remote:b', 'privacy-bound');
+    surfaces.push(JSON.stringify(bound));
+    assert.equal(bound.error, null, JSON.stringify(bound.error));
+    // Shutdown path: its close is rejected with the marker text too.
+    closeFailures.remaining = 1;
+    const shutdown = await r.service.close().then(() => null, error => error);
+    assert.ok(shutdown instanceof Error, 'shutdown reports the failure');
+    surfaces.push(String(shutdown.message), String(shutdown.stack), JSON.stringify(shutdown));
+    var shutdownCoded = /TRANSPORT_CLOSE_FAILED/.test(shutdown.message);
+    assert.equal(r.liveTunnels(), 1, 'still managed after a rejected shutdown close');
+    await r.service.close();
+    assert.equal(r.liveTunnels(), 0, 'closed on the next explicit attempt');
+  } finally {
+    console.error = realConsoleError;
+    closeFailures.remaining = 0;
+    await r.gate.stop();
+    await r.service.close().catch(() => {});
+  }
+  // Boolean-only assertions: a failure must never echo provider text.
+  const everything = [...logs, ...consoleLines, ...surfaces].join('\n');
+  assert.equal(everything.includes(marker), false, 'no provider text in any log, public error or shutdown error');
+  assert.equal(everything.includes('relay.invalid'), false, 'no provider URL anywhere');
+  assert.equal(logs.length + consoleLines.length > 0, true, 'the close failure was reported');
+  assert.equal([...logs, ...consoleLines].some(line => line.includes('TRANSPORT_CLOSE_FAILED')), true,
+    'host log attributes the failure by a fixed code');
+  assert.equal(shutdownCoded, true, 'shutdown error attributable by a fixed code');
 });

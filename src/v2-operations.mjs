@@ -8,6 +8,8 @@ import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
 import { ContractError, validateResponse } from 'hanaworlds-contracts/v4';
 
 function fault(code) { throw new Error(code); }
+// Fixed, provider-text-free code for a rejected transport close.
+const CLOSE_FAILED = 'TRANSPORT_CLOSE_FAILED';
 const adapterId = ADAPTER_ID;
 const revision = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -110,7 +112,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         established.has(worldRef) || building.has(worldRef) ||
         ownedBackends.get(worldRef)?.hasUnsettledRecords) return;
     const closed = await closeWorld(worldRef);
-    if (!closed.ok) error.closeError = closed.message;
+    if (!closed.ok) error.closeError = closed.code;
   }
   // A world held only as a recovery handle (reserved, never accepted) is
   // retired once trusted recovery has settled its last unsettled record and no
@@ -141,12 +143,14 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       // The backend held no record that needs recovery; it is not kept.
       ownedBackends.delete(worldRef);
       try { if (transport) await transport.close(); }
-      catch (error) {
+      catch {
+        // The provider's exception text is untrusted (it may carry a URL or
+        // credential), so only a fixed code and the Adapter's worldRef are
+        // reported.
         closePending.add(worldRef);
-        const message = error?.message ?? String(error);
-        const text = `world ${worldRef}: transport close failed; world stays held until a later close succeeds: ${message}`;
+        const text = `world ${worldRef}: ${CLOSE_FAILED}; world stays held until a later close succeeds`;
         if (typeof log === 'function') log('error', text); else console.error(text);
-        return { ok: false, message };
+        return { ok: false, code: CLOSE_FAILED };
       }
       open.delete(worldRef);
       boundConnection.delete(worldRef);
@@ -430,12 +434,18 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     results.forEach((result, i) => {
       const [worldRef] = entries[i];
       if (result.status === 'fulfilled') { open.delete(worldRef); closePending.delete(worldRef); }
-      else { closePending.add(worldRef); failed.push(`${worldRef}: ${result.reason?.message ?? result.reason}`); }
+      else { closePending.add(worldRef); failed.push(worldRef); }  // provider text not forwarded
     });
     // A world whose transport did not close stays owned and close-pending.
     for (const worldRef of [...boundConnection.keys()])
       if (!open.has(worldRef)) boundConnection.delete(worldRef);
     ownedBackends.clear(); inflight.clear(); established.clear(); recovering.clear();
-    if (failed.length) throw new Error(`transport close failed: ${failed.join('; ')}`);
+    if (failed.length) {
+      const text = `${CLOSE_FAILED}: transport close failed for ${failed.length} world(s): ${failed.join(', ')}`;
+      if (typeof log === 'function') log('error', text); else console.error(text);
+      const error = new Error(text);
+      error.code = CLOSE_FAILED;
+      throw error;
+    }
   } };
 }
