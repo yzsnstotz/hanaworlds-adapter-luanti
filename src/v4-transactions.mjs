@@ -38,7 +38,6 @@ function savedReadbackProblem(record) {
   } catch (error) { return `saved before image invalid: ${error?.message ?? error}`; }
 }
 // Host log line for a fail-closed path; carries no pose, position or owner data.
-function causeOf(error) { return String(error?.message ?? error); }
 const AXIS = ['+X', '+Y', '+Z'];
 function luantiFrame(worldRef, executionRevision) {
   return { profileVersion: 'frame/v2', frameId: `luanti-world-grid:${worldRef}`,
@@ -271,10 +270,18 @@ export class V4TransactionBackend {
         typeof this.#executionRevision !== 'string' || !this.#executionRevision ||
         typeof this.#engine?.inspectRegion !== 'function' ||
         typeof this.#capacity?.check !== 'function') fault('CAPABILITY_UNAVAILABLE');
+    // The catalogue provider's exception text is untrusted (it may carry a
+    // URL or credential): only fixed labels are logged.
+    let supplied;
+    try { supplied = await this.#catalogue.read(request.worldRef, binding); }
+    catch {
+      this.#log('warn', `InspectRegion ${request.inspectionId}: CATALOGUE_READ_FAILED`);
+      fault('CAPABILITY_UNAVAILABLE');
+    }
     let catalogue;
-    try { catalogue = validateType('Catalogue', await this.#catalogue.read(request.worldRef, binding)); }
-    catch (error) {
-      this.#log('warn', `InspectRegion ${request.inspectionId}: catalogue unavailable: ${causeOf(error)}`);
+    try { catalogue = validateType('Catalogue', supplied); }
+    catch {
+      this.#log('warn', `InspectRegion ${request.inspectionId}: CATALOGUE_INVALID`);
       fault('CAPABILITY_UNAVAILABLE');
     }
     const walkable = {};

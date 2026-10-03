@@ -111,8 +111,10 @@ export function apply(ctx, config = {}) {
       // read-only region inspection for a Shell-started turn does not.
       if (requireOnline) {
         try { await transport.verifyPrincipal(binding.engineActorName); }
-        catch (error) {
-          log('warn', `${action}: grant principal not verifiable in engine: ${error?.message ?? error}`);
+        catch {
+          // The engine/tunnel error text is untrusted (it may carry a URL or
+          // credential): only a fixed label is logged.
+          log('warn', `${action}: ENGINE_PRINCIPAL_UNVERIFIED`);
           return null;
         }
       }

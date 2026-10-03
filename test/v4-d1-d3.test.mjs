@@ -1028,7 +1028,8 @@ function barrier() {
 }
 const SHARED = 'luanti:shared';
 async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true, stateRead, grantFor,
-  closeFailures = { remaining: 0 }, closeErrorText = 'CLOSE_REJECTED', logs } = {}) {
+  closeFailures = { remaining: 0 }, closeErrorText = 'CLOSE_REJECTED', logs, requestOverride,
+  extraServices = {} } = {}) {
   const gate = barrier();
   const digest = await payloadDigest();
   const operator = { 'remote:a': true, 'remote:b': true };
@@ -1043,6 +1044,7 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
       ...(grantFor ? { verify: async r => grantFor(r) } : {}),
       verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef, current: serviceCurrent() }) },
     ...(stateRead ? { hanaworldsLuantiStateProfile: { read: stateRead } } : {}),
+    ...extraServices,
     hanaworldsOperatorAuthority: { verify: async input => {
       await gate.park();
       return { ...input, current: operator[input.connectionRef] === true };
@@ -1056,6 +1058,8 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
         async request(command) {
           t.commands.push(command.operation);
           const worldRef = SHARED;
+          const overridden = requestOverride?.(command, t);
+          if (overridden) return overridden;
           if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
             loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
           if (command.operation === 'authorize') return { worldRef, current: true,
@@ -1739,4 +1743,84 @@ test('C04 close failure never logs or returns provider exception text (bind clea
   assert.equal([...logs, ...consoleLines].some(line => line.includes('TRANSPORT_CLOSE_FAILED')), true,
     'host log attributes the failure by a fixed code');
   assert.equal(shutdownCoded, true, 'shutdown error attributable by a fixed code');
+});
+
+// Adjacent privacy paths (quality FAIL 477b8e04…): untrusted tunnel reply
+// errors and catalogue-provider exceptions never reach the host log or a
+// public error; the failures keep their fixed public codes.
+function privacyCapture() {
+  const marker = `SYNTHETIC-CANARY-${Math.random().toString(36).slice(2)}`;
+  const text = `failed at https://relay.invalid/?token=${marker} Authorization: Bearer ${marker}`;
+  const logs = [];
+  const consoleLines = [];
+  const real = console.error;
+  console.error = (...args) => { consoleLines.push(args.map(String).join(' ')); };
+  return { marker, text, logs, consoleLines, restore() { console.error = real; },
+    leaked(surfaces) {
+      const all = [...logs, ...consoleLines, ...surfaces].join('\n');
+      return all.includes(marker) || all.includes('relay.invalid');
+    } };
+}
+
+test('Privacy: a remote engine-principal error reply is never logged or returned (Prepare denied, no effect)', async () => {
+  const home = await dshHome();
+  const cap = privacyCapture();
+  let authorizeCalls = 0;
+  const r = await remotePair(home, { logs: cap.logs, requestOverride: command => {
+    if (command.operation !== 'authorize') return null;
+    authorizeCalls++;
+    return authorizeCalls >= 2 ? { worldRef: SHARED, error: cap.text } : null;
+  } });
+  const surfaces = [];
+  let code, mutation, effects, records, attributed;
+  try {
+    const bound = await r.bind('remote:a', 'privacy-principal-bind');
+    surfaces.push(JSON.stringify(bound));
+    assert.equal(bound.error, null, 'bind accepted');
+    const before = r.tunnels['remote:a'].commands.length;
+    const prepared = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'privacy-principal'));
+    surfaces.push(JSON.stringify(prepared));
+    code = prepared.error?.code; mutation = prepared.error?.mutationState;
+    effects = r.tunnels['remote:a'].commands.slice(before).filter(c => c !== 'authorize').length;
+    records = await transactionRecords(home);
+    attributed = cap.logs.some(line => line.includes('ENGINE_PRINCIPAL_UNVERIFIED'));
+  } finally { cap.restore(); await r.close(); }
+  assert.equal(cap.leaked(surfaces), false, 'no tunnel text in host log, console or public error');
+  assert.equal(code, 'AUTHORIZATION_REVOKED');
+  assert.equal(mutation, 'NONE');
+  assert.equal(effects, 0, 'no engine effect');
+  assert.equal(records, 0, 'no journal record');
+  assert.equal(attributed, true, 'host log attributes the failure by a fixed label');
+});
+
+test('Privacy: a catalogue-provider exception is never logged or returned (InspectRegion unavailable, no effect)', async () => {
+  const home = await dshHome();
+  const cap = privacyCapture();
+  const r = await remotePair(home, { logs: cap.logs, extraServices: {
+    hanaworldsLuantiInspectionContext: {
+      read: async () => { throw new Error(cap.text); },
+      readCatalogue: async () => { throw new Error(cap.text); } } } });
+  const surfaces = [];
+  let code, effects, attributed;
+  try {
+    const bound = await r.bind('remote:a', 'privacy-catalogue-bind');
+    surfaces.push(JSON.stringify(bound));
+    assert.equal(bound.error, null, 'bind accepted');
+    const before = r.tunnels['remote:a'].commands.length;
+    const inspected = await r.call('InspectRegion', { contractVersion: 'world-adapter/v4', actorRef: 'canvas',
+      sessionRef: 'session:one', requestId: 'privacy-inspect', authorizationRef: 'grant:one', worldRef: SHARED,
+      expectedWorldRevision: 'rev-1', inspectionId: 'privacy-inspection',
+      anchor: { kind: 'DEFAULT_PLAYER', invocationId: 'privacy-invocation' },
+      footprint: { widthCells: 1, depthCells: 1, heightCells: 1 },
+      placementSettings: { frontGapCells: 2, forwardSearchCells: 16, lateralSearchCells: 8,
+        verticalSearchCells: 4, settingsRevision: 'privacy-settings' } });
+    surfaces.push(JSON.stringify(inspected));
+    code = inspected.error?.code;
+    effects = r.tunnels['remote:a'].commands.length - before;
+    attributed = cap.logs.some(line => line.includes('CATALOGUE_READ_FAILED'));
+  } finally { cap.restore(); await r.close(); }
+  assert.equal(cap.leaked(surfaces), false, 'no provider text in host log, console or public error');
+  assert.equal(code, 'CAPABILITY_UNAVAILABLE');
+  assert.equal(effects, 0, 'no engine command');
+  assert.equal(attributed, true, 'host log attributes the failure by a fixed label');
 });

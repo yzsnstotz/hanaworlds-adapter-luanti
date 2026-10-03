@@ -208,8 +208,14 @@ test('stale world revision, missing catalogue and host capacity fail before any 
     assert.deepEqual([response.error.code, response.error.reason], expected, variant);
     // A capacity breach is reported only after anchor/facing resolution in-engine.
     assert.equal(engineCalls, variant === 'limit' ? 1 : 0, variant);
-    if (variant === 'catalogue') assert.ok(logs.some(l => l.message.includes('catalogue host down') &&
-      l.message.includes('InspectRegion')), 'the catalogue failure cause is logged');
+    // The failure stays attributable by a fixed label; the provider's own
+    // exception text is untrusted and is never logged.
+    if (variant === 'catalogue') {
+      assert.ok(logs.some(l => l.message.includes('CATALOGUE_READ_FAILED') &&
+        l.message.includes('InspectRegion')), 'the catalogue failure cause is logged by a fixed label');
+      assert.equal(logs.some(l => l.message.includes('catalogue host down')), false,
+        'provider exception text is not logged');
+    }
     assert.equal(count.worldWrites, 0);
   }
 });
