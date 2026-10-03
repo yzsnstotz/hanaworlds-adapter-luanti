@@ -4,6 +4,25 @@ import { PAYLOAD_VERSION } from './version.mjs';
 function fault(code) { throw new Error(code); }
 
 /**
+ * Current operator proof for a remote profile, and a usable tunnel factory.
+ * Used before opening a tunnel and again before a cached tunnel carries a new
+ * binding, so a withdrawn operator or tunnel factory is never bypassed.
+ */
+export async function verifyRemoteOperator(profile, operatorAuthority, tunnelFactory) {
+  if (typeof profile?.connectionRef !== 'string' ||
+      typeof profile.worldRef !== 'string' || typeof profile.operatorRef !== 'string')
+    fault('SCHEMA_INVALID');
+  if (typeof operatorAuthority?.verify !== 'function') fault('CONNECTION_UNAUTHORIZED');
+  const operator = await operatorAuthority.verify(profile);
+  if (!operator?.current || operator.operatorRef !== profile.operatorRef ||
+      operator.worldRef !== profile.worldRef ||
+      operator.connectionRef !== profile.connectionRef)
+    fault('CONNECTION_UNAUTHORIZED');
+  if (typeof tunnelFactory?.open !== 'function') fault('ADAPTER_UNAVAILABLE');
+  return operator;
+}
+
+/**
  * Remote capability boundary. A configured address is never sufficient
  * authority: the host must provide an operator verifier and a paired tunnel.
  * This module never opens a socket or installs code on a remote server itself.
@@ -14,16 +33,7 @@ export class RemoteEngineTransport {
   constructor(profile, tunnel) { this.#profile = profile; this.#tunnel = tunnel; }
 
   static async open(profile, { operatorAuthority, tunnelFactory } = {}) {
-    if (typeof profile?.connectionRef !== 'string' ||
-        typeof profile.worldRef !== 'string' || typeof profile.operatorRef !== 'string')
-      fault('SCHEMA_INVALID');
-    if (typeof operatorAuthority?.verify !== 'function') fault('CONNECTION_UNAUTHORIZED');
-    const operator = await operatorAuthority.verify(profile);
-    if (!operator?.current || operator.operatorRef !== profile.operatorRef ||
-        operator.worldRef !== profile.worldRef ||
-        operator.connectionRef !== profile.connectionRef)
-      fault('CONNECTION_UNAUTHORIZED');
-    if (typeof tunnelFactory?.open !== 'function') fault('ADAPTER_UNAVAILABLE');
+    const operator = await verifyRemoteOperator(profile, operatorAuthority, tunnelFactory);
     const tunnel = await tunnelFactory.open(profile, operator);
     if (typeof tunnel?.request !== 'function' || typeof tunnel?.close !== 'function')
       fault('ADAPTER_UNAVAILABLE');

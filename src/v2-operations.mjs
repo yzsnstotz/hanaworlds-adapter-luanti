@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { discoverLocalWorlds, payloadDigest } from './local-worlds.mjs';
 import { LocalEngineTransport } from './local-transport.mjs';
-import { RemoteEngineTransport } from './remote-transport.mjs';
+import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
 
@@ -85,6 +85,22 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         if (typeof proof.engineActorName !== 'string' || !proof.engineActorName)
           fault('CONNECTION_UNAUTHORIZED');
         let transport = open.get(request.worldRef);
+        if (transport) {
+          // A cached tunnel carries a new binding only while the current
+          // operator authority and tunnel factory still stand. On withdrawal
+          // the stale tunnel and its backend are dropped (journal stays on
+          // disk) and the binding is refused before any engine command.
+          try {
+            await verifyRemoteOperator(remote.get(request.connectionRef),
+              currentOperatorAuthority(), currentTunnelFactory());
+          } catch (error) {
+            open.delete(request.worldRef);
+            ownedBackends.delete(request.worldRef);
+            try { await transport.close(); }
+            catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
+            throw error;
+          }
+        }
         if (!transport) {
           transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
             operatorAuthority: currentOperatorAuthority(), tunnelFactory: currentTunnelFactory() });

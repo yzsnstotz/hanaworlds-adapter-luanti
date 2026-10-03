@@ -34,6 +34,7 @@ async function dshHome() {
 }
 function providers(home, digest, overrides = {}) {
   let provider = 0;
+  let closes = 0;
   const services = {
     hanaworldsAuthority: { verify: async r => grant(r), verifyEngineBinding: async r => grant(r),
       verifyService: async () => ({ current: true, worldRef: remoteProfile.worldRef }) },
@@ -48,14 +49,14 @@ function providers(home, digest, overrides = {}) {
         if (command.operation === 'authorize') return { worldRef: remoteProfile.worldRef,
           current: true, engineActorName: command.actorName, worldeditAvailable: true };
         throw new Error('UNEXPECTED_ENGINE_COMMAND');
-      }, async close() {} }) },
+      }, async close() { closes++; } }) },
     hanaworldsWorldRevisionOracle: { read: async () => 'rev-1', readObjects: async () => ({}) },
     hanaworldsLuantiCapacity: { check: async () => ({ allowed: true }) },
     hanaworldsLuantiStateProfile: { read: async () => structuredClone(profile) },
     dshHomePath: (...segments) => join(home, ...segments),
     ...overrides,
   };
-  return { services, providerCalls: () => provider };
+  return { services, providerCalls: () => provider, tunnelCloses: () => closes };
 }
 const context = services => ({ webServer: { register() {} }, provide() {},
   get: name => services[name], logger: () => ({ warn() {}, error() {} }) });
@@ -228,3 +229,41 @@ test('D1: operator authority and remote tunnel factory resolve at use; absent on
   assert.equal(bound.error, null, JSON.stringify(bound.error));
   await service.close();
 });
+
+// ADAPTER-D1-REMOTE-CACHED-TRANSPORT-WITHDRAWAL (spec FAIL ceccb6de…): a cached
+// remote transport must not carry a new binding after the operator authority
+// or the tunnel factory is withdrawn.
+for (const [label, withdrawn, expectedCode] of [
+  ['operator authority', 'hanaworldsOperatorAuthority', 'CONNECTION_UNAUTHORIZED'],
+  ['remote tunnel factory', 'hanaworldsRemoteTunnelFactory', 'ADAPTER_UNAVAILABLE'],
+]) {
+  test(`D1 cached remote transport: ${label} withdrawn after first bind denies a new binding`, async () => {
+    const home = await dshHome();
+    const all = providers(home, await payloadDigest());
+    const services = { ...all.services };
+    const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+    const bind = id => service.worldAdapter.call('AuthorizeBinding', bindRequest(id,
+      remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+    const first = await bind('first');
+    assert.equal(first.error, null, JSON.stringify(first.error));
+    assert.equal(first.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    const callsBefore = all.providerCalls();
+    delete services[withdrawn];
+    const after = await bind('after-withdrawal');
+    assert.equal(after.result, null, 'no binding through the cached transport');
+    assert.equal(after.error?.code, expectedCode, JSON.stringify(after.error));
+    assert.equal(after.error?.mutationState, 'NONE');
+    assert.equal(all.providerCalls(), callsBefore, 'no engine command sent over the stale tunnel');
+    assert.equal(all.tunnelCloses(), 1, 'stale tunnel closed, not kept for reuse');
+    // The original accepted request still replays only for the same payload; a
+    // new requestId cannot reuse the stale transport again.
+    assert.equal((await bind('after-withdrawal-2')).error?.code, expectedCode);
+    // Restoring the provider opens a fresh, verified tunnel (handshake again).
+    services[withdrawn] = all.services[withdrawn];
+    const restored = await bind('restored');
+    assert.equal(restored.error, null, JSON.stringify(restored.error));
+    assert.equal(restored.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    assert.ok(all.providerCalls() > callsBefore, 'new handshake over a new tunnel');
+    await service.close();
+  });
+}
