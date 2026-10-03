@@ -27,6 +27,8 @@ ignored, isolated world data. The new v3 files were written for this origin.
 | `src/v4-port.mjs` | 0.2.0 Adapter implementation written for this origin; imports public Contracts 0.3.0 functions, no copied Contracts implementation. |
 | `src/v4-transactions.mjs` | 0.2.0 Adapter implementation derived from this origin's own `v3-transactions.mjs`; imports public Contracts 0.3.0 functions. |
 | `src/version.mjs` | 0.2.0 origin constants. |
+| `src/native-storage.mjs` | 0.2.0 origin glue (native DSH home journal location). |
+| `test/v4-native-storage.test.mjs` | 0.2.0 Adapter fixture test. |
 | `src/workshop-relay.mjs` | 0.2.0 origin glue (late-bound Workshop relay). |
 | `payload/hanaworlds_adapter/region.lua` | 0.2.0 Luanti API glue written for this origin (region search, relay/pick records, Prepare recheck). Calls engine APIs only; no WorldEdit, Luanti engine or areas source copied. The facing/search rules follow the approved HanaWorlds contract text, not third-party code. |
 | `scripts/verify-contracts-pin.mjs` | 0.2.0 origin tooling. |

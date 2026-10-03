@@ -13,6 +13,7 @@ export { V3TransactionBackend } from './v3-transactions.mjs';
 export { WorldAdapterV4, worldAdapterV4Operations } from './v4-port.mjs';
 export { V4TransactionBackend } from './v4-transactions.mjs';
 export { workshopRelay } from './workshop-relay.mjs';
+export { nativeJournalDirectory } from './native-storage.mjs';
 
 import { placementInvariants } from 'hanaworlds-contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
@@ -22,6 +23,7 @@ import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLoca
 import { DurableJournal } from './journal.mjs';
 import { V4TransactionBackend } from './v4-transactions.mjs';
 import { workshopRelay } from './workshop-relay.mjs';
+import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 export const name = ADAPTER_ID;
@@ -54,22 +56,34 @@ export function apply(ctx, config = {}) {
   };
   async function createBackend({ worldRef, transport, proof }) {
     const authority = optionalHostService(ctx, 'hanaworldsAuthority');
-    const storage = optionalHostService(ctx, 'hanaworldsProfileStorage');
     const revisionOracle = optionalHostService(ctx, 'hanaworldsWorldRevisionOracle');
     const capacity = optionalHostService(ctx, 'hanaworldsLuantiCapacity');
     const state = optionalHostService(ctx, 'hanaworldsLuantiStateProfile');
     const historyAuthority = optionalHostService(ctx, 'hanaworldsHistoryOriginAuthority');
     if (typeof authority?.verifyEngineBinding !== 'function' ||
         typeof authority?.verifyService !== 'function' ||
-        typeof storage?.adapterJournalDirectory !== 'function' ||
         typeof revisionOracle?.read !== 'function' ||
         typeof revisionOracle?.readObjects !== 'function' ||
         typeof capacity?.check !== 'function' ||
-        typeof state?.read !== 'function') return null;
+        typeof state?.read !== 'function') {
+      log('warn', `world ${worldRef}: transaction backend not created; missing host providers: ${[
+        typeof authority?.verifyEngineBinding !== 'function' && 'hanaworldsAuthority.verifyEngineBinding',
+        typeof authority?.verifyService !== 'function' && 'hanaworldsAuthority.verifyService',
+        typeof revisionOracle?.read !== 'function' && 'hanaworldsWorldRevisionOracle',
+        typeof capacity?.check !== 'function' && 'hanaworldsLuantiCapacity',
+        typeof state?.read !== 'function' && 'hanaworldsLuantiStateProfile',
+      ].filter(Boolean).join(', ')}`);
+      return null;
+    }
     const profile = await state.read(worldRef, proof);
     if (profile?.profileVersion !== 'state-profile/v2') return null;
-    const directory = await storage.adapterJournalDirectory(worldRef);
-    if (typeof directory !== 'string' || !directory) return null;
+    // Adapter-owned journal under the native DSH home (ctx dshHomePath).
+    let directory;
+    try { directory = await nativeJournalDirectory(optionalHostService(ctx, 'dshHomePath'), worldRef); }
+    catch (error) {
+      log('error', `world ${worldRef}: journal storage unavailable: ${error.reason ?? error.message}`);
+      return null;
+    }
     const journal = await DurableJournal.open(directory);
     // world-adapter/v4: the grant (authorizationRef) and, where present, the
     // request authorizationBinding identify the acting principal. The request

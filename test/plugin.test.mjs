@@ -69,6 +69,10 @@ test('DSH context can load without unprovided optional HanaWorlds services', () 
 
 test('DSH source seam assembles its own journal backend after remote loaded-byte binding and gates frame delivery', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hw-adapter-owned-'));
+  const { realpath } = await import('node:fs/promises');
+  const dshHome = await realpath(dir);
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = dshHome;
   const profile = { connectionRef: 'remote:one', worldRef: 'luanti:one',
     operatorRef: 'operator:one', serviceName: 'operator', displayName: 'Fixture',
     capabilityRevision: 'capability:one' };
@@ -98,8 +102,9 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
       verifyEngineBinding: async () => null,
       verifyService: async () => ({ current: false }),
     },
-    hanaworldsProfileStorage: { adapterJournalDirectory: async () => {
-      storageCalls++; return join(dir, 'journal'); } },
+    // Native DSH seam (dsh-app-boot provides dshHomePath(...segments)).
+    get: name => name === 'dshHomePath' ? (...segments) => { storageCalls++;
+      return join(dshHome, ...segments); } : ctx[name],
     hanaworldsWorldRevisionOracle: { read: async () => 'world:one',
       readObjects: async () => ({}) },
     hanaworldsLuantiCapacity: { check: async () => ({ allowed: true }) },
@@ -119,10 +124,14 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
     worldRef: profile.worldRef, connectionRef: profile.connectionRef,
     expectedCapabilityRevision: profile.capabilityRevision });
   assert.equal(bound.error, null);
-  assert.equal(storageCalls, 1);
+  assert.equal(storageCalls, 2, 'home root plus the joined journal path');
+  const { readdir } = await import('node:fs/promises');
+  const journals = await readdir(join(dshHome, 'data', 'hanaworlds-adapter-luanti', 'journal'));
+  assert.equal(journals.length, 1, 'one per-world journal directory under DSH_HOME/data');
   assert.equal(typeof service.presentFrame, 'function');
   await service.presentFrame({ worldRef: profile.worldRef, engineActorName: 'alice',
     authorizationRef: 'grant:one', frame: { sessionRef: 'session:one', actions: [] } });
   assert.equal(shown, 1);
   await service.close();
+  if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
 });
