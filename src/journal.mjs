@@ -47,6 +47,13 @@ export class DurableJournal {
   #serial = Promise.resolve();
 
   constructor(dir, records) { this.#dir = dir; this.#records = records; }
+  /** Records not yet settled: a prepared or in-flight transaction that may
+   * still need trusted recovery (abort or restore). */
+  get unsettledCount() {
+    let count = 0;
+    for (const record of this.#records.values()) if (!settled.has(record.status)) count++;
+    return count;
+  }
 
   static async open(dir) {
     const stat = await lstat(dir).catch(() => null);

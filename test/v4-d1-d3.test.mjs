@@ -840,7 +840,7 @@ for (const [label, override] of [
 // the connection whose transport serves that world is the exact identity and
 // its operator must still stand. A different connection may not bind the same
 // worldRef onto that transport, and an unbound collision fails closed.
-async function mixedWorld(home, { park = async () => {}, replyOverride } = {}) {
+async function mixedWorld(home, { park = async () => {}, replyOverride, stateRead } = {}) {
   const operator = { local: true, remote: true, localChecks: 0, remoteChecks: 0 };
   const tunnel = { commands: [], opens: 0 };
   const digest = await payloadDigest();
@@ -849,6 +849,7 @@ async function mixedWorld(home, { park = async () => {}, replyOverride } = {}) {
     inventory: {}, timer: null });
   const all = providers(home, digest, {
     hanaworldsAuthority: localAuthority(),
+    ...(stateRead ? { hanaworldsLuantiStateProfile: { read: stateRead } } : {}),
     hanaworldsOperatorAuthority: { verify: async input => {
       await park();
       if (input.action === 'BIND_RUNNING_WORLD') {
@@ -1026,7 +1027,7 @@ function barrier() {
   };
 }
 const SHARED = 'luanti:shared';
-async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true } = {}) {
+async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true, stateRead, grantFor } = {}) {
   const gate = barrier();
   const digest = await payloadDigest();
   const operator = { 'remote:a': true, 'remote:b': true };
@@ -1038,7 +1039,9 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
     worldRef: SHARED, operatorRef: `operator:${connectionRef}` }));
   const all = providers(home, digest, {
     hanaworldsAuthority: { ...localAuthority(),
+      ...(grantFor ? { verify: async r => grantFor(r) } : {}),
       verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef, current: serviceCurrent() }) },
+    ...(stateRead ? { hanaworldsLuantiStateProfile: { read: stateRead } } : {}),
     hanaworldsOperatorAuthority: { verify: async input => {
       await gate.park();
       return { ...input, current: operator[input.connectionRef] === true };
@@ -1330,5 +1333,121 @@ test('Concurrency audit: same-connection concurrent binds share one transport (n
     assert.equal(a2.error, null, JSON.stringify(a2.error));
     assert.equal(r.tunnels['remote:a'].opens, 1, 'one tunnel opened');
     assert.equal(r.liveTunnels(), 1);
+  } finally { await r.close(); }
+});
+
+// ADAPTER-D1-C04-LATE-BIND-FAILURE-STRANDS-EMPTY-BACKEND (spec FAIL 9cd38efd…):
+// a bind that fails after its backend was built (late capability projection
+// or response validation) must leave no owner, transport or backend unless a
+// binding was accepted or the journal holds unsettled (recoverable) records.
+const transactionRecords = async home => {
+  const dir = join(home, 'data', 'hanaworlds-adapter-luanti', 'journal');
+  let n = 0;
+  for (const key of await readdir(dir).catch(() => []))
+    n += (await readdir(join(dir, key))).filter(name => name.endsWith('.json')).length;
+  return n;
+};
+const uncloneableProfile = () => ({ ...profile, uncloneable: () => {} });
+
+test('C04 late failure (reviewer case): uncloneable state profile after backend build leaves nothing; the next connection binds', async () => {
+  const home = await dshHome();
+  let broken = true;
+  const r = await remotePair(home, { stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    const first = await r.bind('remote:a', 'late-a');
+    assert.equal(first.result, null);
+    assert.notEqual(first.error, null, 'first bind fails');
+    assert.equal(await transactionRecords(home), 0, 'no journal transaction record');
+    assert.equal(r.tunnels['remote:a'].opens, 1);
+    assert.equal(r.tunnels['remote:a'].closes, 1, 'its tunnel was closed');
+    assert.equal(r.liveTunnels(), 0, 'no orphan transport');
+    const prepared = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'late-p'));
+    assert.notEqual(prepared.error, null, 'no backend left for normal use');
+    broken = false;
+    const second = await r.bind('remote:b', 'late-b');
+    assert.equal(second.error, null, JSON.stringify(second.error));
+    assert.equal(second.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    assert.equal(r.liveTunnels(), 1);
+  } finally { await r.close(); }
+});
+
+test('C04 late failure: a binding response that fails contract validation after the backend is built leaves nothing', async () => {
+  const home = await dshHome();
+  let broken = true;
+  // Unsorted allowedActions are rejected by the response contract (no silent sort).
+  const r = await remotePair(home, { grantFor: request => broken
+    ? { ...grant(request), allowedActions: ['READBACK', 'APPLY_RECOVERABLE'] } : grant(request) });
+  try {
+    const first = await r.bind('remote:a', 'schema-a');
+    assert.equal(first.result, null);
+    assert.notEqual(first.error, null);
+    assert.equal(r.liveTunnels(), 0, 'no orphan transport');
+    assert.equal(await transactionRecords(home), 0);
+    broken = false;
+    const second = await r.bind('remote:b', 'schema-b');
+    assert.equal(second.error, null, JSON.stringify(second.error));
+    // The failed request is not replayable as a success either.
+    const replay = await r.bind('remote:a', 'schema-a');
+    assert.equal(replay.result, null);
+  } finally { await r.close(); }
+});
+
+test('C04 late failure local: a failed local bind closes its courier transport; a remote connection then binds', async () => {
+  const home = await dshHome();
+  let broken = true;
+  const world = await mixedWorld(home, { stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    const failed = await world.bindLocal('local-late');
+    assert.notEqual(failed.error, null);
+    const probe = await fetch(`${world.m.base}/poll`).then(() => 'listening', () => 'closed');
+    assert.equal(probe, 'closed', 'local transport closed, not stranded');
+    broken = false;
+    const later = await world.bindRemote('remote-after-late');
+    assert.equal(later.error, null, JSON.stringify(later.error));
+  } finally { await world.m.close(); }
+});
+
+test('C04 late failure, same connection: concurrent binds that both fail leave nothing; another connection then binds', async () => {
+  const home = await dshHome();
+  let broken = true;
+  const r = await remotePair(home, { stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    const [x, y] = await Promise.all([r.gate.run(r.bind('remote:a', 'same-late-1')),
+      r.gate.run(r.bind('remote:a', 'same-late-2'))]);
+    assert.notEqual(x.error, null); assert.notEqual(y.error, null);
+    assert.equal(r.tunnels['remote:a'].opens, 1, 'one shared tunnel');
+    assert.equal(r.liveTunnels(), 0, 'closed after the last holder failed');
+    broken = false;
+    assert.equal((await r.bind('remote:b', 'same-late-b')).error, null);
+  } finally { await r.close(); }
+});
+
+test('C04 late failure with unsettled journal records: the recovery handle is kept, normal use refused, trusted abort works', async () => {
+  const home = await dshHome();
+  // A previous process left a PREPARED record for this world.
+  const before = await remotePair(home);
+  const prepareRequest = prepareFor(SHARED, 'carried');
+  try {
+    assert.equal((await before.bind('remote:a', 'prev-bind')).error, null);
+    assert.equal((await before.call('PrepareRecoverableTransaction', prepareRequest)).error, null);
+  } finally { await before.close(); }
+  assert.equal(await transactionRecords(home), 1);
+  let broken = true;
+  const r = await remotePair(home, { stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    const failed = await r.bind('remote:a', 'late-with-records');
+    assert.notEqual(failed.error, null);
+    assert.equal(r.liveTunnels(), 1, 'transport kept as the recovery handle');
+    const prepared = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'not-bound', [7, 1, 3]));
+    assert.notEqual(prepared.error, null, 'no normal use without an accepted binding');
+    assert.equal(r.tunnels['remote:a'].commands.filter(c => c === 'snapshot').length, 0);
+    assert.equal((await r.bind('remote:b', 'other-while-recovering')).error?.code, 'CONNECTION_UNAUTHORIZED',
+      'world stays with the connection that holds the recovery handle');
+    const aborted = await r.call('AbortPreparedTransaction', abortFor(prepareRequest, 'abort-carried'));
+    assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+    assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+    broken = false;
+    const rebound = await r.bind('remote:a', 'rebind-after-recovery');
+    assert.equal(rebound.error, null, JSON.stringify(rebound.error));
   } finally { await r.close(); }
 });

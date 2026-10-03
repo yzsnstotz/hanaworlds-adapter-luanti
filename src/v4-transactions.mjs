@@ -143,6 +143,8 @@ export class V4TransactionBackend {
   }
   /** The exact recoverable state profile this backend was built with (copy). */
   get stateProfile() { return structuredClone(this.#profile); }
+  /** True while the journal holds a record that may still need recovery. */
+  get hasUnsettledRecords() { return this.#journal.unsettledCount > 0; }
   #requireSaved(record, operation) {
     const problem = savedReadbackProblem(record);
     if (problem === null) return;

@@ -5,7 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
-import { ContractError } from 'hanaworlds-contracts/v4';
+import { ContractError, validateResponse } from 'hanaworlds-contracts/v4';
 
 function fault(code) { throw new Error(code); }
 const adapterId = ADAPTER_ID;
@@ -97,18 +97,21 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     boundConnection.set(worldRef, connectionRef);
     inflight.set(worldRef, (inflight.get(worldRef) ?? 0) + 1);
   }
-  // Releases one call's hold. Only when the last holder failed and nothing
-  // usable exists for the world (no accepted binding and no backend, so no
-  // recovery handle) is the reservation dropped and the transport it left
-  // closed, so it is neither stuck nor orphaned. A close failure is attached
-  // to `error`.
+  // Releases one call's hold. When the last holder failed, the world is kept
+  // only if a binding was accepted or its journal holds unsettled records that
+  // trusted recovery may still need; a backend merely existing is not a
+  // recovery record. Otherwise the reservation, the backend built for it and
+  // the transport it left are all dropped (transport closed), so nothing is
+  // stuck or orphaned. A close failure is attached to `error`.
   async function releaseWorld(worldRef, connectionRef, error) {
     const left = (inflight.get(worldRef) ?? 1) - 1;
     if (left > 0) inflight.set(worldRef, left); else inflight.delete(worldRef);
     if (!error || left > 0 || boundConnection.get(worldRef) !== connectionRef ||
-        established.has(worldRef) || ownedBackends.has(worldRef)) return;
+        established.has(worldRef) || building.has(worldRef) ||
+        ownedBackends.get(worldRef)?.hasUnsettledRecords) return;
     const transport = open.get(worldRef);
     open.delete(worldRef);
+    ownedBackends.delete(worldRef);
     boundConnection.delete(worldRef);
     if (!transport) return;
     try { await transport.close(); }
@@ -131,6 +134,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return { transport, reused };
   }
   async function backendFor(worldRef, create) {
+    // A backend kept only as a recovery handle (no accepted binding) is not
+    // reused once its records have settled: the binding gets a fresh one.
+    const kept = ownedBackends.get(worldRef);
+    if (kept && !established.has(worldRef) && !kept.hasUnsettledRecords) ownedBackends.delete(worldRef);
     if (typeof createBackend !== 'function' || ownedBackends.has(worldRef)) return;
     await shared(building, worldRef, create,
       built => { if (built) ownedBackends.set(worldRef, built); });
@@ -166,8 +173,14 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       throw new ContractError('CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE');
     }
   }
-  function backend(request) {
-    const value = ownedBackends.get(request.worldRef) ?? transactionBackends?.get?.(request.worldRef);
+  // A world reserved by a binding that was never accepted (pending, or kept
+  // only as a recovery handle) is not usable for normal operations; trusted
+  // service recovery needs only the backend (its journal records).
+  const unaccepted = worldRef => boundConnection.has(worldRef) && !established.has(worldRef);
+  function backend(request, { recovery = false } = {}) {
+    const owned = ownedBackends.get(request.worldRef);
+    if (!recovery && unaccepted(request.worldRef)) fault('CAPABILITY_UNAVAILABLE');
+    const value = owned ?? transactionBackends?.get?.(request.worldRef);
     if (!value) fault('CAPABILITY_UNAVAILABLE');
     return value;
   }
@@ -275,6 +288,11 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         result = remote.has(request.connectionRef)
           ? await bindRemote(request, proof, descriptor)
           : await bindLocal(request, proof, descriptor);
+        // The binding is accepted only once its public response is valid (the
+        // same check the port applies next), so a late projection or contract
+        // failure is cleaned up here instead of stranding the world.
+        validateResponse('world-adapter/v4', 'AuthorizeBinding', {
+          contractVersion: 'world-adapter/v4', requestId: request.requestId, result, error: null });
       } catch (error) {
         await releaseWorld(request.worldRef, request.connectionRef, error);
         throw error;
@@ -300,7 +318,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           typeof context.capacity?.check !== 'function' ||
           typeof proof.engineActorName !== 'string') fault('TARGET_FACTS_INCOMPLETE');
       const transport = open.get(request.worldRef);
-      if (!transport) fault('WORLD_NOT_BOUND');
+      if (!transport || unaccepted(request.worldRef)) fault('WORLD_NOT_BOUND');
       const span = request.sampledBounds.max.map((n, i) =>
         BigInt(n) - BigInt(request.sampledBounds.min[i]) + 1n);
       const count = span.reduce((a, b) => a * b, 1n);
@@ -339,13 +357,13 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     ApplyCompiledTransaction(request) { return backend(request).apply(request); },
     Readback(request) { return backend(request).readback(request); },
     QueryTransaction(request) { return backend(request).query(request); },
-    RestoreTransaction(request) { return backend(request).restore(request); },
+    RestoreTransaction(request) { return backend(request, { recovery: true }).restore(request); },
     QueryPreparedTransaction(request) { return backend(request).queryPrepared(request); },
     PrepareHistoryTransaction(request) { return backend(request).prepareHistory(request); },
     QueryPreparedHistoryTransaction(request) { return backend(request).queryPreparedHistory(request); },
     ApplyHistoryTransaction(request) { return backend(request).applyHistory(request); },
-    AbortPreparedTransaction(request) { return backend(request).abortPrepared(request); },
-    AbortPreparedHistoryTransaction(request) { return backend(request).abortPreparedHistory(request); },
+    AbortPreparedTransaction(request) { return backend(request, { recovery: true }).abortPrepared(request); },
+    AbortPreparedHistoryTransaction(request) { return backend(request, { recovery: true }).abortPreparedHistory(request); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
   return { operations, open, currentAccess, close: async () => {
