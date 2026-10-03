@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { digestValue, validateType } from 'hanaworlds-contracts/v4';
+import { digestValue, validateType } from '#contracts/v4';
 import { DurableJournal } from '../src/journal.mjs';
 import { V4TransactionBackend as V3TransactionBackend } from '../src/v4-transactions.mjs';
 

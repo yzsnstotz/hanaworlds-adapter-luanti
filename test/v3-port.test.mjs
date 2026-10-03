@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import wireInputs from 'hanaworlds-contracts/v3/fixtures/wire-inputs-v3' with { type: 'json' };
-import closureOracles from 'hanaworlds-contracts/v3/fixtures/closure-oracles-v3' with { type: 'json' };
-import { ContractError } from 'hanaworlds-contracts/v3';
+import wireInputs from '#contracts/v3/fixtures/wire-inputs-v3' with { type: 'json' };
+import closureOracles from '#contracts/v3/fixtures/closure-oracles-v3' with { type: 'json' };
+import { ContractError } from '#contracts/v3';
 import { WorldAdapterV3 } from '../src/v3-port.mjs';
 
 const request = { contractVersion: 'world-adapter/v3', actorRef: 'author',

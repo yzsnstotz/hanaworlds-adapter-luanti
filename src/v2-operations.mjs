@@ -5,7 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
-import { ContractError, validateResponse } from 'hanaworlds-contracts/v4';
+import { ContractError, validateResponse } from '#contracts/v4';
 
 function fault(code) { throw new Error(code); }
 // Fixed, provider-text-free code for a rejected transport close.

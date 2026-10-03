@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "1.0.0",
+  "scope": "SOURCE/FIXTURE_ONLY",
+  "providerRuntime": "NOT_RUN",
+  "authority": "authority/current-inventory-read-user-decision.md",
+  "publicProducer": "Canvas durable named-object registry at one committed registryRevision",
+  "publicConsumer": "ObjectList.result.objects[].objectRef -> Workshop named picker -> SetObjectSelectionRequest.objectRefs -> Shell or in-world interaction-surface/v2 renderer",
+  "validCases": [
+    {
+      "id": "INVENTORY-RESTART-MISSED-EVENTS",
+      "situation": "ObjectInventoryChanged event was missed while offline; Canvas and Workshop restarted; the principal is re-authorized for the same bound world.",
+      "materializedChain": {
+        "listRequest": {
+          "contractVersion": "canvas/v4",
+          "actorRef": "fixture-actor",
+          "sessionRef": "fixture-session-reopened",
+          "requestId": "fixture-list-after-restart",
+          "authorizationRef": "fixture-current-grant",
+          "worldRef": "fixture-world",
+          "expectedRevision": null
+        },
+        "listResponse": {
+          "contractVersion": "canvas/v4",
+          "requestId": "fixture-list-after-restart",
+          "result": {
+            "worldRef": "fixture-world",
+            "registryRevision": "fixture-registry-7",
+            "objects": [
+              {
+                "worldRef": "fixture-world",
+                "objectRef": "fixture-house-ref",
+                "objectRevision": "fixture-house-3",
+                "displayName": "花屋",
+                "nameRevision": "fixture-name-2",
+                "creationSequence": 1,
+                "status": "READY"
+              },
+              {
+                "worldRef": "fixture-world",
+                "objectRef": "fixture-gate-ref",
+                "objectRevision": "fixture-gate-1",
+                "displayName": "門",
+                "nameRevision": "fixture-name-1",
+                "creationSequence": 2,
+                "status": "READY"
+              }
+            ]
+          },
+          "error": null
+        },
+        "visibleChoices": ["花屋", "門"],
+        "chosenVisibleName": "門",
+        "selectionRequest": {
+          "contractVersion": "canvas/v4",
+          "actorRef": "fixture-actor",
+          "sessionRef": "fixture-session-reopened",
+          "requestId": "fixture-select-gate",
+          "authorizationRef": "fixture-current-grant",
+          "worldRef": "fixture-world",
+          "objectRefs": ["fixture-gate-ref"],
+          "expectedSelectionRevision": "fixture-selection-1"
+        }
+      },
+      "expected": {
+        "result": "CURRENT_AUTHORIZED_COHERENT_INVENTORY",
+        "selectedObjectRefFromResponse": true,
+        "readOnlyQueryWorldWrites": 0,
+        "registryWrites": 0,
+        "eventReplayRequired": false,
+        "sessionImageRetentionRequired": false
+      }
+    }
+  ],
+  "raceCases": [
+    {
+      "id": "INVENTORY-RACE-OLD-COMMITTED-SNAPSHOT",
+      "registryRevision": "fixture-registry-7",
+      "objectRefs": ["fixture-house-ref", "fixture-gate-ref"],
+      "valid": true
+    },
+    {
+      "id": "INVENTORY-RACE-NEW-COMMITTED-SNAPSHOT",
+      "registryRevision": "fixture-registry-8",
+      "objectRefs": ["fixture-house-ref", "fixture-gate-ref", "fixture-tower-ref"],
+      "valid": true
+    },
+    {
+      "id": "INVENTORY-RACE-MIXED-REVISION",
+      "registryRevision": "fixture-registry-7",
+      "objectRefs": ["fixture-house-ref", "fixture-gate-ref", "fixture-tower-ref"],
+      "valid": false,
+      "expected": "NEVER_EXPOSE_MIXED_SNAPSHOT"
+    }
+  ],
+  "invalidCases": [
+    {
+      "id": "INVENTORY-REVOKED-BEFORE-READ",
+      "mutation": "revoke authorizationRef before registry snapshot",
+      "expected": {"code": "AUTHORIZATION_REVOKED", "result": null, "inventoryDisclosed": false, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-REVOKED-BEFORE-RELEASE",
+      "mutation": "revoke after snapshot but before response leaves Canvas",
+      "expected": {"code": "AUTHORIZATION_REVOKED", "result": null, "inventoryDisclosed": false, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-STALE-STRICT-V3-MODE",
+      "mutation": "send non-null expectedRevision fixture-registry-6 while current is fixture-registry-7",
+      "expected": {"code": "STALE_REVISION", "result": null, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-OTHER-WORLD",
+      "mutation": "grant is for another world, request fixture-world",
+      "expected": {"code": "WORLD_NOT_BOUND", "result": null, "inventoryDisclosed": false, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-MISSING-AUTH",
+      "mutation": "omit authorizationRef while expectedRevision is null",
+      "expected": {"code": "SCHEMA_INVALID", "result": null, "inventoryDisclosed": false, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-RACE-MIXED-REVISION",
+      "mutation": "return revision 7 with objects partly read from revision 8",
+      "expected": {"result": "FORBIDDEN_INCOHERENT_RESPONSE", "inventoryDisclosed": false, "writes": 0}
+    },
+    {
+      "id": "INVENTORY-CHANGED-REF-BEFORE-SELECTION",
+      "mutation": "replace ObjectList.result.objects[1].objectRef before copying it to SetObjectSelectionRequest.objectRefs[0]",
+      "materializedMutation": {
+        "producerResultPath": "ObjectList.result.objects[1].objectRef",
+        "originalProducedValue": "fixture-gate-ref",
+        "consumerRequestPath": "SetObjectSelectionRequest.objectRefs[0]",
+        "mutatedValue": "fixture-nonexistent-ref",
+        "selectionRequest": {
+          "contractVersion": "canvas/v4",
+          "actorRef": "fixture-actor",
+          "sessionRef": "fixture-session-reopened",
+          "requestId": "fixture-select-gate",
+          "authorizationRef": "fixture-current-grant",
+          "worldRef": "fixture-world",
+          "objectRefs": ["fixture-nonexistent-ref"],
+          "expectedSelectionRevision": "fixture-selection-1"
+        }
+      },
+      "expected": {
+        "code": "OBJECT_NOT_FOUND",
+        "selectionWrites": 0,
+        "registryWrites": 0,
+        "worldWrites": 0
+      }
+    }
+  ]
+}

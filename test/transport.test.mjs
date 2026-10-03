@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import chain from 'hanaworlds-contracts/v4/fixtures/placement-region-chain-v4' with { type: 'json' };
+import chain from '#contracts/v4/fixtures/placement-region-chain-v4' with { type: 'json' };
 import { provisionLocalPayload } from '../src/local-worlds.mjs';
 import { LocalEngineTransport } from '../src/local-transport.mjs';
 

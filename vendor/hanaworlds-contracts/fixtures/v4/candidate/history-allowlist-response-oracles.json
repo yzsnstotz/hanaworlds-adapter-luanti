@@ -1,0 +1,357 @@
+{
+  "format": "hanaworlds-history-response-allowlist-oracles/v1",
+  "status": "DRAFT_PROPOSAL",
+  "evidence": "SOURCE/FIXTURE only; no Luanti provider or race atomicity claim",
+  "packageIdentity": "hanaworlds-contracts@0.2.1",
+  "historyOperationDigestDomain": "HanaWorlds|contracts@0.2.0|history-operation\n",
+  "cases": [
+    {
+      "id": "PrepareHistoryTransaction-OBJECT_SCOPE_MISMATCH-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved A-history delta and frozen fixture oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "OBJECT_SCOPE_MISMATCH",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "SCOPE_DENIED"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-STALE_REVISION-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Admitted evaluator plus approved identity/revision rule; not a pre-existing frozen negative oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "STALE_REVISION",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "REVISION_CHANGED"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-UNSUPPORTED_MUTATION_SEMANTICS-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved A-history delta and frozen fixture oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "UNSUPPORTED_MUTATION_SEMANTICS",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "UNSUPPORTED_STATE_COVERAGE"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-UNDO_CONFLICT-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved A-history delta and frozen fixture oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "UNDO_CONFLICT",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "EXTERNAL_EDIT_CONFLICT"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-REDO_CONFLICT-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved A-history delta and frozen fixture oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "REDO_CONFLICT",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "EXTERNAL_EDIT_CONFLICT"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-SAVED_RESOURCE_UNAVAILABLE-VALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved A-history delta and frozen fixture oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "SAVED_RESOURCE_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_MANUAL_RECOVERY",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "RESOURCE_MISSING"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "PrepareHistoryTransaction-OBJECT_NAME_CONFLICT-INVALID",
+      "operation": "PrepareHistoryTransaction",
+      "responseType": "PrepareHistoryTransactionResponse",
+      "kind": "invalid",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "OBJECT_NAME_CONFLICT",
+          "phase": "validate",
+          "retryability": "NEVER",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "NAME_KEY_EXISTS"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "FAIL",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "QueryPreparedHistoryTransaction-OBJECT_SCOPE_MISMATCH-VALID",
+      "operation": "QueryPreparedHistoryTransaction",
+      "responseType": "QueryPreparedHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Admitted evaluator plus approved identity/revision rule; not a pre-existing frozen negative oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "OBJECT_SCOPE_MISMATCH",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "SCOPE_DENIED"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "QueryPreparedHistoryTransaction-OBJECT_NAME_CONFLICT-INVALID",
+      "operation": "QueryPreparedHistoryTransaction",
+      "responseType": "QueryPreparedHistoryTransactionResponse",
+      "kind": "invalid",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "OBJECT_NAME_CONFLICT",
+          "phase": "validate",
+          "retryability": "NEVER",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "NAME_KEY_EXISTS"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "FAIL",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "ApplyHistoryTransaction-UNDO_CONFLICT-VALID",
+      "operation": "ApplyHistoryTransaction",
+      "responseType": "ApplyHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved pre-write no-overwrite/resource rule; operation-level consequence, not a pre-existing Apply oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "UNDO_CONFLICT",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "EXTERNAL_EDIT_CONFLICT"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "ApplyHistoryTransaction-REDO_CONFLICT-VALID",
+      "operation": "ApplyHistoryTransaction",
+      "responseType": "ApplyHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved pre-write no-overwrite/resource rule; operation-level consequence, not a pre-existing Apply oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "REDO_CONFLICT",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "EXTERNAL_EDIT_CONFLICT"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "ApplyHistoryTransaction-SAVED_RESOURCE_UNAVAILABLE-VALID",
+      "operation": "ApplyHistoryTransaction",
+      "responseType": "ApplyHistoryTransactionResponse",
+      "kind": "valid",
+      "authority": "Approved pre-write no-overwrite/resource rule; operation-level consequence, not a pre-existing Apply oracle",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "SAVED_RESOURCE_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_MANUAL_RECOVERY",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "RESOURCE_MISSING"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "PASS",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    },
+    {
+      "id": "ApplyHistoryTransaction-OBJECT_NAME_CONFLICT-INVALID",
+      "operation": "ApplyHistoryTransaction",
+      "responseType": "ApplyHistoryTransactionResponse",
+      "kind": "invalid",
+      "response": {
+        "contractVersion": "world-adapter/v3",
+        "requestId": "fixture-v3-request",
+        "result": null,
+        "error": {
+          "code": "OBJECT_NAME_CONFLICT",
+          "phase": "validate",
+          "retryability": "NEVER",
+          "mutationState": "NONE",
+          "transactionRef": "fixture-undo-tx",
+          "causeCode": null,
+          "reason": "NAME_KEY_EXISTS"
+        }
+      },
+      "expected": {
+        "schema": "PASS",
+        "operationFailureCode": "FAIL",
+        "worldWrites": 0,
+        "linkedHeadWrites": 0
+      }
+    }
+  ]
+}

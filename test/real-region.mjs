@@ -23,7 +23,8 @@ if (!installed || !previous || !runtimeRoot || !worldEditDirectory)
 const v2 = await import(pathToFileURL(join(installed, 'src/index.mjs')).href);
 const v1 = await import(pathToFileURL(join(previous, 'src/index.mjs')).href);
 // The installed package's own contracts dependency (npm nests it; pnpm hoists it beside the package).
-const contractsDir = [join(installed, 'node_modules/hanaworlds-contracts'),
+const contractsDir = [join(installed, 'vendor/hanaworlds-contracts'),
+  join(installed, 'node_modules/hanaworlds-contracts'),
   join(installed, '..', 'hanaworlds-contracts')].find(dir => existsSync(join(dir, 'package.json')));
 const { digestValue } = await import(pathToFileURL(join(contractsDir, 'dist/v4/index.mjs')).href);
 

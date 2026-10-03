@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalJSON, digestValue, validateType } from 'hanaworlds-contracts/v3';
+import { canonicalJSON, digestValue, validateType } from '#contracts/v3';
 import { V2TransactionBackend } from './v2-transactions.mjs';
 
 const hash = (kind, value) => digestValue(kind, value).sha256;

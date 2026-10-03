@@ -4,12 +4,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import wireInputs from 'hanaworlds-contracts/v4/fixtures/wire-inputs-v4' with { type: 'json' };
-import closure from 'hanaworlds-contracts/v4/fixtures/closure-oracles-v4' with { type: 'json' };
-import goldens from 'hanaworlds-contracts/v4/fixtures/production-goldens' with { type: 'json' };
-import seam from 'hanaworlds-contracts/v4/fixtures/history-seam-chain-v4' with { type: 'json' };
+import wireInputs from '#contracts/v4/fixtures/wire-inputs-v4' with { type: 'json' };
+import closure from '#contracts/v4/fixtures/closure-oracles-v4' with { type: 'json' };
+import goldens from '#contracts/v4/fixtures/production-goldens' with { type: 'json' };
+import seam from '#contracts/v4/fixtures/history-seam-chain-v4' with { type: 'json' };
 import { ContractError, digestValue, contractHandshake, checkContractHandshake,
-  projectPreparedTransaction, validateType } from 'hanaworlds-contracts/v4';
+  projectPreparedTransaction, validateType } from '#contracts/v4';
 import { WorldAdapterV4, worldAdapterV4Operations } from '../src/v4-port.mjs';
 import { V4TransactionBackend } from '../src/v4-transactions.mjs';
 import { DurableJournal } from '../src/journal.mjs';

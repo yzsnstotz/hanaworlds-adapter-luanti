@@ -15,13 +15,20 @@
   "exports": {
     ".": "./src/index.mjs"
   },
+  "imports": {
+    "#contracts/v3": "./vendor/hanaworlds-contracts/dist/v3/index.mjs",
+    "#contracts/v3/fixtures/*": "./vendor/hanaworlds-contracts/fixtures/v3/candidate/*.json",
+    "#contracts/v4": "./vendor/hanaworlds-contracts/dist/v4/index.mjs",
+    "#contracts/v4/fixtures/*": "./vendor/hanaworlds-contracts/fixtures/v4/candidate/*.json"
+  },
   "files": [
     "src",
     "payload",
     "cordis.patch.yml",
     "GADGET.md",
     "LICENSE_AUDIT.md",
-    "NOTICE"
+    "NOTICE",
+    "vendor"
   ],
   "dsh": {
     "bundle": {
@@ -35,7 +42,6 @@
     "verify:contracts": "node scripts/verify-contracts-pin.mjs"
   },
   "dependencies": {
-    "canonicalize": "5.1.0",
-    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/e82735780bdfd4ea8e662781455040a6e5306121"
+    "canonicalize": "5.1.0"
   }
 }

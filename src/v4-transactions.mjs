@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   canonicalJSON, digestValue, validateType, validateRegionInspection, compareUTF16,
   comparePosition, ContractError,
-} from 'hanaworlds-contracts/v4';
+} from '#contracts/v4';
 import { V2TransactionBackend } from './v2-transactions.mjs';
 import { ADAPTER_ID } from './version.mjs';
 

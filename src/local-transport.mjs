@@ -2,7 +2,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { validateRequest } from 'hanaworlds-contracts/v4';
+import { validateRequest } from '#contracts/v4';
 import { payloadDigest } from './local-worlds.mjs';
 import { PAYLOAD_VERSION } from './version.mjs';
 

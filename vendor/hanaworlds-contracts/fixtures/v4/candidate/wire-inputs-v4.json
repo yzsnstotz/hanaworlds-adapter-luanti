@@ -1,0 +1,710 @@
+{
+  "evidence": "FIXTURE",
+  "runtime": "NOT_RUN",
+  "note": "Concrete complete requests to frozen source schemas. All identities/principals/facts/provider results are synthetic; integrity/permission predicates are oracle inputs, not existing runtime outcomes. Candidate v3 envelopes; nested legacy digest projections keep their exact v2 contractVersion and canonical bytes.",
+  "requests": [
+    {
+      "id": "WIRE-interaction-surface-v2",
+      "wire": "interaction-surface/v3",
+      "operation": "InvokeAction",
+      "request": {
+        "contractVersion": "interaction-surface/v3",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "turnRevision": "fixture-turn-1",
+        "frameRevision": "fixture-render-1",
+        "frameRef": "fixture-frame-ref",
+        "actionId": "apply-build",
+        "invocationId": "fixture-invocation",
+        "surfaceAction": {
+          "contractVersion": "interaction-surface/v2",
+          "sessionRef": "fixture-session",
+          "turnRevision": "fixture-turn-1",
+          "frameRef": "fixture-frame-ref",
+          "frameRevision": "fixture-render-1",
+          "actionId": "apply-build",
+          "orderedTargetRefs": [
+            "fixture-object"
+          ],
+          "intentDigest": "a9f3968226cae86facef81a86039d18edafa92676ce8959c300f58a7a045d820",
+          "operationDigest": "aaf0abe71840cd1d75f5365e9adc47127b30ce8ddc236c7eee30b40a525ddb18",
+          "analysisDigest": "a0fdc63adae37c47c51d9a1fb580b7c082737a784203af04e60bf4de56ebc98c",
+          "decisionRevision": null
+        },
+        "surfaceActionDigest": "3288f36b2dde85ba430dd300a2f012f3dd8533d584a1e4442c688620c4a200a6",
+        "input": {
+          "kind": "DECISION",
+          "decision": "CONTINUE"
+        }
+      },
+      "requestType": "InvokeActionRequest"
+    },
+    {
+      "id": "WIRE-world-adapter-v4",
+      "wire": "world-adapter/v4",
+      "operation": "ApplyCompiledTransaction",
+      "request": {
+        "contractVersion": "world-adapter/v4",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "worldRef": "fixture-world",
+        "transactionId": "fixture-tx",
+        "expectedWorldRevision": "fixture-world-1",
+        "preparedTransaction": {
+          "payload": {
+            "contractVersion": "canvas/v2",
+            "transactionId": "fixture-tx",
+            "operationDigest": "aaf0abe71840cd1d75f5365e9adc47127b30ce8ddc236c7eee30b40a525ddb18",
+            "authorizationBindingDigest": "1760776f12017708bba3560ce59c5b925ce60c0344152730259c5c2448adfd43",
+            "expectedWorldRevision": "fixture-world-1",
+            "expectedObjectRevisions": {
+              "fixture-object": "fixture-object-1"
+            },
+            "beforeImageDigest": "23b748bb69539ab7df5b2de876c11b186ed10f77282212042d77b213d58dd8ff"
+          },
+          "transactionPayloadDigest": "0867547d8f8107221c91f817706d9f9b6703e29eb9dd82ec1d8f9f4e0f85e8db",
+          "beforeImageDigest": "23b748bb69539ab7df5b2de876c11b186ed10f77282212042d77b213d58dd8ff",
+          "guarantee": "RECOVERABLE_VERIFIED",
+          "stateProfile": {
+            "profileVersion": "state-profile/v2",
+            "nodeFields": [
+              "nodeName",
+              "param1",
+              "param2"
+            ],
+            "metadataMode": "exact",
+            "inventoryMode": "exact",
+            "timerMode": "exact",
+            "derivedLightMode": "recompute-with-readback"
+          },
+          "protectedPositions": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "adapterExecutionRevision": "fixture-adapter-1"
+        },
+        "operations": {
+          "contractVersion": "operations/v2",
+          "buildDigest": "be9fcac45d1c3184f45b4f20e1c7e5c35f968419eab51ee3f293b0c2a5f2a83f",
+          "compilerRevision": "fixture-compiler-1",
+          "compilationConfigDigest": "3aac3ca12872e96ff265e12e960894d453bc4dfb28dbae7c7006115ce05286e4",
+          "worldRef": "fixture-world",
+          "frameDigest": "37bea3e2a107ca97d46931c4666b12806ca1fca121d48e28abdbdcb74fce7e8e",
+          "catalogueDigest": "138a7dbbb956ad4507e16a2b3d06363309ec80febff000c0e8f6976392a0f991",
+          "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+          "effects": [
+            {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "nodeName": "fixture:stone",
+              "param2": 0
+            }
+          ]
+        },
+        "operationDigest": "aaf0abe71840cd1d75f5365e9adc47127b30ce8ddc236c7eee30b40a525ddb18",
+        "authorizationBinding": {
+          "contractVersion": "world-adapter/v2",
+          "authorizerRef": "FIXTURE-engine-verifier",
+          "actorRef": "fixture-actor",
+          "grantEpoch": "fixture-grant-1",
+          "bindingRef": "fixture-binding",
+          "worldRef": "fixture-world",
+          "sessionRef": "fixture-session",
+          "turnRevision": "fixture-turn-1",
+          "intentDigest": "a9f3968226cae86facef81a86039d18edafa92676ce8959c300f58a7a045d820",
+          "surfaceActionDigest": "3288f36b2dde85ba430dd300a2f012f3dd8533d584a1e4442c688620c4a200a6",
+          "allowedAction": "APPLY_RECOVERABLE",
+          "transactionId": "fixture-tx",
+          "operationDigest": "aaf0abe71840cd1d75f5365e9adc47127b30ce8ddc236c7eee30b40a525ddb18",
+          "worldRevision": "fixture-world-1",
+          "selectionRevision": "fixture-selection-1",
+          "analysisDigest": "a0fdc63adae37c47c51d9a1fb580b7c082737a784203af04e60bf4de56ebc98c",
+          "decisionRevision": null
+        },
+        "guarantee": "RECOVERABLE_VERIFIED"
+      },
+      "requestType": "ApplyCompiledTransactionRequest"
+    },
+    {
+      "id": "WIRE-canvas-v3",
+      "wire": "canvas/v4",
+      "operation": "NameObject",
+      "request": {
+        "contractVersion": "canvas/v4",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "worldRef": "fixture-world",
+        "objectRef": "fixture-object",
+        "name": "　塔 A　",
+        "expectedRevision": "fixture-object-1",
+        "expectedRegistryRevision": "fixture-registry-1"
+      },
+      "requestType": "NameObjectRequest"
+    },
+    {
+      "id": "WIRE-session-v2",
+      "wire": "session/v2",
+      "operation": "AppendMultimodalTurn",
+      "request": {
+        "contractVersion": "session/v2",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "turnRef": "fixture-turn",
+        "expectedRevision": "fixture-session-1",
+        "text": "积木塔",
+        "media": [
+          {
+            "attachmentRef": "fixture-attachment",
+            "storedBytesDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "projectionVariantId": null,
+            "projectionBytesDigest": null,
+            "mediaType": "image/png",
+            "bytes": 67,
+            "width": 1,
+            "height": 1
+          }
+        ],
+        "controls": {
+          "purpose": "fixture structure",
+          "dimensions": null,
+          "entrancePortalRefs": [],
+          "styleText": null
+        }
+      },
+      "requestType": "AppendMultimodalTurnRequest"
+    },
+    {
+      "id": "WIRE-painter-v2",
+      "wire": "painter/v3",
+      "operation": "CreateBuildPlan",
+      "request": {
+        "contractVersion": "painter/v3",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "worldRef": "fixture-world",
+        "turnRevision": "fixture-turn-1",
+        "painterId": "picture-blocks",
+        "invocationId": "fixture-invocation",
+        "intent": {
+          "contractVersion": "session/v2",
+          "referenceBriefDigest": "07aae1956694b41a548315db0a4fdfd15ca87a0dd71ca89a97b916936a352f81",
+          "confirmedIntent": {
+            "kind": "BUILD_STRUCTURE",
+            "text": "积木塔",
+            "purpose": "fixture structure",
+            "dimensions": null,
+            "entrancePortalRefs": [],
+            "confirmedTurnRevision": "fixture-turn-1"
+          },
+          "intendedWorldRef": "fixture-world",
+          "orderedTargetRefs": [
+            "fixture-object"
+          ]
+        },
+        "intentDigest": "a9f3968226cae86facef81a86039d18edafa92676ce8959c300f58a7a045d820",
+        "referenceBrief": {
+          "contractVersion": "ReferenceBrief/v2",
+          "sessionRef": "fixture-session",
+          "turnRevision": "fixture-turn-1",
+          "briefRevision": "fixture-brief-1",
+          "media": [
+            {
+              "attachmentRef": "fixture-attachment",
+              "storedBytesDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+              "projectionVariantId": null,
+              "projectionBytesDigest": null,
+              "mediaType": "image/png",
+              "bytes": 67,
+              "width": 1,
+              "height": 1
+            }
+          ],
+          "text": "积木塔",
+          "controls": {
+            "purpose": "fixture structure",
+            "dimensions": null,
+            "entrancePortalRefs": [],
+            "styleText": null
+          }
+        },
+        "referenceBriefDigest": "07aae1956694b41a548315db0a4fdfd15ca87a0dd71ca89a97b916936a352f81",
+        "catalogue": {
+          "profileVersion": "catalogue/v2",
+          "engineProfile": "fixture-luanti-static",
+          "gameId": "fixture-game",
+          "gameRevision": "fixture-game-1",
+          "modRevisions": {
+            "fixture-mod": "fixture-mod-1"
+          },
+          "nodes": {
+            "air": {
+              "walkable": false,
+              "collisionBoxes": [],
+              "liquidType": "none",
+              "damagePerSecond": 0,
+              "lightSource": 0,
+              "param2Type": "none",
+              "allowedParam2": [
+                0
+              ],
+              "hasCallbacks": false,
+              "hasPersistentState": false,
+              "definitionRevision": "fixture-def-1",
+              "unknownFields": []
+            },
+            "fixture:stone": {
+              "walkable": true,
+              "collisionBoxes": [
+                [
+                  -0.5,
+                  -0.5,
+                  -0.5,
+                  0.5,
+                  0.5,
+                  0.5
+                ]
+              ],
+              "liquidType": "none",
+              "damagePerSecond": 0,
+              "lightSource": 0,
+              "param2Type": "none",
+              "allowedParam2": [
+                0
+              ],
+              "hasCallbacks": false,
+              "hasPersistentState": false,
+              "definitionRevision": "fixture-def-1",
+              "unknownFields": []
+            }
+          }
+        },
+        "targetFacts": {
+          "profileVersion": "target-facts/v2",
+          "source": "INSPECTED",
+          "worldRef": "fixture-world",
+          "objectRef": "fixture-object",
+          "worldRevision": "fixture-world-1",
+          "objectRevision": "fixture-object-1",
+          "buildDigest": null,
+          "planRevision": null,
+          "catalogueDigest": "138a7dbbb956ad4507e16a2b3d06363309ec80febff000c0e8f6976392a0f991",
+          "frameDigest": "37bea3e2a107ca97d46931c4666b12806ca1fca121d48e28abdbdcb74fce7e8e",
+          "sampledBounds": {
+            "min": [
+              0,
+              0,
+              0
+            ],
+            "max": [
+              0,
+              0,
+              0
+            ]
+          },
+          "coverageDigest": "d31a60961e227232088604cf283aa5b162047645eb52e87237191ad7b13c2a46",
+          "occupiedCells": [],
+          "knownEmptyCells": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "unknownCells": [],
+          "portals": [],
+          "usableVolume": {
+            "emptyCellCount": 1,
+            "physicalVolume": 1,
+            "standingArea": 1,
+            "unit": "node"
+          }
+        },
+        "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+        "safetyProfile": {
+          "profileVersion": "safety-profile/v2",
+          "avatarDimensions": {
+            "width": 1,
+            "height": 2,
+            "depth": 1,
+            "unit": "node"
+          },
+          "connectivity": 6,
+          "requireProtectedClearance": true,
+          "requireBodyClearance": true,
+          "requireEntranceConnectivity": false,
+          "hazardPolicy": {
+            "forbidLiquid": true,
+            "maximumDamagePerSecond": 0
+          },
+          "optionalLightRule": null
+        },
+        "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+        "regionInspection": null
+      },
+      "requestType": "CreateBuildPlanRequest"
+    },
+    {
+      "id": "WIRE-ReferenceBrief-v2",
+      "wire": "ReferenceBrief/v2",
+      "operation": "BindReferenceBrief",
+      "request": {
+        "contractVersion": "ReferenceBrief/v2",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "turnRevision": "fixture-turn-1",
+        "brief": {
+          "contractVersion": "ReferenceBrief/v2",
+          "sessionRef": "fixture-session",
+          "turnRevision": "fixture-turn-1",
+          "briefRevision": "fixture-brief-1",
+          "media": [
+            {
+              "attachmentRef": "fixture-attachment",
+              "storedBytesDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+              "projectionVariantId": null,
+              "projectionBytesDigest": null,
+              "mediaType": "image/png",
+              "bytes": 67,
+              "width": 1,
+              "height": 1
+            }
+          ],
+          "text": "积木塔",
+          "controls": {
+            "purpose": "fixture structure",
+            "dimensions": null,
+            "entrancePortalRefs": [],
+            "styleText": null
+          }
+        },
+        "briefDigest": "07aae1956694b41a548315db0a4fdfd15ca87a0dd71ca89a97b916936a352f81"
+      },
+      "requestType": "BindReferenceBriefRequest"
+    },
+    {
+      "id": "WIRE-BUILD-V2",
+      "wire": "BUILD/V2",
+      "operation": "BuildDocument",
+      "request": {
+        "contractVersion": "BUILD/V2",
+        "actorRef": "fixture-actor",
+        "sessionRef": "fixture-session",
+        "requestId": "fixture-request",
+        "authorizationRef": "FIXTURE-verified-context",
+        "worldRef": "fixture-world",
+        "build": {
+          "contractVersion": "BUILD/V2",
+          "documentId": "fixture-document",
+          "coordinateFrame": {
+            "profileVersion": "frame/v2",
+            "frameId": "fixture-frame",
+            "origin": [
+              0,
+              0,
+              0
+            ],
+            "axes": [
+              "+X",
+              "+Y",
+              "+Z"
+            ],
+            "handedness": "left",
+            "gridUnit": {
+              "name": "node",
+              "metersPerGridUnit": 1
+            },
+            "transformRevision": "fixture-transform-1"
+          },
+          "catalogueDigest": "138a7dbbb956ad4507e16a2b3d06363309ec80febff000c0e8f6976392a0f991",
+          "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+          "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+          "materials": {
+            "stone": {
+              "nodeName": "fixture:stone",
+              "param2": 0
+            }
+          },
+          "operations": [
+            {
+              "op": "set_box",
+              "min": [
+                0,
+                0,
+                0
+              ],
+              "max": [
+                0,
+                0,
+                0
+              ],
+              "materialRef": "stone"
+            }
+          ],
+          "declaredBounds": {
+            "min": [
+              0,
+              0,
+              0
+            ],
+            "max": [
+              0,
+              0,
+              0
+            ]
+          },
+          "witnesses": [
+            {
+              "witnessId": "w1",
+              "predicate": "COVERAGE",
+              "finalEffectsDigest": "d01a1e4e9c954d1e87e4985adf92fb00ac21e43be571e5a386dab65f52624592",
+              "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+              "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+              "facts": {
+                "evidence": {
+                  "providerRef": "FIXTURE-adapter",
+                  "sourceRevision": "fixture-evidence-1",
+                  "worldRef": "fixture-world",
+                  "worldRevision": "fixture-world-1"
+                },
+                "positions": [
+                  [
+                    0,
+                    0,
+                    0
+                  ]
+                ]
+              }
+            },
+            {
+              "witnessId": "w2",
+              "predicate": "PROTECTION",
+              "finalEffectsDigest": "d01a1e4e9c954d1e87e4985adf92fb00ac21e43be571e5a386dab65f52624592",
+              "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+              "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+              "facts": {
+                "evidence": {
+                  "providerRef": "FIXTURE-adapter",
+                  "sourceRevision": "fixture-evidence-1",
+                  "worldRef": "fixture-world",
+                  "worldRevision": "fixture-world-1"
+                },
+                "positions": [
+                  [
+                    0,
+                    0,
+                    0
+                  ]
+                ],
+                "protectedPositions": []
+              }
+            },
+            {
+              "witnessId": "w3",
+              "predicate": "BODY_CLEARANCE",
+              "finalEffectsDigest": "d01a1e4e9c954d1e87e4985adf92fb00ac21e43be571e5a386dab65f52624592",
+              "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+              "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+              "facts": {
+                "evidence": {
+                  "providerRef": "FIXTURE-adapter",
+                  "sourceRevision": "fixture-evidence-1",
+                  "worldRef": "fixture-world",
+                  "worldRevision": "fixture-world-1"
+                },
+                "positions": [
+                  [
+                    0,
+                    0,
+                    0
+                  ]
+                ],
+                "bodyOccupiedPositions": [
+                  [
+                    5,
+                    5,
+                    5
+                  ]
+                ],
+                "avatarDimensions": {
+                  "width": 1,
+                  "height": 2,
+                  "depth": 1,
+                  "unit": "node"
+                }
+              }
+            },
+            {
+              "witnessId": "w4",
+              "predicate": "HAZARD",
+              "finalEffectsDigest": "d01a1e4e9c954d1e87e4985adf92fb00ac21e43be571e5a386dab65f52624592",
+              "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+              "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+              "facts": {
+                "evidence": {
+                  "providerRef": "FIXTURE-adapter",
+                  "sourceRevision": "fixture-evidence-1",
+                  "worldRef": "fixture-world",
+                  "worldRevision": "fixture-world-1"
+                },
+                "positions": [
+                  [
+                    0,
+                    0,
+                    0
+                  ]
+                ],
+                "forbidLiquid": true,
+                "maximumDamagePerSecond": 0
+              }
+            }
+          ]
+        },
+        "buildDigest": "be9fcac45d1c3184f45b4f20e1c7e5c35f968419eab51ee3f293b0c2a5f2a83f",
+        "catalogue": {
+          "profileVersion": "catalogue/v2",
+          "engineProfile": "fixture-luanti-static",
+          "gameId": "fixture-game",
+          "gameRevision": "fixture-game-1",
+          "modRevisions": {
+            "fixture-mod": "fixture-mod-1"
+          },
+          "nodes": {
+            "air": {
+              "walkable": false,
+              "collisionBoxes": [],
+              "liquidType": "none",
+              "damagePerSecond": 0,
+              "lightSource": 0,
+              "param2Type": "none",
+              "allowedParam2": [
+                0
+              ],
+              "hasCallbacks": false,
+              "hasPersistentState": false,
+              "definitionRevision": "fixture-def-1",
+              "unknownFields": []
+            },
+            "fixture:stone": {
+              "walkable": true,
+              "collisionBoxes": [
+                [
+                  -0.5,
+                  -0.5,
+                  -0.5,
+                  0.5,
+                  0.5,
+                  0.5
+                ]
+              ],
+              "liquidType": "none",
+              "damagePerSecond": 0,
+              "lightSource": 0,
+              "param2Type": "none",
+              "allowedParam2": [
+                0
+              ],
+              "hasCallbacks": false,
+              "hasPersistentState": false,
+              "definitionRevision": "fixture-def-1",
+              "unknownFields": []
+            }
+          }
+        },
+        "catalogueDigest": "138a7dbbb956ad4507e16a2b3d06363309ec80febff000c0e8f6976392a0f991",
+        "targetFacts": {
+          "profileVersion": "target-facts/v2",
+          "source": "INSPECTED",
+          "worldRef": "fixture-world",
+          "objectRef": "fixture-object",
+          "worldRevision": "fixture-world-1",
+          "objectRevision": "fixture-object-1",
+          "buildDigest": null,
+          "planRevision": null,
+          "catalogueDigest": "138a7dbbb956ad4507e16a2b3d06363309ec80febff000c0e8f6976392a0f991",
+          "frameDigest": "37bea3e2a107ca97d46931c4666b12806ca1fca121d48e28abdbdcb74fce7e8e",
+          "sampledBounds": {
+            "min": [
+              0,
+              0,
+              0
+            ],
+            "max": [
+              0,
+              0,
+              0
+            ]
+          },
+          "coverageDigest": "d31a60961e227232088604cf283aa5b162047645eb52e87237191ad7b13c2a46",
+          "occupiedCells": [],
+          "knownEmptyCells": [
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "unknownCells": [],
+          "portals": [],
+          "usableVolume": {
+            "emptyCellCount": 1,
+            "physicalVolume": 1,
+            "standingArea": 1,
+            "unit": "node"
+          }
+        },
+        "targetFactsDigest": "1b0043429fcd679fbe098b1aa8ef5e58c6ea52ed15ab2bc2a92d7f02867f793e",
+        "safetyProfile": {
+          "profileVersion": "safety-profile/v2",
+          "avatarDimensions": {
+            "width": 1,
+            "height": 2,
+            "depth": 1,
+            "unit": "node"
+          },
+          "connectivity": 6,
+          "requireProtectedClearance": true,
+          "requireBodyClearance": true,
+          "requireEntranceConnectivity": false,
+          "hazardPolicy": {
+            "forbidLiquid": true,
+            "maximumDamagePerSecond": 0
+          },
+          "optionalLightRule": null
+        },
+        "safetyProfileDigest": "a4802e4cd0c2c372cd54919c6d1341502b695626a2605fa6e62ff6654c52262b",
+        "compilationConfig": {
+          "profileVersion": "compilation-config/v2",
+          "backendProfileId": "fixture-static",
+          "worldeditRevision": "62ffafe3bcb386600c431ef3840d91c3c8f85639",
+          "nodeWriteSemantics": "explicit-nodeName-param2-static-v2",
+          "overlapRule": "last-writer-wins",
+          "effectOrder": "numeric-x-y-z",
+          "compressionRule": "exact-final-effects-only"
+        },
+        "compilationConfigDigest": "3aac3ca12872e96ff265e12e960894d453bc4dfb28dbae7c7006115ce05286e4",
+        "compilerRevision": "fixture-compiler-1"
+      },
+      "requestType": "BuildDocumentRequest"
+    }
+  ],
+  "rc6Note": "rc.6 added the required nullable field CreateBuildPlanRequest.regionInspection=null to WIRE-painter-v2 (INSPECTED facts); no other byte change.",
+  "rc7Note": "rc.7 renamed the WIRE-interaction-surface-v2 and WIRE-painter-v2 envelopes to interaction-surface/v3 and painter/v3 (ids kept as labels); nested ActionProjection keeps interaction-surface/v2."
+}

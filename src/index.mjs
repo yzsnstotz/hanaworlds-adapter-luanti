@@ -15,7 +15,7 @@ export { V4TransactionBackend } from './v4-transactions.mjs';
 export { workshopRelay } from './workshop-relay.mjs';
 export { nativeJournalDirectory } from './native-storage.mjs';
 
-import { placementInvariants } from 'hanaworlds-contracts/v4';
+import { placementInvariants } from '#contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
 import { WorldAdapterV4 } from './v4-port.mjs';
 import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLocalPayload }

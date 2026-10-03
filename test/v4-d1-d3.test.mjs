@@ -11,7 +11,7 @@ import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { digestValue, projectPreparedTransaction, validateType } from 'hanaworlds-contracts/v4';
+import { digestValue, projectPreparedTransaction, validateType } from '#contracts/v4';
 import { apply } from '../src/index.mjs';
 import { payloadDigest, provisionLocalPayload } from '../src/local-worlds.mjs';
 

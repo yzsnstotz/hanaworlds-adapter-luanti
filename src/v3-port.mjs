@@ -1,7 +1,7 @@
 import {
   admitRequest, validateRequest, validateBoundRequest, validateResponse,
   canonicalJSON, ContractError, operationContracts,
-} from 'hanaworlds-contracts/v3';
+} from '#contracts/v3';
 
 const VERSION = 'world-adapter/v3';
 const canvasOnly = new Set(['PrepareRecoverableTransaction', 'ApplyCompiledTransaction',
