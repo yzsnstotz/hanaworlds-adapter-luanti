@@ -16,11 +16,27 @@ const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 export function createLuantiOperations({ roots = [], remoteProfiles = [], operatorAuthority,
   remoteTunnelFactory, serviceName, onAction, transactionBackends,
   createBackend, inspectContext } = {}) {
+  // Host services may be passed as values or as resolvers called at each use,
+  // so a provider registered after the Adapter is seen and a withdrawn one fails.
+  const currentOperatorAuthority = () =>
+    typeof operatorAuthority === 'function' ? operatorAuthority() : operatorAuthority;
+  const currentTunnelFactory = () =>
+    typeof remoteTunnelFactory === 'function' ? remoteTunnelFactory() : remoteTunnelFactory;
   const rootPaths = roots.map(root => resolve(root));
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
   const ownedBackends = new Map();
+  // PublicCapabilities facts for a bound world: the recoverable guarantee and
+  // state profile are advertised only when a recoverable backend actually
+  // exists for that world; otherwise they stay unavailable (null).
+  function recoveryFacts(worldRef) {
+    const built = ownedBackends.get(worldRef) ?? transactionBackends?.get?.(worldRef);
+    const stateProfile = built?.stateProfile;
+    return stateProfile?.profileVersion === 'state-profile/v2'
+      ? { recoveryGuarantee: 'RECOVERABLE_VERIFIED', stateProfile }
+      : { recoveryGuarantee: null, stateProfile: null };
+  }
   function backend(request) {
     const value = ownedBackends.get(request.worldRef) ?? transactionBackends?.get?.(request.worldRef);
     if (!value) fault('CAPABILITY_UNAVAILABLE');
@@ -71,7 +87,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         let transport = open.get(request.worldRef);
         if (!transport) {
           transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
-            operatorAuthority, tunnelFactory: remoteTunnelFactory });
+            operatorAuthority: currentOperatorAuthority(), tunnelFactory: currentTunnelFactory() });
           open.set(request.worldRef, transport);
         }
         await transport.verifyPrincipal(proof.engineActorName);
@@ -90,11 +106,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
             bindingRef: proof.bindingRef, worldRef: request.worldRef,
             grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions },
           capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
-            worldRef: request.worldRef, engineBounds: null, limits: [], recoveryGuarantee: null,
-            stateProfile: null, regionProtectionWriters: [], sessionDeleteSupported: false,
-            imageMediaTypes: [], model: null } };
+            worldRef: request.worldRef, engineBounds: null, limits: [],
+            ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
+            sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
       }
       const world = local.get(request.connectionRef);
+      const operatorAuthority = currentOperatorAuthority();
       if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
           typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
           typeof operatorAuthority?.verify !== 'function') fault('CONNECTION_UNAUTHORIZED');
@@ -126,9 +143,9 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       return { connectionRef: request.connectionRef, worldRef: request.worldRef,
         payloadVersion: loaded.payloadVersion, payloadDigest: loaded.payloadDigest, binding,
         capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
-          worldRef: request.worldRef, engineBounds: null, limits: [], recoveryGuarantee: null,
-          stateProfile: null, regionProtectionWriters: [], sessionDeleteSupported: false,
-          imageMediaTypes: [], model: null } };
+          worldRef: request.worldRef, engineBounds: null, limits: [],
+          ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
+          sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
     },
     async InspectWorld(request, proof) {
       // The frozen request has no objectRef. Only the authenticated consumer can

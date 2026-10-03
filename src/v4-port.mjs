@@ -73,10 +73,17 @@ function publicFailure(thrown, operation, request, postwriteValidation = false,
  */
 export class WorldAdapterV4 {
   #authority;
+  #resolveAuthority;
   #operations;
   #replay = new Map();
-  constructor({ authority, operations } = {}) {
+  /**
+   * `resolveAuthority`, when given, is called on every request so a host
+   * authority registered after the Adapter is used and a withdrawn one denies;
+   * there is no fallback to `authority` in that case.
+   */
+  constructor({ authority, resolveAuthority, operations } = {}) {
     this.#authority = authority;
+    this.#resolveAuthority = typeof resolveAuthority === 'function' ? resolveAuthority : null;
     this.#operations = operations;
   }
   /** ContractHandshake advertised before any request (contracts@0.3.0 set). */
@@ -90,11 +97,12 @@ export class WorldAdapterV4 {
     let resultProduced = false;
     let handlerEntered = false;
     try {
+      const authority = this.#resolveAuthority ? this.#resolveAuthority() : this.#authority;
       const verifier = ['RestoreTransaction', 'AbortPreparedTransaction',
         'AbortPreparedHistoryTransaction'].includes(operation)
-        ? this.#authority?.verifyService : this.#authority?.verify;
+        ? authority?.verifyService : authority?.verify;
       if (typeof verifier !== 'function') fault('PERMISSION_DENIED', 'authorize', 'IDENTITY_UNVERIFIED');
-      const proof = await verifier.call(this.#authority, request, operation);
+      const proof = await verifier.call(authority, request, operation);
       if (proof?.current !== true || proof.sessionRef !== request.sessionRef ||
           proof.authorizationRef !== request.authorizationRef ||
           (request.worldRef !== undefined && proof.worldRef !== request.worldRef))

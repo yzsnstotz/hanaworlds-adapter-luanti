@@ -141,6 +141,8 @@ export class V4TransactionBackend {
           restoredReadbackDigest: hash('readback', readbackView(before)) };
       } });
   }
+  /** The exact recoverable state profile this backend was built with (copy). */
+  get stateProfile() { return structuredClone(this.#profile); }
   #requireSaved(record, operation) {
     const problem = savedReadbackProblem(record);
     if (problem === null) return;

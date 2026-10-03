@@ -1,0 +1,230 @@
+// CP-S1-02 same-origin repair D1 + D3 (freeze c9087425…).
+// D3 ADAPTER-D3-RECOVERY-CAPABILITY-NULL: AuthorizeBinding advertises
+//   RECOVERABLE_VERIFIED and the backend's exact StateProfile only when a
+//   recoverable backend exists for the bound world.
+// D1 ADAPTER-D1-STARTUP-CAPTURED-AUTHORITY: host authority, operator authority
+//   and remote tunnel factory are resolved at call time.
+// Host providers here are FIXTURE stand-ins; they prove no product readiness.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:net';
+import { mkdtemp, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { validateType } from 'hanaworlds-contracts/v4';
+import { apply } from '../src/index.mjs';
+import { payloadDigest, provisionLocalPayload } from '../src/local-worlds.mjs';
+
+const profile = Object.freeze({ profileVersion: 'state-profile/v2',
+  nodeFields: ['nodeName', 'param1', 'param2'], metadataMode: 'exact', inventoryMode: 'exact',
+  timerMode: 'exact', derivedLightMode: 'recompute-with-readback' });
+const remoteProfile = { connectionRef: 'remote:one', worldRef: 'luanti:one',
+  operatorRef: 'operator:one', serviceName: 'operator', displayName: 'Fixture',
+  capabilityRevision: 'capability:one' };
+const grant = request => ({ current: true, sessionRef: request.sessionRef,
+  authorizationRef: request.authorizationRef, worldRef: request.worldRef, actorRef: 'actor:alice',
+  authorRef: 'actor:alice', engineActorName: 'alice', authorizerRef: 'operator:one',
+  bindingRef: 'binding:one', grantEpoch: 'epoch:one', domainOwner: 'hanaworlds-canvas',
+  allowedActions: ['APPLY_RECOVERABLE', 'HISTORY', 'INSPECT', 'READBACK'] });
+
+async function dshHome() {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'hw-d1d3-home-')));
+  process.env.DSH_HOME = home;
+  return home;
+}
+function providers(home, digest, overrides = {}) {
+  let provider = 0;
+  const services = {
+    hanaworldsAuthority: { verify: async r => grant(r), verifyEngineBinding: async r => grant(r),
+      verifyService: async () => ({ current: true, worldRef: remoteProfile.worldRef }) },
+    hanaworldsOperatorAuthority: { verify: async input => ({ current: true, ...remoteProfile, ...input,
+      worldStopped: true }) },
+    hanaworldsRemoteTunnelFactory: { open: async () => ({
+      async request(command) {
+        provider++;
+        if (command.operation === 'handshake') return { worldRef: remoteProfile.worldRef,
+          payloadVersion: '0.2.0', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadMatches: true, worldeditAvailable: true };
+        if (command.operation === 'authorize') return { worldRef: remoteProfile.worldRef,
+          current: true, engineActorName: command.actorName, worldeditAvailable: true };
+        throw new Error('UNEXPECTED_ENGINE_COMMAND');
+      }, async close() {} }) },
+    hanaworldsWorldRevisionOracle: { read: async () => 'rev-1', readObjects: async () => ({}) },
+    hanaworldsLuantiCapacity: { check: async () => ({ allowed: true }) },
+    hanaworldsLuantiStateProfile: { read: async () => structuredClone(profile) },
+    dshHomePath: (...segments) => join(home, ...segments),
+    ...overrides,
+  };
+  return { services, providerCalls: () => provider };
+}
+const context = services => ({ webServer: { register() {} }, provide() {},
+  get: name => services[name], logger: () => ({ warn() {}, error() {} }) });
+const bindRequest = (requestId, connectionRef, worldRef, capabilityRevision) => ({
+  contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one', requestId,
+  authorizationRef: 'grant:one', worldRef, connectionRef, expectedCapabilityRevision: capabilityRevision });
+const journals = async home =>
+  readdir(join(home, 'data', 'hanaworlds-adapter-luanti', 'journal')).catch(() => []);
+
+test('D3 remote: a built recoverable backend is advertised with its exact state profile', async () => {
+  const home = await dshHome();
+  const { services } = providers(home, await payloadDigest());
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  const bound = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-1',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.equal(bound.error, null, JSON.stringify(bound.error));
+  assert.equal((await journals(home)).length, 1, 'recoverable backend built');
+  assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+  assert.deepEqual(bound.result.capabilities.stateProfile, profile);
+  validateType('PublicCapabilities', bound.result.capabilities);
+  assert.equal(bound.result.capabilities.engineBounds, null, 'no attributed source yet');
+  assert.deepEqual(bound.result.capabilities.limits, []);
+  // A repeated binding for the same world reports the same backend's profile.
+  const again = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-2',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.deepEqual(again.result.capabilities.stateProfile, profile);
+  await service.close();
+});
+
+for (const [label, override] of [
+  ['state profile provider missing', { hanaworldsLuantiStateProfile: undefined }],
+  ['state profile not state-profile/v2', { hanaworldsLuantiStateProfile: { read: async () => ({ ...profile, profileVersion: 'state-profile/v1' }) } }],
+  ['revision oracle missing', { hanaworldsWorldRevisionOracle: undefined }],
+  ['capacity missing', { hanaworldsLuantiCapacity: undefined }],
+  ['engine binding verifier missing', { hanaworldsAuthority: { verify: async r => grant(r) } }],
+  ['journal storage unavailable', { dshHomePath: undefined }],
+]) {
+  test(`D3 negative (${label}): no backend, no guarantee, no profile, nothing written`, async () => {
+    const home = await dshHome();
+    const { services } = providers(home, await payloadDigest(), override);
+    const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+    const bound = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-neg',
+      remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+    assert.equal(bound.error, null, JSON.stringify(bound.error));
+    assert.equal(bound.result.capabilities.recoveryGuarantee, null);
+    assert.equal(bound.result.capabilities.stateProfile, null);
+    assert.deepEqual(await readdir(home), [], 'no journal or other write under DSH_HOME');
+    await service.close();
+  });
+}
+
+async function freePort() {
+  const probe = createServer();
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  return port;
+}
+async function localBind(services, home) {
+  const root = await mkdtemp(join(tmpdir(), 'hw-d1d3-local-'));
+  const world = join(root, 'world');
+  await mkdir(world);
+  await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
+  const port = await freePort();
+  const manifest = await provisionLocalPayload(world, { transportPort: port,
+    operatorAuthority: { verify: async input => ({ current: true, ...input, worldStopped: true }) } });
+  const config = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
+  const service = apply(context(services), { localWorldRoots: [root], serviceName: 'operator' });
+  const base = `http://127.0.0.1:${port}`;
+  const headers = { Authorization: `Bearer ${config.token}` };
+  const serve = async reply => {
+    for (let i = 0; i < 300; i++) {
+      const polled = await (await fetch(`${base}/poll`, { headers }).catch(() => null))?.json().catch(() => null);
+      if (polled?.command) {
+        await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+          id: polled.command.id, worldRef: manifest.worldRef, result: reply(polled.command), error: null }) });
+        return polled.command.operation;
+      }
+      await new Promise(done => setTimeout(done, 10));
+    }
+    throw new Error('no courier command within 3s');
+  };
+  const inventory = await service.worldAdapter.call('DiscoverConnections', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: 'discover', authorizationRef: 'grant:one', adapterId: 'hanaworlds-adapter-luanti' });
+  const row = inventory.result.connections[0];
+  const pending = service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-local',
+    row.connectionRef, manifest.worldRef, row.capabilityRevision));
+  const digest = await payloadDigest();
+  return { service, pending, serve, manifest, digest };
+}
+
+test('D3 local: a built recoverable backend is advertised with its exact state profile', async () => {
+  const home = await dshHome();
+  const { services } = providers(home, await payloadDigest());
+  const { service, pending, serve, manifest, digest } = await localBind(services, home);
+  try {
+    await serve(() => ({ payloadVersion: '0.2.0', worldRef: manifest.worldRef, loadedSourceDigest: digest,
+      manifestDigest: digest, payloadMatches: true, worldeditAvailable: true }));
+    await serve(c => ({ current: true, engineActorName: c.actorName, worldRef: manifest.worldRef,
+      worldeditAvailable: true }));
+    const bound = await pending;
+    assert.equal(bound.error, null, JSON.stringify(bound.error));
+    assert.equal((await journals(home)).length, 1);
+    assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    assert.deepEqual(bound.result.capabilities.stateProfile, profile);
+  } finally { await service.close(); }
+});
+
+test('D3 local negative: without a state profile provider nothing is advertised or written', async () => {
+  const home = await dshHome();
+  const { services } = providers(home, await payloadDigest(), { hanaworldsLuantiStateProfile: undefined });
+  const { service, pending, serve, manifest, digest } = await localBind(services, home);
+  try {
+    await serve(() => ({ payloadVersion: '0.2.0', worldRef: manifest.worldRef, loadedSourceDigest: digest,
+      manifestDigest: digest, payloadMatches: true, worldeditAvailable: true }));
+    await serve(c => ({ current: true, engineActorName: c.actorName, worldRef: manifest.worldRef,
+      worldeditAvailable: true }));
+    const bound = await pending;
+    assert.equal(bound.result.capabilities.recoveryGuarantee, null);
+    assert.equal(bound.result.capabilities.stateProfile, null);
+    assert.deepEqual(await readdir(home), []);
+  } finally { await service.close(); }
+});
+
+test('D1: host authority provided after Adapter start is used; withdrawn denies before replay and provider work', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest());
+  const services = {};
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  const discover = requestId => service.worldAdapter.call('DiscoverConnections', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one', requestId,
+    authorizationRef: 'grant:one', adapterId: 'hanaworlds-adapter-luanti' });
+  assert.equal((await discover('before')).error.reason, 'IDENTITY_UNVERIFIED', 'absent at start: denied');
+  Object.assign(services, all.services); // registered after the Adapter
+  const late = await discover('late');
+  assert.equal(late.error, null, JSON.stringify(late.error));
+  const bound = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-late',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.equal(bound.error, null, 'late operator authority and tunnel factory are used');
+  assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+  const callsBefore = all.providerCalls();
+  delete services.hanaworldsAuthority; // withdrawn
+  const replay = await discover('late'); // same requestId and payload as the accepted call
+  assert.equal(replay.error?.code, 'PERMISSION_DENIED', 'no cached grant or replay reuse');
+  assert.equal(replay.error?.reason, 'IDENTITY_UNVERIFIED');
+  const rebind = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind-after-withdraw',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.equal(rebind.error?.code, 'PERMISSION_DENIED');
+  assert.equal(all.providerCalls(), callsBefore, 'no engine/provider work after withdrawal');
+  await service.close();
+});
+
+test('D1: operator authority and remote tunnel factory resolve at use; absent ones fail closed', async () => {
+  const home = await dshHome();
+  const all = providers(home, await payloadDigest());
+  const services = { ...all.services };
+  delete services.hanaworldsOperatorAuthority;
+  delete services.hanaworldsRemoteTunnelFactory;
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  const bind = id => service.worldAdapter.call('AuthorizeBinding', bindRequest(id,
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.equal((await bind('no-operator')).error?.code, 'CONNECTION_UNAUTHORIZED');
+  services.hanaworldsOperatorAuthority = all.services.hanaworldsOperatorAuthority;
+  const noTunnel = await bind('no-tunnel');
+  assert.notEqual(noTunnel.error, null, 'absent tunnel factory fails closed');
+  assert.deepEqual(await readdir(home), [], 'nothing written while refused');
+  services.hanaworldsRemoteTunnelFactory = all.services.hanaworldsRemoteTunnelFactory;
+  const bound = await bind('late-both');
+  assert.equal(bound.error, null, JSON.stringify(bound.error));
+  await service.close();
+});

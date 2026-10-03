@@ -123,14 +123,16 @@ export function apply(ctx, config = {}) {
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
-    operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'),
-    remoteTunnelFactory: optionalHostService(ctx, 'hanaworldsRemoteTunnelFactory'),
+    // Resolved at each use, never captured at apply (install order varies).
+    operatorAuthority: () => optionalHostService(ctx, 'hanaworldsOperatorAuthority'),
+    remoteTunnelFactory: () => optionalHostService(ctx, 'hanaworldsRemoteTunnelFactory'),
     createBackend,
     inspectContext: () => optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
     serviceName: config.serviceName,
     onAction: workshopRelay(() => optionalHostService(ctx, 'hanaworldsWorkshop'), log),
   });
-  const worldAdapter = new WorldAdapterV4({ authority: optionalHostService(ctx, 'hanaworldsAuthority'),
+  const worldAdapter = new WorldAdapterV4({
+    resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
     operations: runtime.operations });
   const service = {
     worldAdapter,
