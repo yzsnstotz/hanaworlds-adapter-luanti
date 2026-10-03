@@ -11,7 +11,7 @@ import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { digestValue, validateType } from 'hanaworlds-contracts/v4';
+import { digestValue, projectPreparedTransaction, validateType } from 'hanaworlds-contracts/v4';
 import { apply } from '../src/index.mjs';
 import { payloadDigest, provisionLocalPayload } from '../src/local-worlds.mjs';
 
@@ -256,7 +256,9 @@ for (const [label, withdrawn, expectedCode] of [
     assert.equal(after.error?.code, expectedCode, JSON.stringify(after.error));
     assert.equal(after.error?.mutationState, 'NONE');
     assert.equal(all.providerCalls(), callsBefore, 'no engine command sent over the stale tunnel');
-    assert.equal(all.tunnelCloses(), 1, 'stale tunnel closed, not kept for reuse');
+    // The tunnel is retained only as the trusted recovery handle; every
+    // non-recovery call is refused before reaching it.
+    assert.equal(all.tunnelCloses(), 0, 'tunnel kept for trusted recovery');
     // ADAPTER-D1-REMOTE-REPLAY-AFTER-OPERATOR-WITHDRAWAL: revocation precedes
     // replay, so the original accepted request is not replayed either.
     const replay = await bind('first');
@@ -264,12 +266,12 @@ for (const [label, withdrawn, expectedCode] of [
     assert.equal(replay.error?.code, expectedCode, JSON.stringify(replay.error));
     assert.equal((await bind('after-withdrawal-2')).error?.code, expectedCode);
     assert.equal(all.providerCalls(), callsBefore, 'still no engine command');
-    // Restoring the provider opens a fresh, verified tunnel (handshake again).
+    // Restoring the provider makes binding available again over a verified tunnel.
     services[withdrawn] = all.services[withdrawn];
     const restored = await bind('restored');
     assert.equal(restored.error, null, JSON.stringify(restored.error));
     assert.equal(restored.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
-    assert.ok(all.providerCalls() > callsBefore, 'new handshake over a new tunnel');
+    assert.ok(all.providerCalls() > callsBefore, 'engine principal re-verified for the new binding');
     await service.close();
   });
 }
@@ -328,3 +330,107 @@ for (const [label, withdrawn, expected] of [
     await service.close();
   });
 }
+
+// ADAPTER-D1-REVOCATION-DROPS-TRUSTED-RECOVERY-BACKEND (spec FAIL cb518a95…):
+// after operator withdrawal, normal effects stay denied but trusted service
+// recovery (CONTRACT_RULES §5:65) still reaches the retained backend, journal
+// and tunnel for an already prepared or post-write pending transaction.
+function recoveryWorld(home, digest) {
+  const engine = { commands: [], serviceCurrent: true };
+  const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
+    inventory: {}, timer: null });
+  const all = providers(home, digest, {
+    hanaworldsAuthority: { verify: async r => grant(r), verifyEngineBinding: async r => grant(r),
+      verifyService: async request => ({ current: engine.serviceCurrent, worldRef: remoteProfile.worldRef,
+        sessionRef: request?.sessionRef, authorizationRef: request?.authorizationRef,
+        domainOwner: 'hanaworlds-canvas' }) },
+    hanaworldsRemoteTunnelFactory: { open: async () => ({
+      async request(command) {
+        engine.commands.push(command.operation);
+        const worldRef = remoteProfile.worldRef;
+        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+          loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
+        if (command.operation === 'authorize') return { worldRef, current: true,
+          engineActorName: command.actorName, worldeditAvailable: true };
+        if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
+        if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
+          coveredPositions: command.positions, records: command.positions.map(air) } };
+        if (command.operation === 'apply') return { worldRef, error: 'APPLY_FAILED' };
+        if (command.operation === 'restore') return { worldRef, result: { status: 'ROLLED_BACK' } };
+        throw new Error(`UNEXPECTED_ENGINE_COMMAND ${command.operation}`);
+      }, async close() {} }) },
+  });
+  return { ...all, engine };
+}
+async function boundWithPrepared(home, requestId) {
+  const world = recoveryWorld(home, await payloadDigest());
+  const services = { ...world.services };
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  const bound = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+  assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+  const request = remotePrepare(requestId);
+  const prepared = await service.worldAdapter.call('PrepareRecoverableTransaction', request);
+  assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+  return { world, services, service, request, prepared: prepared.result };
+}
+
+test('D1 trusted recovery: a prepared transaction can still be aborted by the service after operator withdrawal', async () => {
+  const home = await dshHome();
+  const { world, services, service, request, prepared } = await boundWithPrepared(home, 'pa');
+  delete services.hanaworldsOperatorAuthority;
+  // Normal effects and binding replay stay denied.
+  assert.equal((await service.worldAdapter.call('PrepareRecoverableTransaction', remotePrepare('pb'))).error?.code,
+    'AUTHORIZATION_REVOKED');
+  assert.equal((await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision))).error?.code,
+  'CONNECTION_UNAUTHORIZED');
+  const aborted = await service.worldAdapter.call('AbortPreparedTransaction', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: 'abort-pa', authorizationRef: 'grant:one', worldRef: remoteProfile.worldRef,
+    transactionId: request.transactionId, operationDigest: request.operationDigest,
+    authorizationBindingDigest: digestValue('authorization-binding', request.authorizationBinding).sha256,
+    serviceRecoveryRef: 'service:recovery' });
+  assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+  assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+  assert.equal(aborted.result.mutationState, 'NONE');
+  assert.equal(prepared.payload.transactionId, request.transactionId);
+  await service.close();
+});
+
+test('D1 trusted recovery: a post-write pending transaction can still be restored by the service after operator withdrawal', async () => {
+  const home = await dshHome();
+  const { world, services, service, request, prepared } = await boundWithPrepared(home, 'pr');
+  // Apply crosses the write barrier; the engine fails and no service proof is
+  // available at that moment, so the transaction stays RECOVERY_PENDING.
+  world.engine.serviceCurrent = false;
+  const applied = await service.worldAdapter.call('ApplyCompiledTransaction', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: 'apply-pr', authorizationRef: 'grant:one', worldRef: remoteProfile.worldRef,
+    transactionId: request.transactionId, expectedWorldRevision: 'rev-1',
+    preparedTransaction: projectPreparedTransaction(prepared), operations: request.operations,
+    operationDigest: request.operationDigest, authorizationBinding: request.authorizationBinding,
+    guarantee: 'RECOVERABLE_VERIFIED' });
+  assert.equal(applied.error?.code, 'RECOVERY_PENDING', JSON.stringify(applied.error));
+  assert.equal(applied.error?.mutationState, 'UNKNOWN');
+  world.engine.serviceCurrent = true;
+  delete services.hanaworldsOperatorAuthority;
+  const commandsBefore = world.engine.commands.length;
+  assert.equal((await service.worldAdapter.call('Readback', { contractVersion: 'world-adapter/v4',
+    actorRef: 'canvas', sessionRef: 'session:one', requestId: 'readback-pr', authorizationRef: 'grant:one',
+    worldRef: remoteProfile.worldRef, transactionId: request.transactionId,
+    coveredPositions: prepared.protectedPositions, stateProfile: prepared.stateProfile })).error?.code,
+  'AUTHORIZATION_REVOKED', 'normal readback stays denied');
+  assert.equal(world.engine.commands.length, commandsBefore, 'denied call sent nothing');
+  const restored = await service.worldAdapter.call('RestoreTransaction', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: 'restore-pr', authorizationRef: 'grant:one', worldRef: remoteProfile.worldRef,
+    originTransactionId: request.transactionId, operationDigest: request.operationDigest,
+    beforeImageDigest: prepared.beforeImageDigest, restoreAttemptIdentity: 'f'.repeat(64),
+    guarantee: 'RECOVERABLE_VERIFIED' });
+  assert.equal(restored.error, null, JSON.stringify(restored.error));
+  assert.equal(restored.result.status, 'ROLLED_BACK');
+  assert.ok(world.engine.commands.slice(commandsBefore).includes('restore'),
+    'restore ran over the retained tunnel');
+  await service.close();
+});

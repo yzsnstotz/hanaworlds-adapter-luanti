@@ -38,17 +38,11 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       ? { recoveryGuarantee: 'RECOVERABLE_VERIFIED', stateProfile }
       : { recoveryGuarantee: null, stateProfile: null };
   }
-  // On operator or tunnel withdrawal the stale tunnel and its backend object
-  // are dropped (the journal stays on disk); a close failure is attached to
-  // the refusal, never hidden.
-  async function dropRemote(worldRef, error) {
-    const transport = open.get(worldRef);
-    open.delete(worldRef);
-    ownedBackends.delete(worldRef);
-    if (!transport) return;
-    try { await transport.close(); }
-    catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
-  }
+  // On operator or tunnel withdrawal nothing is torn down: the backend, its
+  // journal and the existing tunnel stay as the recovery handle, because
+  // trusted service recovery after revocation must still reach them
+  // (CONTRACT_RULES §5). Every non-recovery call is refused by currentAccess
+  // on each request, so the retained tunnel carries only recovery.
   const remoteWorlds = new Map(remoteProfiles.map(profile => [profile.worldRef, profile]));
   // Trusted service recovery after revocation (CONTRACT_RULES §5) is not
   // gated by the operator authority.
@@ -58,7 +52,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
    * Current remote access, checked by the port after the grant and before the
    * replay cache (revocation precedes replay) and before any remote effect:
    * a remote world's operator authority and tunnel factory must still stand.
-   * Local worlds and trusted service recovery are unaffected.
+   * Local worlds and trusted service recovery are unaffected, and the
+   * recovery handle (backend, journal, tunnel) is retained.
    */
   async function currentAccess(operation, request) {
     if (serviceRecovery.has(operation)) return;
@@ -68,7 +63,6 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     try {
       await verifyRemoteOperator(profile, currentOperatorAuthority(), currentTunnelFactory());
     } catch (error) {
-      await dropRemote(profile.worldRef, error);
       // AuthorizeBinding keeps its existing binding codes.
       if (operation === 'AuthorizeBinding') throw error;
       if (error.message === 'CONNECTION_UNAUTHORIZED')
@@ -128,10 +122,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           // A cached tunnel carries a new binding only while the current
           // operator authority and tunnel factory still stand (also checked
           // by currentAccess before replay).
-          try {
-            await verifyRemoteOperator(remote.get(request.connectionRef),
-              currentOperatorAuthority(), currentTunnelFactory());
-          } catch (error) { await dropRemote(request.worldRef, error); throw error; }
+          await verifyRemoteOperator(remote.get(request.connectionRef),
+            currentOperatorAuthority(), currentTunnelFactory());
         }
         if (!transport) {
           transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
