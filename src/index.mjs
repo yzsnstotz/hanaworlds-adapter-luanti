@@ -88,8 +88,17 @@ export function apply(ctx, config = {}) {
     // world-adapter/v4: the grant (authorizationRef) and, where present, the
     // request authorizationBinding identify the acting principal. The request
     // actorRef is Canvas' service principal and is never trusted here.
+    // The named hanaworldsAuthority is resolved at each check, never the
+    // facade present when this backend was built: a withdrawn or replaced
+    // provider must not keep authorizing, nor block a late legitimate one.
+    const currentAuthority = () => optionalHostService(ctx, 'hanaworldsAuthority');
     const verifyBinding = async (request, action, { requireOnline = true } = {}) => {
-      const binding = await authority.verifyEngineBinding(request, action);
+      const current = currentAuthority();
+      if (typeof current?.verifyEngineBinding !== 'function') {
+        log('warn', `${action}: hanaworldsAuthority.verifyEngineBinding not provided`);
+        return null;
+      }
+      const binding = await current.verifyEngineBinding(request, action);
       if (!binding?.current || binding.worldRef !== worldRef ||
           typeof binding.actorRef !== 'string' || !binding.actorRef ||
           (request.authorizationBinding !== undefined &&
@@ -112,8 +121,13 @@ export function apply(ctx, config = {}) {
     const inspection = optionalHostService(ctx, 'hanaworldsLuantiInspectionContext');
     const catalogue = typeof inspection?.readCatalogue === 'function'
       ? { read: (ref, binding) => inspection.readCatalogue(ref, binding) } : null;
-    const verifyService = async recovery => {
-      const verified = await authority.verifyService(recovery, 'RestoreTransaction');
+    const verifyService = async (recovery, operation = 'RestoreTransaction') => {
+      const current = currentAuthority();
+      if (typeof current?.verifyService !== 'function') {
+        log('warn', `${operation}: hanaworldsAuthority.verifyService not provided`);
+        return false;
+      }
+      const verified = await current.verifyService(recovery, operation);
       return verified?.current === true && verified.worldRef === worldRef;
     };
     return new V4TransactionBackend({ journal, engine: transport, revisionOracle,

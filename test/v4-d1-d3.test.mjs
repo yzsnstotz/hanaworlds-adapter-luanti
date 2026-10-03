@@ -434,3 +434,96 @@ test('D1 trusted recovery: a post-write pending transaction can still be restore
     'restore ran over the retained tunnel');
   await service.close();
 });
+
+// ADAPTER-D1-BACKEND-CAPTURED-AUTHORITY-FACADE (spec FAIL 6d2df63d…): the
+// backend's engine-binding and service-recovery checks must consult the
+// current named hanaworldsAuthority at each call, not the facade captured
+// when the backend was built.
+const abortRequest = (request, requestId) => ({
+  contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+  requestId, authorizationRef: 'grant:one', worldRef: remoteProfile.worldRef,
+  transactionId: request.transactionId, operationDigest: request.operationDigest,
+  authorizationBindingDigest: digestValue('authorization-binding', request.authorizationBinding).sha256,
+  serviceRecoveryRef: 'service:recovery' });
+const serviceProof = request => ({ current: true, worldRef: remoteProfile.worldRef,
+  sessionRef: request?.sessionRef, authorizationRef: request?.authorizationRef,
+  domainOwner: 'hanaworlds-canvas' });
+
+test('D1 backend authority: a replacement whose engine binding is not current stops Prepare before any engine effect', async () => {
+  const home = await dshHome();
+  const world = recoveryWorld(home, await payloadDigest());
+  const services = { ...world.services };
+  const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+  assert.equal((await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind',
+    remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision)))
+    .result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+  let oldEngineChecks = 0, newEngineChecks = 0;
+  services.hanaworldsAuthority.verifyEngineBinding = async r => { oldEngineChecks++; return grant(r); };
+  services.hanaworldsAuthority = { verify: async r => grant(r),
+    verifyEngineBinding: async r => { newEngineChecks++; return { ...grant(r), current: false }; },
+    verifyService: async r => serviceProof(r) };
+  const commandsBefore = world.engine.commands.length;
+  const request = remotePrepare('rb');
+  const prepared = await service.worldAdapter.call('PrepareRecoverableTransaction', request);
+  assert.equal(prepared.result, null);
+  assert.ok(prepared.error, 'denied');
+  assert.equal(prepared.error.mutationState, 'NONE');
+  assert.equal(newEngineChecks, 1, 'current facade consulted');
+  assert.equal(oldEngineChecks, 0, 'captured facade not used');
+  assert.deepEqual(world.engine.commands.slice(commandsBefore), [], 'no prepare_check/snapshot');
+  const [key] = await journals(home);
+  const records = await readdir(join(home, 'data', 'hanaworlds-adapter-luanti', 'journal', key));
+  assert.deepEqual(records, ['world-binding'], 'no PREPARED record');
+  await service.close();
+});
+
+test('D1 backend authority: a late legitimate service authority can abort a transaction the old one would deny', async () => {
+  const home = await dshHome();
+  const { services, service, request } = await boundWithPrepared(home, 'ra');
+  let oldServiceCalls = 0;
+  services.hanaworldsAuthority.verifyService = async () => { oldServiceCalls++; return { current: false }; };
+  services.hanaworldsAuthority = { verify: async r => grant(r),
+    verifyEngineBinding: async r => grant(r), verifyService: async r => serviceProof(r) };
+  const aborted = await service.worldAdapter.call('AbortPreparedTransaction', abortRequest(request, 'abort-ra'));
+  assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+  assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+  assert.equal(oldServiceCalls, 0, 'captured facade not used');
+  await service.close();
+});
+
+test('D1 backend authority: a replacement that denies service recovery is honoured over the old allowing facade', async () => {
+  const home = await dshHome();
+  const { world, services, service, request } = await boundWithPrepared(home, 'rd');
+  let calls = 0;
+  services.hanaworldsAuthority = { verify: async r => grant(r),
+    verifyEngineBinding: async r => grant(r),
+    // The port's own check (first call) passes; the backend's (second) denies.
+    verifyService: async r => (++calls === 1 ? serviceProof(r) : { current: false }) };
+  const commandsBefore = world.engine.commands.length;
+  const aborted = await service.worldAdapter.call('AbortPreparedTransaction', abortRequest(request, 'abort-rd'));
+  assert.equal(aborted.error?.code, 'PERMISSION_DENIED', JSON.stringify(aborted.error));
+  assert.equal(calls, 2, 'backend consulted the current facade');
+  assert.deepEqual(world.engine.commands.slice(commandsBefore), []);
+  await service.close();
+});
+
+test('D1 backend authority: an absent or incomplete current authority fails closed in the backend', async () => {
+  const home = await dshHome();
+  const { world, services, service, request } = await boundWithPrepared(home, 'rx');
+  // Outer verify present, backend methods absent.
+  services.hanaworldsAuthority = { verify: async r => grant(r),
+    verifyService: async r => serviceProof(r) };
+  const commandsBefore = world.engine.commands.length;
+  const prepared = await service.worldAdapter.call('PrepareRecoverableTransaction', remotePrepare('rx2'));
+  assert.equal(prepared.result, null);
+  assert.equal(prepared.error?.mutationState, 'NONE');
+  services.hanaworldsAuthority = { verify: async r => grant(r),
+    verifyEngineBinding: async r => grant(r) };
+  const aborted = await service.worldAdapter.call('AbortPreparedTransaction', abortRequest(request, 'abort-rx'));
+  assert.equal(aborted.error?.code, 'PERMISSION_DENIED', 'no verifyService: port denies');
+  delete services.hanaworldsAuthority;
+  const abortedAgain = await service.worldAdapter.call('AbortPreparedTransaction', abortRequest(request, 'abort-rx3'));
+  assert.equal(abortedAgain.error?.code, 'PERMISSION_DENIED');
+  assert.deepEqual(world.engine.commands.slice(commandsBefore), []);
+  await service.close();
+});
