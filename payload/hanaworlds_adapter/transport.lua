@@ -14,7 +14,7 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region)
+  region, grants)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -52,6 +52,19 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   local function run(command)
     if type(command) ~= 'table' or type(command.id) ~= 'string'
       or command.worldRef ~= manifest.worldRef then return nil, 'CONNECTION_UNAUTHORIZED' end
+    -- The paired host cannot nominate an unconsenting player. Every new
+    -- player command rechecks the engine's current grant, session and privs.
+    local player_operation = {
+      present_frame = true, snapshot = true, inspect = true,
+      prepare_check = true, inspect_region = true, apply = true,
+      apply_state = true, readback = true,
+    }
+    if player_operation[command.operation] then
+      local proof = grants and grants:verify(command.actorName or command.engineActorName)
+      if not proof or proof.current ~= true or proof.worldRef ~= manifest.worldRef then
+        return nil, 'PERMISSION_DENIED'
+      end
+    end
     current = command
     local result, code
     if command.operation == 'present_frame' then
@@ -61,11 +74,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       result = capabilities()
     elseif command.operation == 'authorize' then
       local name = command.actorName
-      local player = type(name) == 'string' and minetest.get_player_by_name(name) or nil
-      local can_build = player and minetest.check_player_privs(name, {interact = true,
-        worldedit = true})
-      result = {current = can_build == true, engineActorName = name,
-        worldRef = manifest.worldRef, worldeditAvailable = capabilities().worldeditAvailable}
+      local proof = grants and grants:verify(name) or {current = false}
+      result = {current = proof.current == true, engineActorName = name,
+        worldRef = manifest.worldRef, scope = proof.scope, grantRef = proof.grantRef,
+        worldeditAvailable = capabilities().worldeditAvailable}
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.actorName, command.positions)
       if result then result.worldRef = manifest.worldRef end

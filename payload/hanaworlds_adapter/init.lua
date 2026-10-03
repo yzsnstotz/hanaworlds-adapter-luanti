@@ -1,4 +1,4 @@
--- HanaWorlds Adapter payload 0.2.0. World mutation is unavailable until a
+-- HanaWorlds Adapter payload 0.2.1. World mutation is unavailable until a
 -- verified Canvas binding and the recoverable transport are installed.
 local frames = {}
 local pending_picks = {}
@@ -8,6 +8,7 @@ local http = minetest.request_http_api and minetest.request_http_api() or nil
 local modpath = minetest.get_modpath(minetest.get_current_modname())
 local engine_module = dofile(modpath .. '/engine.lua')
 local region_module = dofile(modpath .. '/region.lua')
+local grant_module = dofile(modpath .. '/grant.lua')
 local transport_ready = false
 local SURFACE = 'interaction-surface/v3'
 local RENDERED_KINDS = {TEXT = true, NAME = true, DECISION = true, SELECT_OBJECTS = true,
@@ -26,7 +27,8 @@ end
 local function loaded_digest()
   if not minetest.sha256 then return nil end
   local parts = {}
-  for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua'}) do
+  for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua',
+    'grant.lua'}) do
     local content = read_own_file(name)
     if not content then return nil end
     parts[#parts + 1] = name .. '\n' .. content
@@ -38,6 +40,8 @@ local source_digest = loaded_digest()
 local manifest_bytes = read_own_file('payload.json')
 local manifest = manifest_bytes and minetest.parse_json and minetest.parse_json(manifest_bytes) or nil
 local identity_verified = source_digest and manifest and source_digest == manifest.payloadDigest
+local world_name = minetest.get_worldpath():match('[^/\\]+$') or 'Unknown world'
+local grants = identity_verified and grant_module.new(minetest, manifest.worldRef, world_name) or nil
 
 -- Relay and pick records live in this world's own Adapter engine state.
 local region = region_module.new({core = minetest,
@@ -50,7 +54,7 @@ function adapter.capabilities()
     and type(editing.set) == 'function'
     and type(editing.set_param2) == 'function'
   return {
-    payloadVersion = '0.2.0',
+    payloadVersion = '0.2.1',
     worldeditAvailable = available,
     worldeditVersion = available and editing.version_string or nil,
     recoverableTransportAvailable = transport_ready,
@@ -336,11 +340,11 @@ if identity_verified then
         minetest.log('action', 'HanaWorlds local courier paired on loopback')
       end
       transport_ready = ready
-    end, adapter.capabilities, adapter.present_frame, region)
+    end, adapter.capabilities, adapter.present_frame, region, grants)
   if action_transport then adapter.invoke_action = action_transport.invoke_action end
 end
 local capability = adapter.capabilities()
-minetest.log('action', 'HanaWorlds Adapter payload 0.2.0 loaded; WorldEdit API ' ..
+minetest.log('action', 'HanaWorlds Adapter payload 0.2.1 loaded; WorldEdit API ' ..
   (capability.worldeditAvailable and ('available ' .. capability.worldeditVersion) or 'missing') ..
   '; payload identity ' .. (capability.payloadMatches and 'matched' or 'unverified') ..
   '; engine state ' .. (capability.engineStateReadable and 'readable' or 'UNREADABLE') ..

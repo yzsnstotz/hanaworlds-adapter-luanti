@@ -210,9 +210,12 @@ export class LocalEngineTransport {
     if (typeof engineActorName !== 'string' || !engineActorName) throw fault('CONNECTION_UNAUTHORIZED');
     const result = await this.#dispatch('authorize', { actorName: engineActorName });
     if (result?.current !== true || result.engineActorName !== engineActorName ||
-        result.worldRef !== this.#worldRef || result.worldeditAvailable !== true)
+        result.worldRef !== this.#worldRef || result.worldeditAvailable !== true ||
+        result.scope !== 'WORLD_BUILD_WITH_ENGINE_PROTECTION' ||
+        typeof result.grantRef !== 'string' || !result.grantRef)
       throw fault('CONNECTION_UNAUTHORIZED');
-    return { current: true, engineActorName, worldRef: this.#worldRef };
+    return { current: true, engineActorName, worldRef: this.#worldRef,
+      scope: result.scope, grantRef: result.grantRef };
   }
 
   async presentFrame(engineActorName, frame) {

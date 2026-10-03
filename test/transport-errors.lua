@@ -40,7 +40,8 @@ end}
 local started = transport.start(http, {new = function() return {} end}, manifest,
   function() return {worldRef = 'luanti:test', port = 30000, token = token} end,
   function() end, function() return {} end,
-  function(name, frame) return name == 'alice' and type(frame) == 'table' end, region)
+  function(name, frame) return name == 'alice' and type(frame) == 'table' end, region,
+  {verify = function() return {current = true, worldRef = 'luanti:test'} end})
 assert(started, 'courier started')
 -- Run the scheduled poll and the follow-up callbacks once.
 local fn = table.remove(scheduled, 1); fn()

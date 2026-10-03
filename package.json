@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -37,9 +37,9 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/journal.mjs && node --check src/bridge.mjs && node --check src/local-transport.mjs && node --check src/remote-transport.mjs && node --check src/v2-port.mjs && node --check src/v2-operations.mjs && node --check src/v2-transactions.mjs && node --check src/v3-port.mjs && node --check src/v3-transactions.mjs && node --check src/v4-port.mjs && node --check src/v4-transactions.mjs && node --check src/workshop-relay.mjs && node --check src/native-storage.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua",
+    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/journal.mjs && node --check src/bridge.mjs && node --check src/local-transport.mjs && node --check src/remote-transport.mjs && node --check src/v2-port.mjs && node --check src/v2-operations.mjs && node --check src/v2-transactions.mjs && node --check src/v3-port.mjs && node --check src/v3-transactions.mjs && node --check src/v4-port.mjs && node --check src/v4-transactions.mjs && node --check src/workshop-relay.mjs && node --check src/native-storage.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/grant.lua",
     "test": "node --test test/*.test.mjs",
-    "test:lua": "lua test/payload.lua && lua test/engine.lua && lua test/engine-history.lua && lua test/transport-errors.lua",
+    "test:lua": "lua test/payload.lua && lua test/engine.lua && lua test/engine-history.lua && lua test/transport-errors.lua && lua test/grant.lua && lua test/transport-grant.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
     "verify:contracts:source": "node scripts/verify-contracts-pin.mjs --source",
     "vendor:contracts": "node scripts/vendor-contracts.mjs"

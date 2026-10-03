@@ -21,7 +21,8 @@ local function encode(v)
 end
 local prefix = 'payload/hanaworlds_adapter/'
 local source_bytes = ''
-for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua'}) do
+for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua',
+  'grant.lua'}) do
   local f = assert(io.open(prefix .. name, 'rb'))
   source_bytes = source_bytes .. name .. '\n' .. f:read('*a')
   f:close()
@@ -55,9 +56,13 @@ _G.minetest = {
     end
   end,
   get_current_modname = function() return 'hanaworlds_adapter' end,
-  get_mod_storage = function() return {get_string = function() return '' end} end,
+  get_mod_storage = function() return {get_string = function() return '' end,
+    set_string = function() end} end,
   register_chatcommand = function(name, spec) commands[name] = spec end,
   register_on_player_receive_fields = function(cb) callbacks[#callbacks + 1] = cb end,
+  register_on_priv_revoke = function() end,
+  register_on_joinplayer = function() end,
+  after = function() end,
   get_player_by_name = function(name) return players[name] end,
   show_formspec = function(name, form, spec) forms[#forms + 1] = {name, form, spec} end,
   formspec_escape = function(s) return s:gsub('[%[%]\\,;]', '\\%0') end,
@@ -72,6 +77,7 @@ local capabilities = hanaworlds_adapter.capabilities()
 assert(capabilities.worldeditAvailable == true and capabilities.worldeditVersion == '1.3', 'installed WorldEdit API reported')
 assert(capabilities.loadedSourceDigest ~= nil, 'loaded payload reads and hashes its own source files')
 assert(commands.hanaworlds, 'native in-game entrypoint registered')
+assert(commands.hanaworlds_grant, 'native authorization entrypoint registered')
 local ok = commands.hanaworlds.func('alice')
 assert(ok == true and #forms == 1, 'authenticated player can open native surface')
 assert(forms[1][2] == 'hanaworlds:session', 'session form only')
@@ -99,7 +105,7 @@ hanaworlds_adapter.invoke_action = function(request, name)
 end
 local action_button = forms[#forms][3]:match('button%[[^;]+;[^;]+;([^;]+);reply%]')
 assert(action_button, 'current revision action button rendered')
-callbacks[1](players.alice, 'hanaworlds:session', {[action_button] = true, message = 'Hello'})
+callbacks[2](players.alice, 'hanaworlds:session', {[action_button] = true, message = 'Hello'})
 assert(invoked and invoked.name == 'alice' and invoked.sessionRef == 'session-1'
   and invoked.action == 'reply' and invoked.input.kind == 'TEXT' and invoked.input.text == 'Hello',
   'native action carries the actual frame and input to the owner transport')
@@ -112,7 +118,7 @@ mutable.actions[1] = frame_action(mutable, 'original', 'TEXT', string.rep('b', 6
 assert(hanaworlds_adapter.present_frame('alice', mutable))
 local second_button = forms[#forms][3]:match('button%[[^;]+;[^;]+;([^;]+);original%]')
 mutable.actions[1].actionId = 'tampered'
-callbacks[1](players.alice, 'hanaworlds:session', {[second_button] = true, message = 'Next'})
+callbacks[2](players.alice, 'hanaworlds:session', {[second_button] = true, message = 'Next'})
 assert(invoked.action == 'original', 'displayed revision cannot be changed by caller table mutation')
 local decision = {sessionRef = 'session-1', turnRevision = 'turn-3', frameRef = 'frame-3',
   actorRef = 'player:alice', authorizationRef = 'grant:one',
@@ -124,9 +130,9 @@ local decision_spec = forms[#forms][3]
 assert(decision_spec:find('dropdown[', 1, true) and decision_spec:find('Choose,CONTINUE,CANCEL', 1, true),
   'decision action exposes the permitted choices')
 local decision_button = decision_spec:match('button%[[^;]+;[^;]+;([^;]+);decide%]')
-callbacks[1](players.alice, 'hanaworlds:session', {[second_button] = true, hw_decision = 'CONTINUE'})
+callbacks[2](players.alice, 'hanaworlds:session', {[second_button] = true, hw_decision = 'CONTINUE'})
 assert(invoked.action == 'original', 'stale frame action does not invoke current action')
-callbacks[1](players.alice, 'hanaworlds:session', {[decision_button] = true, hw_decision = 'CONTINUE'})
+callbacks[2](players.alice, 'hanaworlds:session', {[decision_button] = true, hw_decision = 'CONTINUE'})
 assert(invoked.action == 'decide' and invoked.input.decision == 'CONTINUE', 'decision is passed as typed input')
 local selection = {sessionRef = 'session-1', turnRevision = 'turn-4', frameRef = 'frame-4',
   actorRef = 'player:alice', authorizationRef = 'grant:one',
@@ -139,7 +145,7 @@ assert(select_spec:find('checkbox[', 1, true) and select_spec:find('object:a', 1
   'renderer exposes only host pinned object choices')
 local select_button = select_spec:match('button%[[^;]+;[^;]+;([^;]+);select%]')
 local select_nonce = select_button:match('hw_action_(.-)_1')
-callbacks[1](players.alice, 'hanaworlds:session', {[select_button] = true,
+callbacks[2](players.alice, 'hanaworlds:session', {[select_button] = true,
   ['hw_select_' .. select_nonce .. '_1_1'] = 'true',
   ['hw_select_' .. select_nonce .. '_1_3'] = 'true'})
 assert(invoked.action == 'select' and invoked.input.kind == 'SELECT_OBJECTS'
@@ -172,13 +178,13 @@ local pick_button = ask_spec:match('button%[[^;]+;[^;]+;(hw_pick_[^;]+);')
 assert(pick_button, 'pick action rendered')
 local ask_nonce = pick_button:match('hw_pick_(.-)_1')
 local before_choice = invoked
-callbacks[1](players.alice, 'hanaworlds:session', {['hw_choice_' .. ask_nonce .. '_1'] = 'bob'})
+callbacks[2](players.alice, 'hanaworlds:session', {['hw_choice_' .. ask_nonce .. '_1'] = 'bob'})
 assert(invoked == before_choice, 'an in-world SELECT_CHOICE is answered locally and never relayed')
 assert(chats[#chats][2]:find('made in Shell', 1, true), 'player is told to choose in Shell')
-callbacks[1](players.alice, 'hanaworlds:session', {[pick_button] = true})
+callbacks[2](players.alice, 'hanaworlds:session', {[pick_button] = true})
 assert(forms[#forms][2] == 'hanaworlds:pick', 'pick asks the player to confirm the pointed node')
 assert(invoked == before_choice, 'nothing is relayed before confirmation')
-callbacks[1](players.alice, 'hanaworlds:pick', {hw_pick_confirm = true})
+callbacks[2](players.alice, 'hanaworlds:pick', {hw_pick_confirm = true})
 assert(invoked ~= before_choice and invoked.input.kind == 'PICK_WORLD_POINT', 'confirmed pick is relayed')
 local pick = region.picks[invoked.input.pickRef]
 assert(pick and pick.node[1] == 5 and pick.node[2] == 0 and pick.node[3] == 5
