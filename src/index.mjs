@@ -144,6 +144,7 @@ export function apply(ctx, config = {}) {
     inspectContext: () => optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
     serviceName: config.serviceName,
     onAction: workshopRelay(() => optionalHostService(ctx, 'hanaworldsWorkshop'), log),
+    log,
   });
   const worldAdapter = new WorldAdapterV4({
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),

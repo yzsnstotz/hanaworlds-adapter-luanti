@@ -16,7 +16,7 @@ const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
  * frozen complete state profile and a real Canvas binding; no v1 fallback. */
 export function createLuantiOperations({ roots = [], remoteProfiles = [], operatorAuthority,
   remoteTunnelFactory, serviceName, onAction, transactionBackends,
-  createBackend, inspectContext } = {}) {
+  createBackend, inspectContext, log } = {}) {
   // Host services may be passed as values or as resolvers called at each use,
   // so a provider registered after the Adapter is seen and a withdrawn one fails.
   const currentOperatorAuthority = () =>
@@ -116,6 +116,38 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     if (!transport) return;
     try { await transport.close(); }
     catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
+  }
+  // A world held only as a recovery handle (reserved, never accepted) is
+  // retired once trusted recovery has settled its last unsettled record and no
+  // binding or other recovery call for it is still in flight: its reservation,
+  // backend and transport are dropped and the transport closed, so the next
+  // currently authorized connection can bind. A close failure is logged.
+  const recovering = new Map(); // worldRef -> trusted recovery calls in flight
+  async function retireIfSettled(worldRef) {
+    const owned = ownedBackends.get(worldRef);
+    if (!boundConnection.has(worldRef) || established.has(worldRef) || inflight.has(worldRef) ||
+        recovering.has(worldRef) || building.has(worldRef) || opening.has(worldRef) ||
+        !owned || owned.hasUnsettledRecords) return;
+    const transport = open.get(worldRef);
+    open.delete(worldRef);
+    ownedBackends.delete(worldRef);
+    boundConnection.delete(worldRef);
+    if (!transport) return;
+    try { await transport.close(); }
+    catch (error) {
+      const message = `world ${worldRef}: retired recovery transport did not close: ${error?.message ?? error}`;
+      if (typeof log === 'function') log('error', message); else console.error(message);
+    }
+  }
+  async function recover(request, run) {
+    const worldRef = request.worldRef;
+    recovering.set(worldRef, (recovering.get(worldRef) ?? 0) + 1);
+    try { return await run(backend(request, { recovery: true })); }
+    finally {
+      const left = recovering.get(worldRef) - 1;
+      if (left > 0) recovering.set(worldRef, left); else recovering.delete(worldRef);
+      await retireIfSettled(worldRef);
+    }
   }
   // One shared in-flight creation per worldRef; the result is stored before
   // the pending entry is removed, so no caller can start a second one.
@@ -357,17 +389,18 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     ApplyCompiledTransaction(request) { return backend(request).apply(request); },
     Readback(request) { return backend(request).readback(request); },
     QueryTransaction(request) { return backend(request).query(request); },
-    RestoreTransaction(request) { return backend(request, { recovery: true }).restore(request); },
+    RestoreTransaction(request) { return recover(request, owned => owned.restore(request)); },
     QueryPreparedTransaction(request) { return backend(request).queryPrepared(request); },
     PrepareHistoryTransaction(request) { return backend(request).prepareHistory(request); },
     QueryPreparedHistoryTransaction(request) { return backend(request).queryPreparedHistory(request); },
     ApplyHistoryTransaction(request) { return backend(request).applyHistory(request); },
-    AbortPreparedTransaction(request) { return backend(request, { recovery: true }).abortPrepared(request); },
-    AbortPreparedHistoryTransaction(request) { return backend(request, { recovery: true }).abortPreparedHistory(request); },
+    AbortPreparedTransaction(request) { return recover(request, owned => owned.abortPrepared(request)); },
+    AbortPreparedHistoryTransaction(request) { return recover(request, owned => owned.abortPreparedHistory(request)); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
   return { operations, open, currentAccess, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();
     boundConnection.clear(); ownedBackends.clear(); inflight.clear(); established.clear();
+    recovering.clear();
   } };
 }

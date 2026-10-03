@@ -1451,3 +1451,127 @@ test('C04 late failure with unsettled journal records: the recovery handle is ke
     assert.equal(rebound.error, null, JSON.stringify(rebound.error));
   } finally { await r.close(); }
 });
+
+// ADAPTER-D1-C04 post-recovery (spec FAIL 6d51bf2b…): once trusted recovery
+// settles the last unsettled record of a world whose binding was never
+// accepted, that world's reservation, backend and retained transport are
+// retired, so a different currently authorized connection can bind.
+async function priorProcessRecords(home, { pending = false, extra = false } = {}) {
+  let serviceOk = true;
+  const before = await remotePair(home, { serviceCurrent: () => serviceOk });
+  const prepared = prepareFor(SHARED, 'carried');
+  const second = prepareFor(SHARED, 'carried-2', [9, 1, 3]);
+  try {
+    assert.equal((await before.bind('remote:a', 'prev-bind')).error, null);
+    const response = await before.call('PrepareRecoverableTransaction', prepared);
+    assert.equal(response.error, null, JSON.stringify(response.error));
+    if (extra) assert.equal((await before.call('PrepareRecoverableTransaction', second)).error, null);
+    if (pending) {
+      serviceOk = false;
+      const applied = await before.call('ApplyCompiledTransaction', { contractVersion: 'world-adapter/v4',
+        actorRef: 'canvas', sessionRef: 'session:one', requestId: 'apply-carried', authorizationRef: 'grant:one',
+        worldRef: SHARED, transactionId: prepared.transactionId, expectedWorldRevision: 'rev-1',
+        preparedTransaction: projectPreparedTransaction(response.result), operations: prepared.operations,
+        operationDigest: prepared.operationDigest, authorizationBinding: prepared.authorizationBinding,
+        guarantee: 'RECOVERABLE_VERIFIED' });
+      assert.equal(applied.error?.code, 'RECOVERY_PENDING', JSON.stringify(applied.error));
+    }
+    return { prepared, second, beforeImageDigest: response.result.beforeImageDigest };
+  } finally { await before.close(); }
+}
+async function lateFailedOwner(home) {
+  let broken = true;
+  const r = await remotePair(home, { stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  const failed = await r.bind('remote:a', 'late-a');
+  assert.notEqual(failed.error, null, 'late bind failure');
+  assert.equal(r.liveTunnels(), 1, 'recovery handle retained while records are unsettled');
+  const normal = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'refused', [11, 1, 3]));
+  assert.notEqual(normal.error, null, 'normal use refused before acceptance');
+  return { r, fix: () => { broken = false; } };
+}
+const restoreFor = (prepared, beforeImageDigest, requestId) => ({ contractVersion: 'world-adapter/v4',
+  actorRef: 'canvas', sessionRef: 'session:one', requestId, authorizationRef: 'grant:one', worldRef: SHARED,
+  originTransactionId: prepared.transactionId, operationDigest: prepared.operationDigest, beforeImageDigest,
+  restoreAttemptIdentity: 'd'.repeat(64), guarantee: 'RECOVERABLE_VERIFIED' });
+
+test('C04/C06 post-recovery: trusted Abort settles the last record; a different authorized connection then binds', async () => {
+  const home = await dshHome();
+  const { prepared } = await priorProcessRecords(home);
+  const { r, fix } = await lateFailedOwner(home);
+  try {
+    fix(); // the host profile is valid again for any new binding
+    const aborted = await r.call('AbortPreparedTransaction', abortFor(prepared, 'abort-post'));
+    assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+    assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+    assert.equal(r.tunnels['remote:a'].closes, r.tunnels['remote:a'].opens, 'old tunnel retired');
+    assert.equal(r.liveTunnels(), 0);
+    const other = await r.bind('remote:b', 'other-after-recovery');
+    assert.equal(other.error, null, JSON.stringify(other.error));
+    assert.equal(other.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    assert.equal(r.liveTunnels(), 1, 'only the new connection transport');
+    assert.equal(r.tunnels['remote:b'].opens, 1);
+  } finally { await r.close(); }
+});
+
+test('C04/C06 post-recovery: trusted Restore of a pending record settles it; a different connection then binds', async () => {
+  const home = await dshHome();
+  const { prepared, beforeImageDigest } = await priorProcessRecords(home, { pending: true });
+  const { r, fix } = await lateFailedOwner(home);
+  try {
+    fix();
+    const restored = await r.call('RestoreTransaction', restoreFor(prepared, beforeImageDigest, 'restore-post'));
+    assert.equal(restored.error, null, JSON.stringify(restored.error));
+    assert.equal(restored.result.status, 'ROLLED_BACK');
+    assert.equal(r.liveTunnels(), 0, 'retired after settlement');
+    assert.equal((await r.bind('remote:b', 'other-after-restore')).error, null);
+  } finally { await r.close(); }
+});
+
+test('C04/C06 post-recovery: the world stays held while any record is unsettled, then retires on the last one', async () => {
+  const home = await dshHome();
+  const { prepared, second } = await priorProcessRecords(home, { extra: true });
+  const { r, fix } = await lateFailedOwner(home);
+  try {
+    fix();
+    assert.equal((await r.call('AbortPreparedTransaction', abortFor(prepared, 'abort-1'))).error, null);
+    assert.equal(r.liveTunnels(), 1, 'one record still unsettled: handle kept');
+    assert.equal((await r.bind('remote:b', 'too-early')).error?.code, 'CONNECTION_UNAUTHORIZED');
+    assert.notEqual((await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'still-refused', [12, 1, 3]))).error,
+      null, 'still no normal use');
+    assert.equal((await r.call('AbortPreparedTransaction', abortFor(second, 'abort-2'))).error, null);
+    assert.equal(r.liveTunnels(), 0);
+    assert.equal((await r.bind('remote:b', 'after-last')).error, null);
+  } finally { await r.close(); }
+});
+
+test('C04/C06 post-recovery: a same-owner bind in flight during settlement keeps the world and is accepted', async () => {
+  const home = await dshHome();
+  const { prepared } = await priorProcessRecords(home);
+  const { r, fix } = await lateFailedOwner(home);
+  try {
+    fix();
+    // Hold the in-flight bind inside the handler (its reused-tunnel operator check).
+    const real = r.services.hanaworldsOperatorAuthority;
+    let calls = 0;
+    let release;
+    const held = new Promise(done => { release = done; });
+    let entered;
+    const inside = new Promise(done => { entered = done; });
+    r.services.hanaworldsOperatorAuthority = { verify: async input => {
+      calls++;
+      if (calls === 2) { entered(); await held; }
+      return real.verify(input);
+    } };
+    const pending = r.bind('remote:a', 'same-owner-during-settlement');
+    await inside;
+    const aborted = await r.call('AbortPreparedTransaction', abortFor(prepared, 'abort-during'));
+    assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+    assert.equal(r.liveTunnels(), 1, 'not retired while the owner bind is in flight');
+    release();
+    const bound = await pending;
+    assert.equal(bound.error, null, JSON.stringify(bound.error));
+    assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    r.services.hanaworldsOperatorAuthority = real;
+    assert.equal((await r.bind('remote:b', 'other-after-accept')).error?.code, 'CONNECTION_UNAUTHORIZED');
+  } finally { await r.close(); }
+});
