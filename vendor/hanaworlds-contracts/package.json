@@ -1,0 +1,168 @@
+{
+  "name": "hanaworlds-contracts",
+  "version": "0.3.0",
+  "description": "Independent non-runtime HanaWorlds public contracts: the v2/v3 lanes plus the approved rc.8 v4 lane (interaction-surface/v3, world-adapter/v4, canvas/v4, painter/v3, target-facts/v3, ContractHandshake), strict raw JSON, explicit digests and pure FIXTURE conformance models.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./schemas": {
+      "types": "./types/schemas.d.ts",
+      "import": "./dist/schemas.mjs"
+    },
+    "./fixture": {
+      "types": "./types/fixture.d.ts",
+      "import": "./dist/fixture.mjs"
+    },
+    "./v3": {
+      "types": "./types/v3/index.d.ts",
+      "import": "./dist/v3/index.mjs"
+    },
+    "./v3/schemas": {
+      "types": "./types/v3/schemas.d.ts",
+      "import": "./dist/v3/schemas.mjs"
+    },
+    "./v3/fixture": {
+      "types": "./types/v3/fixture.d.ts",
+      "import": "./dist/v3/fixture.mjs"
+    },
+    "./v3/schema": "./schemas/v3/contracts.schema.json",
+    "./v3/schema/*": "./schemas/v3/*.schema.json",
+    "./v3/schema-inventory": "./schemas/v3/inventory.json",
+    "./v3/fixtures/*": "./fixtures/v3/candidate/*.json",
+    "./v4": {
+      "types": "./types/v4/index.d.ts",
+      "import": "./dist/v4/index.mjs"
+    },
+    "./v4/schemas": {
+      "types": "./types/v4/schemas.d.ts",
+      "import": "./dist/v4/schemas.mjs"
+    },
+    "./v4/fixture": {
+      "types": "./types/v4/fixture.d.ts",
+      "import": "./dist/v4/fixture.mjs"
+    },
+    "./v4/schema": "./schemas/v4/contracts.schema.json",
+    "./v4/schema/*": "./schemas/v4/*.schema.json",
+    "./v4/schema-inventory": "./schemas/v4/inventory.json",
+    "./v4/fixtures/*": "./fixtures/v4/candidate/*.json",
+    "./v4/profile/*": "./schemas/v4/profile/*.json",
+    "./v4/session/v2": {
+      "types": "./bindings/v4/session-v2.d.ts",
+      "import": "./dist/v4/bindings/session-v2.mjs"
+    },
+    "./v4/ReferenceBrief/v2": {
+      "types": "./bindings/v4/ReferenceBrief-v2.d.ts",
+      "import": "./dist/v4/bindings/ReferenceBrief-v2.mjs"
+    },
+    "./v4/BUILD/V2": {
+      "types": "./bindings/v4/BUILD-V2.d.ts",
+      "import": "./dist/v4/bindings/BUILD-V2.mjs"
+    },
+    "./v4/operations/v2": {
+      "types": "./bindings/v4/operations-v2.d.ts",
+      "import": "./dist/v4/bindings/operations-v2.mjs"
+    },
+    "./schema": "./schemas/contracts.schema.json",
+    "./schema/*": "./schemas/*.schema.json",
+    "./schema-inventory": "./schemas/inventory.json",
+    "./fixtures/*": "./fixtures/candidate/*.json",
+    "./package.json": "./package.json",
+    "./interaction-surface/v2": {
+      "types": "./bindings/interaction-surface-v2.d.ts",
+      "import": "./dist/bindings/interaction-surface-v2.mjs"
+    },
+    "./interaction-surface/v3": {
+      "types": "./bindings/v4/interaction-surface-v3.d.ts",
+      "import": "./dist/v4/bindings/interaction-surface-v3.mjs"
+    },
+    "./world-adapter/v2": {
+      "types": "./bindings/world-adapter-v2.d.ts",
+      "import": "./dist/bindings/world-adapter-v2.mjs"
+    },
+    "./world-adapter/v3": {
+      "types": "./bindings/v3/world-adapter-v3.d.ts",
+      "import": "./dist/v3/bindings/world-adapter-v3.mjs"
+    },
+    "./world-adapter/v4": {
+      "types": "./bindings/v4/world-adapter-v4.d.ts",
+      "import": "./dist/v4/bindings/world-adapter-v4.mjs"
+    },
+    "./canvas/v2": {
+      "types": "./bindings/canvas-v2.d.ts",
+      "import": "./dist/bindings/canvas-v2.mjs"
+    },
+    "./canvas/v3": {
+      "types": "./bindings/v3/canvas-v3.d.ts",
+      "import": "./dist/v3/bindings/canvas-v3.mjs"
+    },
+    "./canvas/v4": {
+      "types": "./bindings/v4/canvas-v4.d.ts",
+      "import": "./dist/v4/bindings/canvas-v4.mjs"
+    },
+    "./session/v2": {
+      "types": "./bindings/session-v2.d.ts",
+      "import": "./dist/bindings/session-v2.mjs"
+    },
+    "./painter/v2": {
+      "types": "./bindings/painter-v2.d.ts",
+      "import": "./dist/bindings/painter-v2.mjs"
+    },
+    "./painter/v3": {
+      "types": "./bindings/v4/painter-v3.d.ts",
+      "import": "./dist/v4/bindings/painter-v3.mjs"
+    },
+    "./ReferenceBrief/v2": {
+      "types": "./bindings/ReferenceBrief-v2.d.ts",
+      "import": "./dist/bindings/ReferenceBrief-v2.mjs"
+    },
+    "./BUILD/V2": {
+      "types": "./bindings/BUILD-V2.d.ts",
+      "import": "./dist/bindings/BUILD-V2.mjs"
+    },
+    "./operations/v2": {
+      "types": "./bindings/operations-v2.d.ts",
+      "import": "./dist/bindings/operations-v2.mjs"
+    }
+  },
+  "files": [
+    "dist/",
+    "types/",
+    "bindings/",
+    "schemas/",
+    "fixtures/",
+    "licenses/",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test:v3": "node test/v3.mjs",
+    "test:v4": "node test/v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
+    "test": "node test/conformance.mjs && node test/v3.mjs && node test/v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
+    "test:legacy": "node test/conformance.mjs",
+    "test:source-fixture": "node --experimental-loader ./test/source-fixture-loader.mjs test/conformance.mjs",
+    "test:strict": "node test/strict.mjs",
+    "test:local-repair": "node test/local-repair.mjs",
+    "test:return": "python3 test/verify-return.py",
+    "typecheck": "tsc --project consumer/tsconfig.json",
+    "compat": "node tools/compat.mjs",
+    "verify:source": "node tools/verify-source.mjs",
+    "pack:artifact": "npm pack --ignore-scripts --pack-destination artifacts --json"
+  },
+  "dependencies": {
+    "canonicalize": "5.1.0"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

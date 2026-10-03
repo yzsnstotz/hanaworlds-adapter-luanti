@@ -1,0 +1,121 @@
+import {
+  admitRequest, validateRequest, validateBoundRequest, validateResponse,
+  canonicalJSON, ContractError, operationContracts,
+} from '#contracts/v3';
+
+const VERSION = 'world-adapter/v3';
+const canvasOnly = new Set(['PrepareRecoverableTransaction', 'ApplyCompiledTransaction',
+  'Readback', 'QueryTransaction', 'RestoreTransaction', 'QueryPreparedTransaction',
+  'PrepareHistoryTransaction', 'QueryPreparedHistoryTransaction',
+  'ApplyHistoryTransaction', 'AbortPreparedTransaction', 'AbortPreparedHistoryTransaction']);
+const uncertain = new Set(['ApplyCompiledTransaction', 'Readback', 'RestoreTransaction',
+  'ApplyHistoryTransaction']);
+const allowed = new Map(operationContracts[VERSION].map(entry =>
+  [entry.operation, new Set(entry.failureCodes)]));
+
+function fault(code, phase, reason, details) {
+  throw new ContractError(code, phase, reason, details);
+}
+
+function publicFailure(thrown, operation, request, postwriteValidation = false,
+  handlerEntered = false) {
+  if (postwriteValidation && uncertain.has(operation)) {
+    const phase = operation === 'Readback' ? 'readback' :
+      operation === 'RestoreTransaction' ? 'restore' : 'apply';
+    return new ContractError('RECOVERY_PENDING', phase, 'TRANSPORT_OUTCOME_UNKNOWN', {
+      retryability: 'SAME_TRANSACTION_QUERY', mutationState: 'UNKNOWN',
+      transactionRef: request?.transactionId ?? request?.originTransactionId ?? null,
+      causeCode: 'SCHEMA_INVALID',
+    }).publicError;
+  }
+  const code = thrown?.publicError?.code ?? thrown?.message;
+  const permitted = allowed.get(operation);
+  if (permitted?.has(code) && thrown?.publicError) return thrown.publicError;
+  if (permitted?.has(code)) {
+    const phase = ['PERMISSION_DENIED', 'AUTHORIZATION_REVOKED',
+      'CONNECTION_UNAUTHORIZED', 'WORLD_NOT_BOUND'].includes(code) ? 'authorize' :
+      code === 'REPLAY_MISMATCH' ? 'replay' :
+      code === 'RECOVERY_PENDING' ? 'apply' : 'validate';
+    const reason = ['UNDO_CONFLICT', 'REDO_CONFLICT'].includes(code)
+      ? 'EXTERNAL_EDIT_CONFLICT' :
+      code === 'SAVED_RESOURCE_UNAVAILABLE' ? 'RESOURCE_MISSING' :
+      code === 'STALE_REVISION' ? 'REVISION_CHANGED' :
+      code === 'UNSUPPORTED_MUTATION_SEMANTICS' ? 'UNSUPPORTED_STATE_COVERAGE' :
+      phase === 'authorize' ? 'SCOPE_DENIED' :
+      phase === 'replay' ? 'PAYLOAD_CHANGED' :
+      code === 'RECOVERY_PENDING' ? 'TRANSPORT_OUTCOME_UNKNOWN' : 'POLICY_UNAVAILABLE';
+    return new ContractError(code, phase, reason, phase === 'apply' ? {
+      retryability: 'SAME_TRANSACTION_QUERY', mutationState: 'UNKNOWN',
+      transactionRef: request?.transactionId ?? request?.originTransactionId ?? null,
+    } : {}).publicError;
+  }
+  const unavailable = permitted?.has('CAPABILITY_UNAVAILABLE') ?
+    'CAPABILITY_UNAVAILABLE' : 'ADAPTER_UNAVAILABLE';
+  return new ContractError(uncertain.has(operation) && handlerEntered ?
+    'RECOVERY_PENDING' : unavailable,
+    uncertain.has(operation) && handlerEntered ? 'apply' : 'validate',
+    uncertain.has(operation) && handlerEntered ? 'TRANSPORT_OUTCOME_UNKNOWN' : 'POLICY_UNAVAILABLE',
+    uncertain.has(operation) && handlerEntered ? {
+      retryability: 'SAME_TRANSACTION_QUERY', mutationState: 'UNKNOWN',
+      transactionRef: request.transactionId ?? request.originTransactionId ?? null,
+    } : {}).publicError;
+}
+
+/** Strict public v3 provider. The host's current proof is never a wire field. */
+export class WorldAdapterV3 {
+  #authority;
+  #operations;
+  #replay = new Map();
+  constructor({ authority, operations } = {}) {
+    this.#authority = authority;
+    this.#operations = operations;
+  }
+  async call(operation, raw) {
+    // A rejected wire has no legal requestId. Preserve the Contracts typed
+    // pre-admission error instead of inventing an operation response.
+    const admitted = raw instanceof Uint8Array || typeof raw === 'string'
+      ? admitRequest(VERSION, operation, Buffer.from(raw))
+      : validateRequest(VERSION, operation, raw);
+    const request = admitted;
+    let resultProduced = false;
+    let handlerEntered = false;
+    try {
+      const verifier = ['RestoreTransaction', 'AbortPreparedTransaction',
+        'AbortPreparedHistoryTransaction'].includes(operation)
+        ? this.#authority?.verifyService : this.#authority?.verify;
+      if (typeof verifier !== 'function') fault('PERMISSION_DENIED', 'authorize', 'IDENTITY_UNVERIFIED');
+      const proof = await verifier.call(this.#authority, request, operation);
+      if (proof?.current !== true || proof.actorRef !== request.actorRef ||
+          proof.sessionRef !== request.sessionRef ||
+          proof.authorizationRef !== request.authorizationRef ||
+          (request.worldRef !== undefined && proof.worldRef !== request.worldRef))
+        fault('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
+      if (canvasOnly.has(operation) && proof.domainOwner !== 'hanaworlds-canvas')
+        fault('PERMISSION_DENIED', 'authorize', 'OWNERSHIP_VIOLATION');
+      const key = `${request.sessionRef}\0${operation}\0${request.requestId}`;
+      const identity = canonicalJSON(request);
+      const old = this.#replay.get(key);
+      if (old) {
+        if (old.identity !== identity) fault('REPLAY_MISMATCH', 'replay', 'PAYLOAD_CHANGED');
+        return structuredClone(old.response);
+      }
+      validateBoundRequest(VERSION, operation, request);
+      const handler = this.#operations?.[operation];
+      if (typeof handler !== 'function') fault('CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE');
+      handlerEntered = true;
+      const result = await handler(request, proof);
+      resultProduced = true;
+      const response = validateResponse(VERSION, operation, {
+        contractVersion: VERSION, requestId: request.requestId, result, error: null,
+      });
+      this.#replay.set(key, { identity, response });
+      return structuredClone(response);
+    } catch (thrown) {
+      return { contractVersion: VERSION, requestId: request.requestId,
+        result: null, error: publicFailure(thrown, operation, request, resultProduced,
+          handlerEntered) };
+    }
+  }
+}
+
+export const worldAdapterV3Operations = Object.freeze([...allowed.keys()]);
