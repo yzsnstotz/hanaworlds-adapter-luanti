@@ -27,6 +27,11 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
+  // worldRef -> connectionRef whose transport serves it. Inventory uniqueness
+  // is (connectionRef, worldRef), so a local and a remote connection may share
+  // a worldRef, while normal requests carry only worldRef: the connection that
+  // owns the transport is the exact identity their operator check uses.
+  const boundConnection = new Map();
   const ownedBackends = new Map();
   // PublicCapabilities facts for a bound world: the recoverable guarantee and
   // state profile are advertised only when a recoverable backend actually
@@ -43,7 +48,6 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   // trusted service recovery after revocation must still reach them
   // (CONTRACT_RULES §5). Every non-recovery call is refused by currentAccess
   // on each request, so the retained tunnel carries only recovery.
-  const remoteWorlds = new Map(remoteProfiles.map(profile => [profile.worldRef, profile]));
   // Trusted service recovery after revocation (CONTRACT_RULES §5) is not
   // gated by the operator authority.
   const serviceRecovery = new Set(['RestoreTransaction', 'AbortPreparedTransaction',
@@ -58,11 +62,30 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return operator?.current === true && operator.worldPath === world.worldPath &&
       operator.worldRef === world.worldRef && operator.action === 'BIND_RUNNING_WORLD';
   }
-  function localWorld(operation, request) {
-    if (operation === 'AuthorizeBinding') return local.get(request.connectionRef);
-    if (typeof request.worldRef !== 'string') return undefined;
-    for (const world of local.values()) if (world.worldRef === request.worldRef) return world;
-    return undefined;
+  // The connection whose operator must stand for this call: the named one for
+  // AuthorizeBinding, otherwise the one bound to the worldRef. An unbound
+  // worldRef shared by several connections is ambiguous and fails closed.
+  function accessTarget(operation, request) {
+    let connectionRef;
+    if (operation === 'AuthorizeBinding') connectionRef = request.connectionRef;
+    else if (typeof request.worldRef !== 'string') return null;
+    else connectionRef = boundConnection.get(request.worldRef);
+    if (connectionRef === undefined) {
+      const candidates = [...local.values(), ...remote.values()]
+        .filter(entry => entry.worldRef === request.worldRef);
+      if (candidates.length > 1) return { ambiguous: true };
+      connectionRef = candidates[0]?.connectionRef;
+    }
+    if (local.has(connectionRef)) return { world: local.get(connectionRef) };
+    if (remote.has(connectionRef)) return { profile: remote.get(connectionRef) };
+    // A bound connection that is no longer in the inventory cannot be verified.
+    return boundConnection.has(request.worldRef) && operation !== 'AuthorizeBinding'
+      ? { missing: true } : null;
+  }
+  // A worldRef's transport serves only the connection that opened it.
+  function claimWorld(worldRef, connectionRef) {
+    const owner = boundConnection.get(worldRef);
+    if (owner !== undefined && owner !== connectionRef) fault('CONNECTION_UNAUTHORIZED');
   }
   /**
    * Current operator access, checked by the port after the grant and before
@@ -74,15 +97,17 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
    */
   async function currentAccess(operation, request) {
     if (serviceRecovery.has(operation)) return;
-    const world = localWorld(operation, request);
-    if (world?.worldRef) {
-      if (await verifyLocalOperator(world)) return;
+    const target = accessTarget(operation, request);
+    if (!target) return;
+    if (target.ambiguous)
+      throw new ContractError('CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE');
+    if (target.missing) throw new ContractError('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
+    if (target.world) {
+      if (target.world.worldRef && await verifyLocalOperator(target.world)) return;
       if (operation === 'AuthorizeBinding') fault('CONNECTION_UNAUTHORIZED');
       throw new ContractError('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
     }
-    const profile = operation === 'AuthorizeBinding' ? remote.get(request.connectionRef)
-      : typeof request.worldRef === 'string' ? remoteWorlds.get(request.worldRef) : undefined;
-    if (!profile) return;
+    const profile = target.profile;
     try {
       await verifyRemoteOperator(profile, currentOperatorAuthority(), currentTunnelFactory());
     } catch (error) {
@@ -140,6 +165,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       if (remote.has(request.connectionRef)) {
         if (typeof proof.engineActorName !== 'string' || !proof.engineActorName)
           fault('CONNECTION_UNAUTHORIZED');
+        claimWorld(request.worldRef, request.connectionRef);
         let transport = open.get(request.worldRef);
         if (transport) {
           // A cached tunnel carries a new binding only while the current
@@ -152,6 +178,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
             operatorAuthority: currentOperatorAuthority(), tunnelFactory: currentTunnelFactory() });
           open.set(request.worldRef, transport);
+          boundConnection.set(request.worldRef, request.connectionRef);
         }
         await transport.verifyPrincipal(proof.engineActorName);
         if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
@@ -177,10 +204,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
           typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
           !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+      claimWorld(world.worldRef, request.connectionRef);
       let transport = open.get(world.worldRef);
       if (!transport) {
         transport = await LocalEngineTransport.open(world.worldPath, { serviceName, onAction });
         open.set(world.worldRef, transport);
+        boundConnection.set(world.worldRef, request.connectionRef);
       }
       const loaded = await transport.handshake();
       const principal = await transport.verifyPrincipal(proof.engineActorName);
@@ -271,6 +300,6 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   };
   return { operations, open, currentAccess, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();
-    ownedBackends.clear();
+    boundConnection.clear(); ownedBackends.clear();
   } };
 }

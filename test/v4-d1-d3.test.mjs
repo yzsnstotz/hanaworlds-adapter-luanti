@@ -543,7 +543,7 @@ const abortFor = (request, requestId) => ({ ...abortRequest(request, requestId),
 const localAuthority = (counter = {}) => ({ verify: async r => grant(r),
   verifyEngineBinding: async r => { counter.engine = (counter.engine ?? 0) + 1; return grant(r); },
   verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef }) });
-async function localMatrix(services, { serviceCurrent = () => true } = {}) {
+async function localMatrix(services, { serviceCurrent = () => true, remoteProfiles } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'hw-matrix-local-'));
   const worldPath = join(root, 'world');
   await mkdir(worldPath);
@@ -552,7 +552,8 @@ async function localMatrix(services, { serviceCurrent = () => true } = {}) {
   const manifest = await provisionLocalPayload(worldPath, { transportPort: port,
     operatorAuthority: { verify: async input => ({ current: true, ...input, worldStopped: true }) } });
   const config = JSON.parse(await readFile(join(worldPath, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
-  const service = apply(context(services), { localWorldRoots: [root], serviceName: 'operator' });
+  const service = apply(context(services), { localWorldRoots: [root], serviceName: 'operator',
+    remoteProfiles: remoteProfiles?.(manifest.worldRef) ?? [] });
   const worldRef = manifest.worldRef;
   const digest = await payloadDigest();
   const base = `http://127.0.0.1:${port}`;
@@ -602,7 +603,7 @@ async function localMatrix(services, { serviceCurrent = () => true } = {}) {
     for (const key of await readdir(dir).catch(() => [])) out.push(...await readdir(join(dir, key)));
     return out.sort();
   };
-  return { service, worldRef, call, bind, discover, commands, journalFiles, serviceCurrent,
+  return { service, worldRef, call, bind, discover, commands, journalFiles, serviceCurrent, worldPath,
     async close() { running = false; await loop; await service.close(); } };
 }
 
@@ -829,3 +830,162 @@ for (const [label, override] of [
     } finally { await m.close(); }
   });
 }
+
+// ADAPTER-D1-MIXED-LOCAL-REMOTE-WORLDREF-AUTHORITY-BYPASS (quality FAIL 1fd490e1…):
+// inventory uniqueness is (connectionRef, worldRef), so a local and a remote
+// connection may share a worldRef. Normal v4 requests carry only worldRef;
+// the connection whose transport serves that world is the exact identity and
+// its operator must still stand. A different connection may not bind the same
+// worldRef onto that transport, and an unbound collision fails closed.
+async function mixedWorld(home) {
+  const operator = { local: true, remote: true, localChecks: 0, remoteChecks: 0 };
+  const tunnel = { commands: [], opens: 0 };
+  const digest = await payloadDigest();
+  let shared = null;
+  const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
+    inventory: {}, timer: null });
+  const all = providers(home, digest, {
+    hanaworldsAuthority: localAuthority(),
+    hanaworldsOperatorAuthority: { verify: async input => {
+      if (input.action === 'BIND_RUNNING_WORLD') {
+        operator.localChecks++;
+        return { current: operator.local, ...input };
+      }
+      operator.remoteChecks++;
+      return { current: operator.remote, ...input };
+    } },
+    hanaworldsRemoteTunnelFactory: { open: async () => { tunnel.opens++; return {
+      async request(command) {
+        tunnel.commands.push(command.operation);
+        const worldRef = shared;
+        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+          loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
+        if (command.operation === 'authorize') return { worldRef, current: true,
+          engineActorName: command.actorName, worldeditAvailable: true };
+        if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
+        if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
+          coveredPositions: command.positions, records: command.positions.map(air) } };
+        throw new Error(`UNEXPECTED_ENGINE_COMMAND ${command.operation}`);
+      }, async close() {} }; } },
+  });
+  const services = { ...all.services };
+  const m = await localMatrix(services, { remoteProfiles: worldRef => {
+    shared = worldRef;
+    return [{ ...remoteProfile, connectionRef: 'remote:mixed', worldRef }];
+  } });
+  const remoteRow = async () => (await m.call('DiscoverConnections', {
+    contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId: `discover-${Math.random()}`, authorizationRef: 'grant:one',
+    adapterId: 'hanaworlds-adapter-luanti' })).result.connections
+    .find(row => row.connectionRef === 'remote:mixed');
+  const bindRemote = async requestId => {
+    const row = await remoteRow();
+    return m.call('AuthorizeBinding', bindRequest(requestId, row.connectionRef, m.worldRef,
+      row.capabilityRevision));
+  };
+  const bindLocal = async requestId => {
+    const rows = (await m.call('DiscoverConnections', {
+      contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+      requestId: `discover-${Math.random()}`, authorizationRef: 'grant:one',
+      adapterId: 'hanaworlds-adapter-luanti' })).result.connections;
+    const row = rows.find(entry => entry.connectionRef.startsWith('local:'));
+    return m.call('AuthorizeBinding', bindRequest(requestId, row.connectionRef, m.worldRef,
+      row.capabilityRevision));
+  };
+  return { m, services, operator, tunnel, bindRemote, bindLocal, remoteRow };
+}
+
+test('Mixed worldRef: remote binding with revoked remote operator and valid local operator denies replay and Prepare before any effect', async () => {
+  const home = await dshHome();
+  const { m, operator, tunnel, bindRemote, remoteRow } = await mixedWorld(home);
+  try {
+    const row = await remoteRow();
+    const request = bindRequest('remote-first', row.connectionRef, m.worldRef, row.capabilityRevision);
+    const first = await m.call('AuthorizeBinding', request);
+    assert.equal(first.error, null, JSON.stringify(first.error));
+    assert.equal(first.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    const tunnelBefore = tunnel.commands.length;
+    const courierBefore = m.commands.length;
+    operator.remote = false; // local operator stays valid
+    const replay = await m.call('AuthorizeBinding', request);
+    assert.equal(replay.result, null, 'no cached remote binding replayed');
+    assert.equal(replay.error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(replay.error));
+    const remoteChecks = operator.remoteChecks;
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'mx1'));
+    assert.deepEqual([prepared.error?.code, prepared.error?.phase, prepared.error?.reason],
+      ['AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED'], JSON.stringify(prepared.error));
+    assert.equal(prepared.error?.mutationState, 'NONE');
+    assert.ok(operator.remoteChecks > remoteChecks, 'the bound remote operator was checked');
+    assert.equal(tunnel.commands.length, tunnelBefore, 'no remote engine command');
+    assert.equal(m.commands.length, courierBefore, 'no local engine command');
+    assert.deepEqual(await m.journalFiles(), ['world-binding'], 'no journal record');
+    assert.equal((await bindRemote('remote-second')).error?.code, 'CONNECTION_UNAUTHORIZED');
+  } finally { await m.close(); }
+});
+
+test('Mixed worldRef positive remote: the bound remote connection prepares while the local operator is revoked', async () => {
+  const home = await dshHome();
+  const { m, operator, tunnel, bindRemote } = await mixedWorld(home);
+  try {
+    assert.equal((await bindRemote('remote-bind')).error, null);
+    operator.local = false;
+    const courierBefore = m.commands.length;
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'mx2'));
+    assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+    assert.ok(tunnel.commands.includes('snapshot'), 'served by the remote transport');
+    assert.equal(m.commands.length, courierBefore, 'local courier untouched');
+  } finally { await m.close(); }
+});
+
+test('Mixed worldRef positive local: the bound local connection prepares while the remote operator is revoked', async () => {
+  const home = await dshHome();
+  const { m, operator, tunnel, bindLocal } = await mixedWorld(home);
+  try {
+    assert.equal((await bindLocal('local-bind')).error, null);
+    operator.remote = false;
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'mx3'));
+    assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+    assert.ok(m.commands.includes('snapshot'), 'served by the local transport');
+    assert.equal(tunnel.opens, 0, 'no remote tunnel opened');
+    // Local withdrawal still denies the bound local connection.
+    operator.local = false;
+    const denied = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'mx3b'));
+    assert.equal(denied.error?.code, 'AUTHORIZATION_REVOKED', JSON.stringify(denied.error));
+  } finally { await m.close(); }
+});
+
+for (const [first, second] of [['local', 'remote'], ['remote', 'local']]) {
+  test(`Mixed worldRef: a ${second} binding may not take over the ${first} connection's transport`, async () => {
+    const home = await dshHome();
+    const world = await mixedWorld(home);
+    const bindFirst = first === 'local' ? world.bindLocal : world.bindRemote;
+    const bindSecond = second === 'local' ? world.bindLocal : world.bindRemote;
+    try {
+      assert.equal((await bindFirst('first')).error, null);
+      const tunnelBefore = world.tunnel.commands.length;
+      const opensBefore = world.tunnel.opens;
+      const courierBefore = world.m.commands.length;
+      const taken = await bindSecond('second');
+      assert.equal(taken.result, null, 'no cross-wired binding');
+      assert.equal(taken.error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(taken.error));
+      assert.equal(world.tunnel.commands.length, tunnelBefore);
+      assert.equal(world.tunnel.opens, opensBefore);
+      assert.equal(world.m.commands.length, courierBefore);
+      // The first binding keeps working.
+      assert.equal((await bindFirst('first-again')).error, null);
+    } finally { await world.m.close(); }
+  });
+}
+
+test('Mixed worldRef: with no bound connection an ambiguous worldRef fails closed before any effect', async () => {
+  const home = await dshHome();
+  const { m, tunnel } = await mixedWorld(home);
+  try {
+    await m.discover();
+    const prepared = await m.call('PrepareRecoverableTransaction', prepareFor(m.worldRef, 'mx5'));
+    assert.equal(prepared.result, null);
+    assert.equal(prepared.error?.mutationState, 'NONE', JSON.stringify(prepared.error));
+    assert.equal(tunnel.opens, 0);
+    assert.deepEqual(m.commands, []);
+  } finally { await m.close(); }
+});
