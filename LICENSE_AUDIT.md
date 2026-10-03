@@ -61,18 +61,23 @@ ignored, isolated world data. The new v3 files were written for this origin.
 | `test/v3-recovery.test.mjs` | New Adapter recovery fixture test. |
 | `test/v3-transactions.test.mjs` | New Adapter fixture test. |
 | `cordis.patch.yml`, `package.json`, `package-lock.json`, `.gitignore`, `.gitattributes` | Origin configuration; npm metadata identifies the registry dependency and the `#contracts` imports of the bundled Contracts package. |
-| `vendor/hanaworlds-contracts/**` | Unmodified bundled `hanaworlds-contracts@0.3.0` package contents (MIT, own notices). |
+| `vendor/hanaworlds-contracts/**` | Unmodified subset of the admitted `hanaworlds-contracts@0.3.0` package (MIT, own notices). |
+| `vendor/hanaworlds-contracts.manifest.json`, `scripts/contracts-*.mjs`, `scripts/vendor-contracts.mjs` | 0.2.0 origin tooling and the manifest of the admitted package. |
 | `README.md`, `GADGET.md`, `NOTICE` | Origin documentation; historical AGPL statements are updated for 0.1.1 without changing prior copies. |
 | `LICENSE` | Standard MIT permission text for owner source, based on the [OSI MIT license](https://opensource.org/license/mit). |
 
 `hanaworlds-contracts@0.3.0` remains MIT at public revision
-`e82735780bdfd4ea8e662781455040a6e5306121`. Its admitted package contents
-(npm pack sha256 `47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c`,
-923 entries) are bundled unmodified under `vendor/hanaworlds-contracts` with
-their own LICENSE, NOTICE and `licenses/`; they are not relabeled or edited.
-They are bundled because default pnpm 11 `blockExoticSubdeps` rejects a URL
-subdependency of a git-hosted plugin. `npm run verify:contracts` repacks the
-bundled copy and requires that sha256. `canonicalize@5.1.0` remains Apache-2.0 and is installed through
+`e82735780bdfd4ea8e662781455040a6e5306121`. 36 of the 923 entries of its admitted
+package (npm pack sha256 `47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c`)
+are bundled byte-identical under `vendor/hanaworlds-contracts`: package.json,
+LICENSE, NOTICE, README.md and `licenses/`, the 24-module runtime import closure
+of `dist/v3` and `dist/v4`, and 7 test fixtures. They are not relabeled or
+edited. `vendor/hanaworlds-contracts.manifest.json` lists all 923 entries with
+size and sha256. They are bundled because default pnpm 11 `blockExoticSubdeps`
+rejects a URL subdependency of a git-hosted plugin. `npm run verify:contracts`
+checks every bundled file against the manifest offline;
+`npm run verify:contracts:source` re-derives the admitted pack from public
+source and requires that sha256 and manifest. `canonicalize@5.1.0` remains Apache-2.0 and is installed through
 the lockfile; retain its license and notice in any distribution. WorldEdit
 revision `62ffafe3bcb386600c431ef3840d91c3c8f85639` remains AGPL-3.0,
 installed by the world operator and never relabeled MIT. [GNU's FAQ](https://www.gnu.org/licenses/gpl-faq.html)
