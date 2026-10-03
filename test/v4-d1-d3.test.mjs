@@ -531,9 +531,10 @@ test('D1 backend authority: an absent or incomplete current authority fails clos
 // D1/D3 call-path matrix (ADAPTER_D1_D3_CALL_PATH_MATRIX_2026-10-03, cede86c1…):
 // probes for rows no earlier test proves, mainly the local path. Same frozen
 // D1/D3 criteria; FIXTURE providers and a courier double, not product proof.
-const prepareFor = (worldRef, requestId) => {
+const prepareFor = (worldRef, requestId, position) => {
   const request = remotePrepare(requestId);
-  const operations = { ...request.operations, worldRef };
+  const operations = { ...request.operations, worldRef, ...(position ? {
+    effects: [{ ...request.operations.effects[0], position }] } : {}) };
   const operationDigest = digestValue('operations', operations).sha256;
   return { ...request, worldRef, operations, operationDigest,
     authorizationBinding: { ...request.authorizationBinding, worldRef, operationDigest } };
@@ -543,7 +544,7 @@ const abortFor = (request, requestId) => ({ ...abortRequest(request, requestId),
 const localAuthority = (counter = {}) => ({ verify: async r => grant(r),
   verifyEngineBinding: async r => { counter.engine = (counter.engine ?? 0) + 1; return grant(r); },
   verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef }) });
-async function localMatrix(services, { serviceCurrent = () => true, remoteProfiles } = {}) {
+async function localMatrix(services, { serviceCurrent = () => true, remoteProfiles, replyOverride } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'hw-matrix-local-'));
   const worldPath = join(root, 'world');
   await mkdir(worldPath);
@@ -563,6 +564,8 @@ async function localMatrix(services, { serviceCurrent = () => true, remoteProfil
   const commands = [];
   let running = true;
   const reply = command => {
+    const override = replyOverride?.(command, worldRef, digest);
+    if (override) return override;
     switch (command.operation) {
       case 'handshake': return { result: { payloadVersion: '0.2.0', worldRef, loadedSourceDigest: digest,
         manifestDigest: digest, payloadMatches: true, worldeditAvailable: true } };
@@ -603,7 +606,7 @@ async function localMatrix(services, { serviceCurrent = () => true, remoteProfil
     for (const key of await readdir(dir).catch(() => [])) out.push(...await readdir(join(dir, key)));
     return out.sort();
   };
-  return { service, worldRef, call, bind, discover, commands, journalFiles, serviceCurrent, worldPath,
+  return { service, worldRef, call, bind, discover, commands, journalFiles, serviceCurrent, worldPath, base,
     async close() { running = false; await loop; await service.close(); } };
 }
 
@@ -837,7 +840,7 @@ for (const [label, override] of [
 // the connection whose transport serves that world is the exact identity and
 // its operator must still stand. A different connection may not bind the same
 // worldRef onto that transport, and an unbound collision fails closed.
-async function mixedWorld(home) {
+async function mixedWorld(home, { park = async () => {}, replyOverride } = {}) {
   const operator = { local: true, remote: true, localChecks: 0, remoteChecks: 0 };
   const tunnel = { commands: [], opens: 0 };
   const digest = await payloadDigest();
@@ -847,6 +850,7 @@ async function mixedWorld(home) {
   const all = providers(home, digest, {
     hanaworldsAuthority: localAuthority(),
     hanaworldsOperatorAuthority: { verify: async input => {
+      await park();
       if (input.action === 'BIND_RUNNING_WORLD') {
         operator.localChecks++;
         return { current: operator.local, ...input };
@@ -854,7 +858,7 @@ async function mixedWorld(home) {
       operator.remoteChecks++;
       return { current: operator.remote, ...input };
     } },
-    hanaworldsRemoteTunnelFactory: { open: async () => { tunnel.opens++; return {
+    hanaworldsRemoteTunnelFactory: { open: async () => { await park(); tunnel.opens++; return {
       async request(command) {
         tunnel.commands.push(command.operation);
         const worldRef = shared;
@@ -869,7 +873,7 @@ async function mixedWorld(home) {
       }, async close() {} }; } },
   });
   const services = { ...all.services };
-  const m = await localMatrix(services, { remoteProfiles: worldRef => {
+  const m = await localMatrix(services, { replyOverride, remoteProfiles: worldRef => {
     shared = worldRef;
     return [{ ...remoteProfile, connectionRef: 'remote:mixed', worldRef }];
   } });
@@ -988,4 +992,343 @@ test('Mixed worldRef: with no bound connection an ambiguous worldRef fails close
     assert.equal(tunnel.opens, 0);
     assert.deepEqual(m.commands, []);
   } finally { await m.close(); }
+});
+
+// ADAPTER-D1-CONCURRENT-WORLDREF-OWNERSHIP-RACE (quality FAIL eae80665…) and the
+// frozen recheck map ADAPTER_D1_CONCURRENT_BIND_MATRIX_2026-10-03 (C01–C06).
+// Interleavings are forced by a barrier that parks calls at provider await
+// points and releases them only when every live call is parked, so overlap
+// does not depend on timing luck. A call waiting on another call's shared
+// in-flight work (for example the same connection's transport open) can never
+// park itself, so the barrier also releases once the parked set has stopped
+// changing; otherwise the fixture itself would deadlock.
+function barrier() {
+  let live = 0;
+  let stopped = false;
+  const parked = [];
+  let stable = 0;
+  let lastParked = 0;
+  const pump = (async () => {
+    while (!stopped) {
+      await new Promise(done => setTimeout(done, 2));
+      stable = parked.length && parked.length === lastParked ? stable + 1 : 0;
+      lastParked = parked.length;
+      if (parked.length && (parked.length >= live || stable >= 25)) {
+        parked.splice(0).forEach(release => release());
+        stable = 0; lastParked = 0;
+      }
+    }
+  })();
+  return {
+    park: () => new Promise(release => parked.push(release)),
+    run: promise => { live++; return promise.finally(() => { live--; }); },
+    async stop() { stopped = true; parked.splice(0).forEach(release => release()); await pump; },
+  };
+}
+const SHARED = 'luanti:shared';
+async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true } = {}) {
+  const gate = barrier();
+  const digest = await payloadDigest();
+  const operator = { 'remote:a': true, 'remote:b': true };
+  const tunnels = { 'remote:a': { opens: 0, closes: 0, commands: [] },
+    'remote:b': { opens: 0, closes: 0, commands: [] } };
+  const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
+    inventory: {}, timer: null });
+  const profiles = Object.keys(tunnels).map(connectionRef => ({ ...remoteProfile, connectionRef,
+    worldRef: SHARED, operatorRef: `operator:${connectionRef}` }));
+  const all = providers(home, digest, {
+    hanaworldsAuthority: { ...localAuthority(),
+      verifyService: async r => ({ ...serviceProof(r), worldRef: r?.worldRef, current: serviceCurrent() }) },
+    hanaworldsOperatorAuthority: { verify: async input => {
+      await gate.park();
+      return { ...input, current: operator[input.connectionRef] === true };
+    } },
+    hanaworldsRemoteTunnelFactory: { open: async profile => {
+      await gate.park();
+      const t = tunnels[profile.connectionRef];
+      if (failOpen.has(profile.connectionRef)) throw new Error('TUNNEL_OPEN_FAILED');
+      t.opens++;
+      return {
+        async request(command) {
+          t.commands.push(command.operation);
+          const worldRef = SHARED;
+          if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+            loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
+          if (command.operation === 'authorize') return { worldRef, current: true,
+            engineActorName: command.actorName, worldeditAvailable: true };
+          if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
+          if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
+            coveredPositions: command.positions, records: command.positions.map(air) } };
+          if (command.operation === 'apply') return { worldRef, error: 'APPLY_FAILED' };
+          if (command.operation === 'restore') return { worldRef, result: { status: 'ROLLED_BACK' } };
+          throw new Error(`UNEXPECTED_ENGINE_COMMAND ${command.operation}`);
+        },
+        async close() { t.closes++; } };
+    } },
+  });
+  const services = { ...all.services };
+  const service = apply(context(services), { remoteProfiles: profiles });
+  const bindRequestFor = (connectionRef, requestId) => bindRequest(requestId, connectionRef, SHARED,
+    remoteProfile.capabilityRevision);
+  const bind = (connectionRef, requestId) =>
+    service.worldAdapter.call('AuthorizeBinding', bindRequestFor(connectionRef, requestId));
+  const liveTunnels = () => Object.values(tunnels).reduce((n, t) => n + t.opens - t.closes, 0);
+  return { gate, service, services, operator, tunnels, bind, bindRequestFor, liveTunnels,
+    call: (operation, request) => service.worldAdapter.call(operation, request),
+    async close() { await gate.stop(); await service.close(); } };
+}
+async function raceRemote(r) {
+  const [a, b] = await Promise.all([r.gate.run(r.bind('remote:a', 'race-a')),
+    r.gate.run(r.bind('remote:b', 'race-b'))]);
+  const results = { 'remote:a': a, 'remote:b': b };
+  const winners = Object.keys(results).filter(c => results[c].error === null);
+  return { results, winners };
+}
+
+test('Concurrency C01 remote/remote: one owner, one transport; the loser is refused before any effect', async () => {
+  const home = await dshHome();
+  const r = await remotePair(home);
+  try {
+    const { results, winners } = await raceRemote(r);
+    assert.equal(winners.length, 1, `exactly one accepted binding: ${JSON.stringify(results)}`);
+    const [winner] = winners;
+    const loser = winner === 'remote:a' ? 'remote:b' : 'remote:a';
+    assert.equal(results[loser].error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(results[loser].error));
+    assert.equal(results[loser].error?.mutationState, 'NONE');
+    assert.equal(r.tunnels[loser].opens, 0, 'loser opened no tunnel');
+    assert.deepEqual(r.tunnels[loser].commands, [], 'loser sent no engine command');
+    assert.equal(r.liveTunnels(), 1, 'exactly one live transport');
+    const before = r.tunnels[winner].commands.length;
+    const prepared = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'c01'));
+    assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+    assert.ok(r.tunnels[winner].commands.slice(before).includes('snapshot'), 'served by the winner transport');
+    assert.deepEqual(r.tunnels[loser].commands, []);
+  } finally { await r.close(); }
+});
+
+for (const order of [['remote', 'local'], ['local', 'remote']]) {
+  test(`Concurrency C02 ${order.join('/')}: one owner, the winner operator governs, no tunnel/courier cross-wire`, async () => {
+    const home = await dshHome();
+    const gate = barrier();
+    const world = await mixedWorld(home, { park: () => gate.park() });
+    try {
+      await world.m.discover();
+      const start = { remote: () => world.bindRemote('race-remote'), local: () => world.bindLocal('race-local') };
+      const settled = await Promise.all(order.map(kind => gate.run(start[kind]())));
+      const results = Object.fromEntries(order.map((kind, i) => [kind, settled[i]]));
+      const winners = Object.keys(results).filter(kind => results[kind].error === null);
+      assert.equal(winners.length, 1, `exactly one accepted binding: ${JSON.stringify(results)}`);
+      const [winner] = winners;
+      const loser = winner === 'remote' ? 'local' : 'remote';
+      assert.equal(results[loser].error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(results[loser].error));
+      if (winner === 'remote') assert.ok(!world.m.commands.includes('handshake'), 'no local courier handshake');
+      else assert.equal(world.tunnel.opens, 0, 'no remote tunnel opened');
+      // The winner's operator governs normal calls, not the loser's.
+      world.operator[loser] = false;
+      const prepared = await world.m.call('PrepareRecoverableTransaction', prepareFor(world.m.worldRef, 'c02'));
+      assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+      if (winner === 'remote') assert.ok(world.tunnel.commands.includes('snapshot'));
+      else assert.ok(world.m.commands.includes('snapshot'));
+      world.operator[winner] = false;
+      const denied = await world.m.call('PrepareRecoverableTransaction', prepareFor(world.m.worldRef, 'c02b'));
+      assert.equal(denied.error?.code, 'AUTHORIZATION_REVOKED', JSON.stringify(denied.error));
+    } finally { await gate.stop(); await world.m.close(); }
+  });
+}
+
+async function localPair(home) {
+  const gate = barrier();
+  const digest = await payloadDigest();
+  const root = await mkdtemp(join(tmpdir(), 'hw-c03-'));
+  const worlds = [];
+  for (const name of ['one', 'two']) {
+    const worldPath = join(root, name);
+    await mkdir(worldPath);
+    await writeFile(join(worldPath, 'world.mt'), 'gameid = minimal\n');
+    const port = await freePort();
+    const manifest = await provisionLocalPayload(worldPath, { transportPort: port,
+      operatorAuthority: { verify: async input => ({ current: true, ...input, worldStopped: true }) } });
+    worlds.push({ worldPath, port, worldRef: manifest.worldRef, commands: [] });
+  }
+  // A copied world: both directories carry the same worldRef.
+  const shared = worlds[0].worldRef;
+  const dir = join(worlds[1].worldPath, 'worldmods', 'hanaworlds_adapter');
+  for (const file of ['payload.json', 'transport.json']) {
+    const value = JSON.parse(await readFile(join(dir, file), 'utf8'));
+    await writeFile(join(dir, file), JSON.stringify({ ...value, worldRef: shared }));
+  }
+  const operator = new Map(worlds.map(w => [w.worldPath, true]));
+  const all = providers(home, digest, { hanaworldsAuthority: localAuthority(),
+    hanaworldsOperatorAuthority: { verify: async input => {
+      await gate.park();
+      return { ...input, current: operator.get(input.worldPath) === true };
+    } } });
+  const services = { ...all.services };
+  const service = apply(context(services), { localWorldRoots: [root], serviceName: 'operator' });
+  const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
+    inventory: {}, timer: null });
+  let running = true;
+  const loops = worlds.map(async w => {
+    const config = JSON.parse(await readFile(join(w.worldPath, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
+    const headers = { Authorization: `Bearer ${config.token}` };
+    while (running) {
+      const polled = await (await fetch(`http://127.0.0.1:${w.port}/poll`, { headers }).catch(() => null))
+        ?.json().catch(() => null);
+      if (!polled?.command) { await new Promise(done => setTimeout(done, 10)); continue; }
+      const c = polled.command;
+      w.commands.push(c.operation);
+      const result = c.operation === 'handshake' ? { payloadVersion: '0.2.0', worldRef: shared,
+        loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true } :
+        c.operation === 'authorize' ? { current: true, engineActorName: c.actorName, worldRef: shared,
+          worldeditAvailable: true } :
+        c.operation === 'prepare_check' ? { checked: c.positions.length } :
+        c.operation === 'snapshot' ? { worldRef: shared, coveredPositions: c.positions,
+          records: c.positions.map(air) } : null;
+      await fetch(`http://127.0.0.1:${w.port}/result`, { method: 'POST', headers, body: JSON.stringify({
+        id: c.id, worldRef: shared, result, error: result ? null : 'UNEXPECTED' }) }).catch(() => null);
+    }
+  });
+  const call = (operation, request) => service.worldAdapter.call(operation, request);
+  const rows = async () => (await call('DiscoverConnections', { contractVersion: 'world-adapter/v4',
+    actorRef: 'canvas', sessionRef: 'session:one', requestId: `discover-${Math.random()}`,
+    authorizationRef: 'grant:one', adapterId: 'hanaworlds-adapter-luanti' })).result.connections;
+  return { gate, worlds, shared, operator, call, rows,
+    async close() { running = false; await Promise.all(loops); await gate.stop(); await service.close(); } };
+}
+
+test('Concurrency C03 local/local: one owner, one transport; the winner operator governs', async () => {
+  const home = await dshHome();
+  const p = await localPair(home);
+  try {
+    const rows = await p.rows();
+    assert.equal(rows.length, 2, 'two local connections share one worldRef');
+    const settled = await Promise.all(rows.map(row => p.gate.run(p.call('AuthorizeBinding',
+      bindRequest(`race-${row.connectionRef.slice(6, 12)}`, row.connectionRef, p.shared, row.capabilityRevision)))));
+    const winners = settled.map((r, i) => r.error === null ? i : -1).filter(i => i >= 0);
+    assert.equal(winners.length, 1, `exactly one accepted binding: ${JSON.stringify(settled.map(r => r.error?.code ?? 'OK'))}`);
+    const loserIndex = winners[0] === 0 ? 1 : 0;
+    assert.equal(settled[loserIndex].error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(settled[loserIndex].error));
+    // Map rows back to worlds through the commands each courier received.
+    const served = p.worlds.filter(w => w.commands.includes('handshake'));
+    assert.equal(served.length, 1, 'only the winner world received engine commands');
+    const [winnerWorld] = served;
+    const loserWorld = p.worlds.find(w => w !== winnerWorld);
+    p.operator.set(loserWorld.worldPath, false);
+    const prepared = await p.call('PrepareRecoverableTransaction', prepareFor(p.shared, 'c03'));
+    assert.equal(prepared.error, null, JSON.stringify(prepared.error));
+    assert.ok(winnerWorld.commands.includes('snapshot'));
+    assert.deepEqual(loserWorld.commands, []);
+    p.operator.set(winnerWorld.worldPath, false);
+    const denied = await p.call('PrepareRecoverableTransaction', prepareFor(p.shared, 'c03b'));
+    assert.equal(denied.error?.code, 'AUTHORIZATION_REVOKED', JSON.stringify(denied.error));
+  } finally { await p.close(); }
+});
+
+test('Concurrency C04 remote: a failed first opener leaves no reservation or transport; the next connection binds', async () => {
+  const home = await dshHome();
+  const failOpen = new Set(['remote:a']);
+  const r = await remotePair(home, { failOpen });
+  try {
+    const { results } = await raceRemote(r);
+    assert.notEqual(results['remote:a'].error, null, 'injected opener failure');
+    assert.equal(r.tunnels['remote:a'].opens, 0, 'the failed opener left no tunnel');
+    // B either won the overlap or was refused while A held the reservation;
+    // either way A's failed claim must not stay stuck.
+    assert.equal(r.liveTunnels(), results['remote:b'].error === null ? 1 : 0, 'no orphan transport');
+    const later = await r.bind('remote:b', 'later-b');
+    assert.equal(later.error, null, JSON.stringify(later.error));
+    assert.equal(later.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    assert.equal(r.liveTunnels(), 1, 'exactly one live transport');
+  } finally { await r.close(); }
+});
+
+test('Concurrency C04 local: a failed local handshake leaves no reservation or open transport; a remote connection then binds', async () => {
+  const home = await dshHome();
+  const world = await mixedWorld(home, { replyOverride: command =>
+    command.operation === 'handshake' ? { result: { payloadVersion: '0.2.0', payloadMatches: false } } : null });
+  try {
+    const failed = await world.bindLocal('local-fails');
+    assert.notEqual(failed.error, null, 'injected handshake failure');
+    const probe = await fetch(`${world.m.base}/poll`).then(() => 'listening', () => 'closed');
+    assert.equal(probe, 'closed', 'failed local transport was closed, not orphaned');
+    const later = await world.bindRemote('remote-after');
+    assert.equal(later.error, null, JSON.stringify(later.error));
+    assert.ok(world.tunnel.commands.includes('handshake'));
+  } finally { await world.m.close(); }
+});
+
+test('Concurrency C05: winner operator withdrawn denies replay and Prepare although the loser operator stays valid', async () => {
+  const home = await dshHome();
+  const r = await remotePair(home);
+  try {
+    const { winners } = await raceRemote(r);
+    assert.equal(winners.length, 1);
+    const [winner] = winners;
+    const loser = winner === 'remote:a' ? 'remote:b' : 'remote:a';
+    const commands = () => r.tunnels['remote:a'].commands.length + r.tunnels['remote:b'].commands.length;
+    const before = commands();
+    r.operator[winner] = false;
+    assert.equal(r.operator[loser], true);
+    const replay = await r.bind(winner, winner === 'remote:a' ? 'race-a' : 'race-b');
+    assert.equal(replay.result, null, 'no cached binding replayed');
+    assert.equal(replay.error?.code, 'CONNECTION_UNAUTHORIZED', JSON.stringify(replay.error));
+    const prepared = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, 'c05'));
+    assert.deepEqual([prepared.error?.code, prepared.error?.reason], ['AUTHORIZATION_REVOKED', 'GRANT_REVOKED'],
+      JSON.stringify(prepared.error));
+    assert.equal(commands(), before, 'no engine command on either transport');
+    assert.equal((await r.bind(loser, 'loser-retry')).error?.code, 'CONNECTION_UNAUTHORIZED',
+      'loser still cannot take the world');
+  } finally { await r.close(); }
+});
+
+test('Concurrency C06: the winner prepared/pending records stay recoverable by the service after operator withdrawal', async () => {
+  const home = await dshHome();
+  let serviceOk = true;
+  const r = await remotePair(home, { serviceCurrent: () => serviceOk });
+  try {
+    const { winners } = await raceRemote(r);
+    assert.equal(winners.length, 1, 'one owner');
+    const [winner] = winners;
+    const abortable = prepareFor(SHARED, 'c06a');
+    const preparedAbortable = await r.call('PrepareRecoverableTransaction', abortable);
+    assert.equal(preparedAbortable.error, null, JSON.stringify(preparedAbortable.error));
+    const pending = prepareFor(SHARED, 'c06p', [5, 1, 3]);
+    const pendingResponse = await r.call('PrepareRecoverableTransaction', pending);
+    assert.equal(pendingResponse.error, null, JSON.stringify(pendingResponse.error));
+    const preparedPending = pendingResponse.result;
+    serviceOk = false;
+    const applied = await r.call('ApplyCompiledTransaction', { contractVersion: 'world-adapter/v4',
+      actorRef: 'canvas', sessionRef: 'session:one', requestId: 'apply-c06', authorizationRef: 'grant:one',
+      worldRef: SHARED, transactionId: pending.transactionId, expectedWorldRevision: 'rev-1',
+      preparedTransaction: projectPreparedTransaction(preparedPending), operations: pending.operations,
+      operationDigest: pending.operationDigest, authorizationBinding: pending.authorizationBinding,
+      guarantee: 'RECOVERABLE_VERIFIED' });
+    assert.equal(applied.error?.code, 'RECOVERY_PENDING', JSON.stringify(applied.error));
+    serviceOk = true;
+    r.operator[winner] = false;
+    const aborted = await r.call('AbortPreparedTransaction', abortFor(abortable, 'abort-c06'));
+    assert.equal(aborted.error, null, JSON.stringify(aborted.error));
+    assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+    const restored = await r.call('RestoreTransaction', { contractVersion: 'world-adapter/v4',
+      actorRef: 'canvas', sessionRef: 'session:one', requestId: 'restore-c06', authorizationRef: 'grant:one',
+      worldRef: SHARED, originTransactionId: pending.transactionId, operationDigest: pending.operationDigest,
+      beforeImageDigest: preparedPending.beforeImageDigest, restoreAttemptIdentity: 'e'.repeat(64),
+      guarantee: 'RECOVERABLE_VERIFIED' });
+    assert.equal(restored.error, null, JSON.stringify(restored.error));
+    assert.equal(restored.result.status, 'ROLLED_BACK');
+    assert.ok(r.tunnels[winner].commands.includes('restore'), 'restore over the winner transport');
+  } finally { await r.close(); }
+});
+
+test('Concurrency audit: same-connection concurrent binds share one transport (no duplicate or leaked tunnel)', async () => {
+  const home = await dshHome();
+  const r = await remotePair(home);
+  try {
+    const [a1, a2] = await Promise.all([r.gate.run(r.bind('remote:a', 'same-1')),
+      r.gate.run(r.bind('remote:a', 'same-2'))]);
+    assert.equal(a1.error, null, JSON.stringify(a1.error));
+    assert.equal(a2.error, null, JSON.stringify(a2.error));
+    assert.equal(r.tunnels['remote:a'].opens, 1, 'one tunnel opened');
+    assert.equal(r.liveTunnels(), 1);
+  } finally { await r.close(); }
 });

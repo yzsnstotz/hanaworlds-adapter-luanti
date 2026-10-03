@@ -82,10 +82,58 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return boundConnection.has(request.worldRef) && operation !== 'AuthorizeBinding'
       ? { missing: true } : null;
   }
-  // A worldRef's transport serves only the connection that opened it.
-  function claimWorld(worldRef, connectionRef) {
+  // Ownership of a worldRef is reserved synchronously (no await between check
+  // and set), so concurrent AuthorizeBinding calls from different connections
+  // cannot both pass before a transport exists. Opening a transport and
+  // building a backend are shared per worldRef, so concurrent calls from the
+  // same connection never open a second transport or journal.
+  const opening = new Map();     // worldRef -> transport being opened
+  const building = new Map();    // worldRef -> backend being built
+  const inflight = new Map();    // worldRef -> AuthorizeBinding calls holding it
+  const established = new Set(); // worldRefs with an accepted binding
+  function reserveWorld(worldRef, connectionRef) {
     const owner = boundConnection.get(worldRef);
     if (owner !== undefined && owner !== connectionRef) fault('CONNECTION_UNAUTHORIZED');
+    boundConnection.set(worldRef, connectionRef);
+    inflight.set(worldRef, (inflight.get(worldRef) ?? 0) + 1);
+  }
+  // Releases one call's hold. Only when the last holder failed and nothing
+  // usable exists for the world (no accepted binding and no backend, so no
+  // recovery handle) is the reservation dropped and the transport it left
+  // closed, so it is neither stuck nor orphaned. A close failure is attached
+  // to `error`.
+  async function releaseWorld(worldRef, connectionRef, error) {
+    const left = (inflight.get(worldRef) ?? 1) - 1;
+    if (left > 0) inflight.set(worldRef, left); else inflight.delete(worldRef);
+    if (!error || left > 0 || boundConnection.get(worldRef) !== connectionRef ||
+        established.has(worldRef) || ownedBackends.has(worldRef)) return;
+    const transport = open.get(worldRef);
+    open.delete(worldRef);
+    boundConnection.delete(worldRef);
+    if (!transport) return;
+    try { await transport.close(); }
+    catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
+  }
+  // One shared in-flight creation per worldRef; the result is stored before
+  // the pending entry is removed, so no caller can start a second one.
+  function shared(pending, worldRef, create, store) {
+    if (!pending.has(worldRef)) {
+      pending.set(worldRef, Promise.resolve().then(create)
+        .then(value => { store(value); return value; })
+        .finally(() => pending.delete(worldRef)));
+    }
+    return pending.get(worldRef);
+  }
+  async function transportFor(worldRef, create) {
+    if (open.has(worldRef)) return { transport: open.get(worldRef), reused: true };
+    const reused = opening.has(worldRef);
+    const transport = await shared(opening, worldRef, create, value => open.set(worldRef, value));
+    return { transport, reused };
+  }
+  async function backendFor(worldRef, create) {
+    if (typeof createBackend !== 'function' || ownedBackends.has(worldRef)) return;
+    await shared(building, worldRef, create,
+      built => { if (built) ownedBackends.set(worldRef, built); });
   }
   /**
    * Current operator access, checked by the port after the grant and before
@@ -147,6 +195,65 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return { capabilityRevision: revision(connections), connections };
   }
 
+  // Remote binding: verified tunnel for the reserved connection (the existing
+  // order of checks), then the engine principal, then the backend.
+  async function bindRemote(request, proof, descriptor) {
+    if (typeof proof.engineActorName !== 'string' || !proof.engineActorName)
+      fault('CONNECTION_UNAUTHORIZED');
+    const profile = remote.get(request.connectionRef);
+    const { transport, reused } = await transportFor(request.worldRef, () =>
+      RemoteEngineTransport.open(profile, {
+        operatorAuthority: currentOperatorAuthority(), tunnelFactory: currentTunnelFactory() }));
+    // A cached tunnel carries a new binding only while the current operator
+    // authority and tunnel factory still stand (also checked by currentAccess
+    // before replay).
+    if (reused) await verifyRemoteOperator(profile, currentOperatorAuthority(), currentTunnelFactory());
+    await transport.verifyPrincipal(proof.engineActorName);
+    if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
+        typeof proof.actorRef !== 'string' || !proof.actorRef ||
+        typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
+      fault('CONNECTION_UNAUTHORIZED');
+    await backendFor(request.worldRef, () => createBackend({ worldRef: request.worldRef,
+      transport, proof, connectionRef: request.connectionRef, remote: true }));
+    return { connectionRef: request.connectionRef, worldRef: request.worldRef,
+      payloadVersion: PAYLOAD_VERSION, payloadDigest: await payloadDigest(),
+      binding: { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
+        bindingRef: proof.bindingRef, worldRef: request.worldRef,
+        grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions },
+      capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
+        worldRef: request.worldRef, engineBounds: null, limits: [],
+        ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
+        sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
+  }
+  // Local binding: the operator's BIND_RUNNING_WORLD proof, the world's courier
+  // transport and payload handshake, the engine principal, then the backend.
+  async function bindLocal(request, proof, descriptor) {
+    const world = local.get(request.connectionRef);
+    if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
+        typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
+        !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+    const { transport } = await transportFor(world.worldRef, () =>
+      LocalEngineTransport.open(world.worldPath, { serviceName, onAction }));
+    const loaded = await transport.handshake();
+    const principal = await transport.verifyPrincipal(proof.engineActorName);
+    if (!principal.current) fault('CONNECTION_UNAUTHORIZED');
+    if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
+        typeof proof.actorRef !== 'string' || !proof.actorRef ||
+        typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
+      fault('CONNECTION_UNAUTHORIZED');
+    const binding = { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
+      bindingRef: proof.bindingRef, worldRef: request.worldRef,
+      grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions };
+    await backendFor(request.worldRef, () => createBackend({ worldRef: request.worldRef,
+      transport, proof, connectionRef: request.connectionRef, remote: false }));
+    return { connectionRef: request.connectionRef, worldRef: request.worldRef,
+      payloadVersion: loaded.payloadVersion, payloadDigest: loaded.payloadDigest, binding,
+      capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
+        worldRef: request.worldRef, engineBounds: null, limits: [],
+        ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
+        sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
+  }
+
   const operations = {
     async DiscoverConnections() { return inventory(); },
     async ListWorlds(request) {
@@ -162,76 +269,19 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       if (descriptor.worldRef !== request.worldRef) fault('WORLD_NOT_FOUND');
       if (descriptor.capabilityRevision !== request.expectedCapabilityRevision)
         fault('STALE_REVISION');
-      if (remote.has(request.connectionRef)) {
-        if (typeof proof.engineActorName !== 'string' || !proof.engineActorName)
-          fault('CONNECTION_UNAUTHORIZED');
-        claimWorld(request.worldRef, request.connectionRef);
-        let transport = open.get(request.worldRef);
-        if (transport) {
-          // A cached tunnel carries a new binding only while the current
-          // operator authority and tunnel factory still stand (also checked
-          // by currentAccess before replay).
-          await verifyRemoteOperator(remote.get(request.connectionRef),
-            currentOperatorAuthority(), currentTunnelFactory());
-        }
-        if (!transport) {
-          transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
-            operatorAuthority: currentOperatorAuthority(), tunnelFactory: currentTunnelFactory() });
-          open.set(request.worldRef, transport);
-          boundConnection.set(request.worldRef, request.connectionRef);
-        }
-        await transport.verifyPrincipal(proof.engineActorName);
-        if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
-            typeof proof.actorRef !== 'string' || !proof.actorRef ||
-            typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
-          fault('CONNECTION_UNAUTHORIZED');
-        if (typeof createBackend === 'function' && !ownedBackends.has(request.worldRef)) {
-          const built = await createBackend({ worldRef: request.worldRef, transport, proof,
-            connectionRef: request.connectionRef, remote: true });
-          if (built) ownedBackends.set(request.worldRef, built);
-        }
-        return { connectionRef: request.connectionRef, worldRef: request.worldRef,
-          payloadVersion: PAYLOAD_VERSION, payloadDigest: await payloadDigest(),
-          binding: { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
-            bindingRef: proof.bindingRef, worldRef: request.worldRef,
-            grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions },
-          capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
-            worldRef: request.worldRef, engineBounds: null, limits: [],
-            ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
-            sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
+      reserveWorld(request.worldRef, request.connectionRef);
+      let result;
+      try {
+        result = remote.has(request.connectionRef)
+          ? await bindRemote(request, proof, descriptor)
+          : await bindLocal(request, proof, descriptor);
+      } catch (error) {
+        await releaseWorld(request.worldRef, request.connectionRef, error);
+        throw error;
       }
-      const world = local.get(request.connectionRef);
-      if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
-          typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
-          !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
-      claimWorld(world.worldRef, request.connectionRef);
-      let transport = open.get(world.worldRef);
-      if (!transport) {
-        transport = await LocalEngineTransport.open(world.worldPath, { serviceName, onAction });
-        open.set(world.worldRef, transport);
-        boundConnection.set(world.worldRef, request.connectionRef);
-      }
-      const loaded = await transport.handshake();
-      const principal = await transport.verifyPrincipal(proof.engineActorName);
-      if (!principal.current) fault('CONNECTION_UNAUTHORIZED');
-      if (typeof proof.authorizerRef !== 'string' || typeof proof.bindingRef !== 'string' ||
-          typeof proof.actorRef !== 'string' || !proof.actorRef ||
-          typeof proof.grantEpoch !== 'string' || !Array.isArray(proof.allowedActions))
-        fault('CONNECTION_UNAUTHORIZED');
-      const binding = { authorizerRef: proof.authorizerRef, actorRef: proof.actorRef,
-        bindingRef: proof.bindingRef, worldRef: request.worldRef,
-        grantEpoch: proof.grantEpoch, allowedActions: proof.allowedActions };
-      if (typeof createBackend === 'function' && !ownedBackends.has(request.worldRef)) {
-        const built = await createBackend({ worldRef: request.worldRef, transport, proof,
-          connectionRef: request.connectionRef, remote: false });
-        if (built) ownedBackends.set(request.worldRef, built);
-      }
-      return { connectionRef: request.connectionRef, worldRef: request.worldRef,
-        payloadVersion: loaded.payloadVersion, payloadDigest: loaded.payloadDigest, binding,
-        capabilities: { providerRef: adapterId, capabilityRevision: descriptor.capabilityRevision,
-          worldRef: request.worldRef, engineBounds: null, limits: [],
-          ...recoveryFacts(request.worldRef), regionProtectionWriters: [],
-          sessionDeleteSupported: false, imageMediaTypes: [], model: null } };
+      established.add(request.worldRef);
+      await releaseWorld(request.worldRef, request.connectionRef, null);
+      return result;
     },
     async InspectWorld(request, proof) {
       // The frozen request has no objectRef. Only the authenticated consumer can
@@ -300,6 +350,6 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   };
   return { operations, open, currentAccess, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();
-    boundConnection.clear(); ownedBackends.clear();
+    boundConnection.clear(); ownedBackends.clear(); inflight.clear(); established.clear();
   } };
 }
