@@ -5,6 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
+import { ContractError } from 'hanaworlds-contracts/v4';
 
 function fault(code) { throw new Error(code); }
 const adapterId = ADAPTER_ID;
@@ -36,6 +37,44 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return stateProfile?.profileVersion === 'state-profile/v2'
       ? { recoveryGuarantee: 'RECOVERABLE_VERIFIED', stateProfile }
       : { recoveryGuarantee: null, stateProfile: null };
+  }
+  // On operator or tunnel withdrawal the stale tunnel and its backend object
+  // are dropped (the journal stays on disk); a close failure is attached to
+  // the refusal, never hidden.
+  async function dropRemote(worldRef, error) {
+    const transport = open.get(worldRef);
+    open.delete(worldRef);
+    ownedBackends.delete(worldRef);
+    if (!transport) return;
+    try { await transport.close(); }
+    catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
+  }
+  const remoteWorlds = new Map(remoteProfiles.map(profile => [profile.worldRef, profile]));
+  // Trusted service recovery after revocation (CONTRACT_RULES §5) is not
+  // gated by the operator authority.
+  const serviceRecovery = new Set(['RestoreTransaction', 'AbortPreparedTransaction',
+    'AbortPreparedHistoryTransaction']);
+  /**
+   * Current remote access, checked by the port after the grant and before the
+   * replay cache (revocation precedes replay) and before any remote effect:
+   * a remote world's operator authority and tunnel factory must still stand.
+   * Local worlds and trusted service recovery are unaffected.
+   */
+  async function currentAccess(operation, request) {
+    if (serviceRecovery.has(operation)) return;
+    const profile = operation === 'AuthorizeBinding' ? remote.get(request.connectionRef)
+      : typeof request.worldRef === 'string' ? remoteWorlds.get(request.worldRef) : undefined;
+    if (!profile) return;
+    try {
+      await verifyRemoteOperator(profile, currentOperatorAuthority(), currentTunnelFactory());
+    } catch (error) {
+      await dropRemote(profile.worldRef, error);
+      // AuthorizeBinding keeps its existing binding codes.
+      if (operation === 'AuthorizeBinding') throw error;
+      if (error.message === 'CONNECTION_UNAUTHORIZED')
+        throw new ContractError('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
+      throw new ContractError('CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE');
+    }
   }
   function backend(request) {
     const value = ownedBackends.get(request.worldRef) ?? transactionBackends?.get?.(request.worldRef);
@@ -87,19 +126,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         let transport = open.get(request.worldRef);
         if (transport) {
           // A cached tunnel carries a new binding only while the current
-          // operator authority and tunnel factory still stand. On withdrawal
-          // the stale tunnel and its backend are dropped (journal stays on
-          // disk) and the binding is refused before any engine command.
+          // operator authority and tunnel factory still stand (also checked
+          // by currentAccess before replay).
           try {
             await verifyRemoteOperator(remote.get(request.connectionRef),
               currentOperatorAuthority(), currentTunnelFactory());
-          } catch (error) {
-            open.delete(request.worldRef);
-            ownedBackends.delete(request.worldRef);
-            try { await transport.close(); }
-            catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
-            throw error;
-          }
+          } catch (error) { await dropRemote(request.worldRef, error); throw error; }
         }
         if (!transport) {
           transport = await RemoteEngineTransport.open(remote.get(request.connectionRef), {
@@ -228,7 +260,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     AbortPreparedHistoryTransaction(request) { return backend(request).abortPreparedHistory(request); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
-  return { operations, open, close: async () => {
+  return { operations, open, currentAccess, close: async () => {
     await Promise.all([...open.values()].map(transport => transport.close())); open.clear();
     ownedBackends.clear();
   } };

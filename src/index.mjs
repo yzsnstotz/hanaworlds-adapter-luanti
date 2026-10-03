@@ -133,6 +133,7 @@ export function apply(ctx, config = {}) {
   });
   const worldAdapter = new WorldAdapterV4({
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
+    currentAccess: runtime.currentAccess,
     operations: runtime.operations });
   const service = {
     worldAdapter,

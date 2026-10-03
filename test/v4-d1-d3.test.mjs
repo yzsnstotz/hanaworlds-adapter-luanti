@@ -11,7 +11,7 @@ import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateType } from 'hanaworlds-contracts/v4';
+import { digestValue, validateType } from 'hanaworlds-contracts/v4';
 import { apply } from '../src/index.mjs';
 import { payloadDigest, provisionLocalPayload } from '../src/local-worlds.mjs';
 
@@ -37,7 +37,9 @@ function providers(home, digest, overrides = {}) {
   let closes = 0;
   const services = {
     hanaworldsAuthority: { verify: async r => grant(r), verifyEngineBinding: async r => grant(r),
-      verifyService: async () => ({ current: true, worldRef: remoteProfile.worldRef }) },
+      verifyService: async request => ({ current: true, worldRef: remoteProfile.worldRef,
+        sessionRef: request?.sessionRef, authorizationRef: request?.authorizationRef,
+        domainOwner: 'hanaworlds-canvas' }) },
     hanaworldsOperatorAuthority: { verify: async input => ({ current: true, ...remoteProfile, ...input,
       worldStopped: true }) },
     hanaworldsRemoteTunnelFactory: { open: async () => ({
@@ -255,15 +257,74 @@ for (const [label, withdrawn, expectedCode] of [
     assert.equal(after.error?.mutationState, 'NONE');
     assert.equal(all.providerCalls(), callsBefore, 'no engine command sent over the stale tunnel');
     assert.equal(all.tunnelCloses(), 1, 'stale tunnel closed, not kept for reuse');
-    // The original accepted request still replays only for the same payload; a
-    // new requestId cannot reuse the stale transport again.
+    // ADAPTER-D1-REMOTE-REPLAY-AFTER-OPERATOR-WITHDRAWAL: revocation precedes
+    // replay, so the original accepted request is not replayed either.
+    const replay = await bind('first');
+    assert.equal(replay.result, null, 'no cached binding replayed after withdrawal');
+    assert.equal(replay.error?.code, expectedCode, JSON.stringify(replay.error));
     assert.equal((await bind('after-withdrawal-2')).error?.code, expectedCode);
+    assert.equal(all.providerCalls(), callsBefore, 'still no engine command');
     // Restoring the provider opens a fresh, verified tunnel (handshake again).
     services[withdrawn] = all.services[withdrawn];
     const restored = await bind('restored');
     assert.equal(restored.error, null, JSON.stringify(restored.error));
     assert.equal(restored.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
     assert.ok(all.providerCalls() > callsBefore, 'new handshake over a new tunnel');
+    await service.close();
+  });
+}
+
+// Already-bound remote world: a withdrawn operator authority (or tunnel
+// factory) stops non-recovery operations before any remote engine command;
+// the trusted service recovery path stays available (CONTRACT_RULES §5).
+function remotePrepare(requestId) {
+  const worldRef = remoteProfile.worldRef;
+  const operations = { contractVersion: 'operations/v2', buildDigest: 'a'.repeat(64),
+    compilerRevision: 'c', compilationConfigDigest: 'b'.repeat(64), worldRef,
+    frameDigest: 'c'.repeat(64), catalogueDigest: 'd'.repeat(64), targetFactsDigest: 'e'.repeat(64),
+    effects: [{ position: [0, 1, 3], nodeName: 'fixture:stone', param2: 0 }] };
+  const operationDigest = digestValue('operations', operations).sha256;
+  return { contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+    requestId, authorizationRef: 'grant:one', worldRef, transactionId: `tx-${requestId}`,
+    operationDigest, operations,
+    authorizationBinding: { contractVersion: 'world-adapter/v2', authorizerRef: 'operator:one',
+      actorRef: 'actor:alice', grantEpoch: 'epoch:one', bindingRef: 'binding:one', worldRef,
+      sessionRef: 'session:one', turnRevision: 't', intentDigest: 'f'.repeat(64),
+      surfaceActionDigest: '1'.repeat(64), allowedAction: 'APPLY_RECOVERABLE',
+      transactionId: `tx-${requestId}`, operationDigest, worldRevision: 'rev-1',
+      selectionRevision: 's', analysisDigest: null, decisionRevision: null },
+    expectedWorldRevision: 'rev-1', expectedObjectRevisions: {}, guarantee: 'RECOVERABLE_VERIFIED' };
+}
+for (const [label, withdrawn, expected] of [
+  ['operator authority', 'hanaworldsOperatorAuthority', ['AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED']],
+  ['remote tunnel factory', 'hanaworldsRemoteTunnelFactory', ['CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE']],
+]) {
+  test(`D1 already-bound remote world: ${label} withdrawn stops a transaction before any remote effect`, async () => {
+    const home = await dshHome();
+    const all = providers(home, await payloadDigest());
+    const services = { ...all.services };
+    const service = apply(context(services), { remoteProfiles: [remoteProfile] });
+    const bound = await service.worldAdapter.call('AuthorizeBinding', bindRequest('bind',
+      remoteProfile.connectionRef, remoteProfile.worldRef, remoteProfile.capabilityRevision));
+    assert.equal(bound.result.capabilities.recoveryGuarantee, 'RECOVERABLE_VERIFIED');
+    const callsBefore = all.providerCalls();
+    delete services[withdrawn];
+    const prepared = await service.worldAdapter.call('PrepareRecoverableTransaction', remotePrepare('p1'));
+    assert.deepEqual([prepared.error?.code, prepared.error?.phase, prepared.error?.reason], expected,
+      JSON.stringify(prepared.error));
+    assert.equal(prepared.error?.mutationState, 'NONE');
+    assert.equal(all.providerCalls(), callsBefore, 'no remote engine command after withdrawal');
+    const journalDir = join(home, 'data', 'hanaworlds-adapter-luanti', 'journal');
+    for (const world of await readdir(journalDir).catch(() => []))
+      assert.deepEqual(await readdir(join(journalDir, world)), ['world-binding'], 'no journal record');
+    // Trusted service recovery is not blocked by the operator gate.
+    const restore = await service.worldAdapter.call('RestoreTransaction', {
+      contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one',
+      requestId: 'restore-1', authorizationRef: 'grant:one', worldRef: remoteProfile.worldRef,
+      originTransactionId: 'tx-unknown', operationDigest: 'a'.repeat(64),
+      beforeImageDigest: 'b'.repeat(64), restoreAttemptIdentity: 'c'.repeat(64),
+      guarantee: 'RECOVERABLE_VERIFIED' });
+    assert.notEqual(restore.error?.code, 'AUTHORIZATION_REVOKED', 'recovery path not gated by operator');
     await service.close();
   });
 }

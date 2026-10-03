@@ -74,6 +74,7 @@ function publicFailure(thrown, operation, request, postwriteValidation = false,
 export class WorldAdapterV4 {
   #authority;
   #resolveAuthority;
+  #currentAccess;
   #operations;
   #replay = new Map();
   /**
@@ -81,7 +82,10 @@ export class WorldAdapterV4 {
    * authority registered after the Adapter is used and a withdrawn one denies;
    * there is no fallback to `authority` in that case.
    */
-  constructor({ authority, resolveAuthority, operations } = {}) {
+  constructor({ authority, resolveAuthority, currentAccess, operations } = {}) {
+    // Optional host-side current-access check (remote operator/tunnel), run
+    // after the grant and before the replay cache.
+    this.#currentAccess = typeof currentAccess === 'function' ? currentAccess : null;
     this.#authority = authority;
     this.#resolveAuthority = typeof resolveAuthority === 'function' ? resolveAuthority : null;
     this.#operations = operations;
@@ -109,6 +113,8 @@ export class WorldAdapterV4 {
         fault('AUTHORIZATION_REVOKED', 'authorize', 'GRANT_REVOKED');
       if (canvasOnly.has(operation) && proof.domainOwner !== 'hanaworlds-canvas')
         fault('PERMISSION_DENIED', 'authorize', 'OWNERSHIP_VIOLATION');
+      // Revocation precedes replay (CONTRACT_RULES §5).
+      if (this.#currentAccess) await this.#currentAccess(operation, request);
       const key = `${request.sessionRef}\0${operation}\0${request.requestId}`;
       const identity = canonicalJSON(request);
       const old = this.#replay.get(key);
