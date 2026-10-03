@@ -97,3 +97,43 @@ test('unreadable or foreign prior state is never adopted or replaced by a fresh 
   await writeFile(join(good, `${createHash('sha256').update('tx-x').digest('hex')}.json`), '{oops');
   await assert.rejects(() => DurableJournal.open(good), /RECOVERY_PENDING/);
 });
+
+// NS-SPEC-01: DSH accepts DSH_HOME=~/... and expands ~ to the user home
+// (os.homedir(), i.e. HOME on POSIX) before resolving; so must the Adapter.
+test('tilde DSH_HOME is expanded like DSH; mismatches still refuse without writing', async () => {
+  const previousHome = process.env.HOME;
+  const userHome = await freshHome();
+  process.env.HOME = userHome;
+  try {
+    const dshHome = join(userHome, 'dsh');
+    await mkdir(dshHome);
+    // ~/dsh -> <HOME>/dsh: accepted, journal created under that home only.
+    const dir = await nativeJournalDirectory(homeOf(dshHome), 'luanti:tilde', { DSH_HOME: '~/dsh' });
+    assert.equal(dir, journalPath(dshHome, 'luanti:tilde'));
+    // Bare ~ is the user home itself.
+    assert.equal(await nativeJournalDirectory(homeOf(userHome), 'luanti:tilde', { DSH_HOME: '~' }),
+      journalPath(userHome, 'luanti:tilde'));
+    // A blank DSH_HOME is unset for DSH, so the native seam's own root stands.
+    assert.equal(await nativeJournalDirectory(homeOf(dshHome), 'luanti:tilde', { DSH_HOME: '   ' }), dir);
+    // ~/other does not match the native root: refused before any write.
+    const before = (await readdir(userHome)).sort();
+    await assert.rejects(() => nativeJournalDirectory(homeOf(join(userHome, 'elsewhere')), 'luanti:tilde',
+      { DSH_HOME: '~/dsh' }), /ADAPTER_STORAGE_UNAVAILABLE/);
+    await assert.rejects(() => nativeJournalDirectory(homeOf(dshHome), 'luanti:tilde',
+      { DSH_HOME: '~/other' }), /ADAPTER_STORAGE_UNAVAILABLE/);
+    // A literal "~user" form is not a DSH tilde form and stays a mismatch.
+    await assert.rejects(() => nativeJournalDirectory(homeOf(dshHome), 'luanti:tilde',
+      { DSH_HOME: '~dsh' }), /ADAPTER_STORAGE_UNAVAILABLE/);
+    assert.deepEqual((await readdir(userHome)).sort(), before, 'no directory created for a mismatch');
+    // A symlinked data directory under a tilde home is still refused.
+    const linked = join(userHome, 'linked');
+    await mkdir(linked);
+    const outside = await freshHome();
+    await symlink(outside, join(linked, 'data'));
+    await assert.rejects(() => nativeJournalDirectory(homeOf(linked), 'luanti:tilde', { DSH_HOME: '~/linked' }),
+      /ADAPTER_STORAGE_UNAVAILABLE/);
+    assert.deepEqual(await readdir(outside), []);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+  }
+});

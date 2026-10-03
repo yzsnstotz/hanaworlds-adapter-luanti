@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readdir, readFile, realpath, rename } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
 const OWNER = 'hanaworlds-adapter-luanti';
@@ -11,6 +12,12 @@ function unavailable(reason) {
   const error = new Error('ADAPTER_STORAGE_UNAVAILABLE');
   error.reason = reason;
   return error;
+}
+// Same as @deepseek-ai/dsh-home-paths expandHomePath (os.homedir()).
+function expandHomePath(path) {
+  if (path === '~') return homedir();
+  if (path.startsWith('~/') || path.startsWith('~\\')) return join(homedir(), path.slice(2));
+  return path;
 }
 async function syncDirectory(path) {
   const handle = await open(path, 'r');
@@ -38,8 +45,12 @@ export async function nativeJournalDirectory(homePath, worldRef, env = process.e
   const root = homePath();
   if (typeof root !== 'string' || !isAbsolute(root) || resolve(root) !== root)
     throw unavailable('DSH home is not an absolute normalized path');
-  const configured = env.DSH_HOME?.trim();
-  if (configured && root !== resolve(configured))
+  // Same rule as @deepseek-ai/dsh-home-paths resolveDshHome: a non-blank
+  // DSH_HOME (used untrimmed) with a leading ~, ~/ or ~\ expanded to the
+  // user home, then resolved.
+  const configured = env.DSH_HOME;
+  if (configured !== undefined && configured.trim().length > 0 &&
+      root !== resolve(expandHomePath(configured)))
     throw unavailable('dshHomePath does not resolve to the configured DSH_HOME');
   const key = createHash('sha256').update(worldRef).digest('hex');
   const segments = ['data', OWNER, 'journal', key];
