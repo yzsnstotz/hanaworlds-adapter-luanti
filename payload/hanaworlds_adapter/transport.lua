@@ -141,16 +141,21 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   end
 
   local function encode_reply(id, result, code)
+    -- Only a table result can carry shaped fields; present_frame replies with
+    -- a boolean, and indexing it would raise inside the poll callback and stop
+    -- the server.
+    local shaped = type(result) == 'table'
     local encoded
-    if result and result.raw_json then encoded = result.raw_json
-    else encoded = result and json(result) or 'null' end
-    if result and result.raw_json then -- already explicit JSON
-    elseif result and result.occupiedCells then
+    if shaped and result.raw_json then encoded = result.raw_json
+    elseif result ~= nil then encoded = json(result)
+    else encoded = 'null' end
+    if shaped and result.raw_json then -- already explicit JSON
+    elseif shaped and result.occupiedCells then
       encoded = '{"occupiedCells":' .. array(result.occupiedCells, json)
         .. ',"knownEmptyCells":' .. array(result.knownEmptyCells,
           function(cell) return array(cell, json) end)
         .. ',"unknownCells":' .. array(result.unknownCells, json) .. '}'
-    elseif result and result.records then
+    elseif shaped and result.records then
       encoded = encode_state(result)
     end
     return '{"id":' .. json(id) .. ',"worldRef":' .. json(manifest.worldRef)
