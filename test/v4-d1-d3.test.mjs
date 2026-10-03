@@ -1027,12 +1027,13 @@ function barrier() {
   };
 }
 const SHARED = 'luanti:shared';
-async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true, stateRead, grantFor } = {}) {
+async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => true, stateRead, grantFor,
+  closeFailures = { remaining: 0 } } = {}) {
   const gate = barrier();
   const digest = await payloadDigest();
   const operator = { 'remote:a': true, 'remote:b': true };
-  const tunnels = { 'remote:a': { opens: 0, closes: 0, commands: [] },
-    'remote:b': { opens: 0, closes: 0, commands: [] } };
+  const tunnels = { 'remote:a': { opens: 0, closes: 0, closeAttempts: 0, commands: [] },
+    'remote:b': { opens: 0, closes: 0, closeAttempts: 0, commands: [] } };
   const air = position => ({ position, nodeName: 'air', param1: 0, param2: 0, metadata: {},
     inventory: {}, timer: null });
   const profiles = Object.keys(tunnels).map(connectionRef => ({ ...remoteProfile, connectionRef,
@@ -1066,7 +1067,12 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
           if (command.operation === 'restore') return { worldRef, result: { status: 'ROLLED_BACK' } };
           throw new Error(`UNEXPECTED_ENGINE_COMMAND ${command.operation}`);
         },
-        async close() { t.closes++; } };
+        async close() {
+          t.closeAttempts++;
+          // Injected failure: rejects before closing, the tunnel stays live.
+          if (closeFailures.remaining > 0) { closeFailures.remaining--; throw new Error('CLOSE_REJECTED'); }
+          t.closes++;
+        } };
     } },
   });
   const services = { ...all.services };
@@ -1574,4 +1580,102 @@ test('C04/C06 post-recovery: a same-owner bind in flight during settlement keeps
     r.services.hanaworldsOperatorAuthority = real;
     assert.equal((await r.bind('remote:b', 'other-after-accept')).error?.code, 'CONNECTION_UNAUTHORIZED');
   } finally { await r.close(); }
+});
+
+// ADAPTER-D1-C04 close failure (spec FAIL aafc5a8e…): a transport whose close
+// is rejected stays owned and reachable; the world is released only after a
+// later close succeeds, and no second tunnel is opened meanwhile.
+async function assertCloseFailureLifecycle(r, closeFailures, label) {
+  // The retirement/cleanup close was rejected: the old tunnel is live and owned.
+  assert.equal(r.tunnels['remote:a'].closeAttempts, 1, `${label}: one close attempted`);
+  assert.equal(r.liveTunnels(), 1, `${label}: rejected close keeps the tunnel managed, not orphaned`);
+  const effectsBefore = r.tunnels['remote:a'].commands.length;
+  // A competing connection is refused while cleanup keeps failing, without a new tunnel.
+  closeFailures.remaining = 1;
+  const refused = await r.bind('remote:b', `${label}-refused`);
+  assert.equal(refused.result, null);
+  assert.equal(refused.error?.code, 'ADAPTER_UNAVAILABLE', JSON.stringify(refused.error));
+  assert.equal(r.tunnels['remote:b'].opens, 0, 'no second tunnel while the old one may live');
+  assert.equal(r.tunnels['remote:a'].closeAttempts, 2, 'cleanup re-attempted on demand');
+  const normal = await r.call('PrepareRecoverableTransaction', prepareFor(SHARED, `${label}-normal`, [13, 1, 3]));
+  assert.notEqual(normal.error, null, 'no normal effect on a held, unaccepted world');
+  assert.equal(r.tunnels['remote:a'].commands.length, effectsBefore, 'zero engine commands');
+  // The next attempt's cleanup succeeds; then the other connection binds.
+  const bound = await r.bind('remote:b', `${label}-bound`);
+  assert.equal(bound.error, null, JSON.stringify(bound.error));
+  assert.equal(r.tunnels['remote:a'].closes, r.tunnels['remote:a'].opens, 'old tunnel closed');
+  assert.equal(r.tunnels['remote:b'].opens, 1);
+  assert.equal(r.liveTunnels(), 1);
+}
+
+test('C04 close failure (A, post-recovery retirement): a rejected close keeps the world held until a later close succeeds', async () => {
+  const home = await dshHome();
+  const { prepared } = await priorProcessRecords(home);
+  const closeFailures = { remaining: 0 };
+  let broken = true;
+  const r = await remotePair(home, { closeFailures,
+    stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    assert.notEqual((await r.bind('remote:a', 'late-a')).error, null);
+    broken = false;
+    closeFailures.remaining = 1;
+    const aborted = await r.call('AbortPreparedTransaction', abortFor(prepared, 'abort-close'));
+    assert.equal(aborted.error, null, 'trusted recovery itself succeeded');
+    assert.equal(aborted.result.status, 'ABORTED_PREPARED');
+    await assertCloseFailureLifecycle(r, closeFailures, 'A');
+  } finally { closeFailures.remaining = 0; await r.close(); }
+  assert.equal(r.liveTunnels(), 0, 'no orphan after shutdown');
+});
+
+test('C04 close failure (B, immediate failed bind): a rejected close keeps the world held until a later close succeeds', async () => {
+  const home = await dshHome();
+  const closeFailures = { remaining: 1 };
+  let broken = true;
+  const r = await remotePair(home, { closeFailures,
+    stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    const failed = await r.bind('remote:a', 'late-close');
+    assert.notEqual(failed.error, null, 'the bind reports its own failure');
+    broken = false;
+    await assertCloseFailureLifecycle(r, closeFailures, 'B');
+  } finally { closeFailures.remaining = 0; await r.close(); }
+  assert.equal(r.liveTunnels(), 0, 'no orphan after shutdown');
+});
+
+test('C04 close failure: the owner itself rebinds only after its old tunnel is closed (fresh tunnel, no reuse)', async () => {
+  const home = await dshHome();
+  const closeFailures = { remaining: 1 };
+  let broken = true;
+  const r = await remotePair(home, { closeFailures,
+    stateRead: async () => broken ? uncloneableProfile() : structuredClone(profile) });
+  try {
+    assert.notEqual((await r.bind('remote:a', 'own-late')).error, null);
+    broken = false;
+    closeFailures.remaining = 1;
+    assert.equal((await r.bind('remote:a', 'own-refused')).error?.code, 'ADAPTER_UNAVAILABLE');
+    assert.equal(r.tunnels['remote:a'].opens, 1, 'no second tunnel');
+    const again = await r.bind('remote:a', 'own-again');
+    assert.equal(again.error, null, JSON.stringify(again.error));
+    assert.equal(r.tunnels['remote:a'].opens, 2, 'a fresh tunnel after the old one closed');
+    assert.equal(r.liveTunnels(), 1);
+  } finally { closeFailures.remaining = 0; await r.close(); }
+  assert.equal(r.liveTunnels(), 0);
+});
+
+test('C04 close failure at shutdown is reported and the transport stays managed until a later close succeeds', async () => {
+  const home = await dshHome();
+  const closeFailures = { remaining: 0 };
+  const r = await remotePair(home, { closeFailures });
+  try {
+    assert.equal((await r.bind('remote:a', 'shutdown-bind')).error, null);
+    closeFailures.remaining = 1;
+    await assert.rejects(r.service.close(), /transport close failed/, 'shutdown reports the failure');
+    assert.equal(r.liveTunnels(), 1, 'still managed, not dropped');
+    await r.service.close();
+    assert.equal(r.liveTunnels(), 0, 'closed on the next attempt; no orphan');
+  } finally {
+    closeFailures.remaining = 0;
+    await r.gate.stop();
+    await r.service.close().catch(() => {});
+  }
 });

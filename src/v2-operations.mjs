@@ -109,13 +109,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     if (!error || left > 0 || boundConnection.get(worldRef) !== connectionRef ||
         established.has(worldRef) || building.has(worldRef) ||
         ownedBackends.get(worldRef)?.hasUnsettledRecords) return;
-    const transport = open.get(worldRef);
-    open.delete(worldRef);
-    ownedBackends.delete(worldRef);
-    boundConnection.delete(worldRef);
-    if (!transport) return;
-    try { await transport.close(); }
-    catch (closeError) { error.closeError = closeError?.message ?? String(closeError); }
+    const closed = await closeWorld(worldRef);
+    if (!closed.ok) error.closeError = closed.message;
   }
   // A world held only as a recovery handle (reserved, never accepted) is
   // retired once trusted recovery has settled its last unsettled record and no
@@ -127,17 +122,39 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     const owned = ownedBackends.get(worldRef);
     if (!boundConnection.has(worldRef) || established.has(worldRef) || inflight.has(worldRef) ||
         recovering.has(worldRef) || building.has(worldRef) || opening.has(worldRef) ||
-        !owned || owned.hasUnsettledRecords) return;
-    const transport = open.get(worldRef);
-    open.delete(worldRef);
-    ownedBackends.delete(worldRef);
-    boundConnection.delete(worldRef);
-    if (!transport) return;
-    try { await transport.close(); }
-    catch (error) {
-      const message = `world ${worldRef}: retired recovery transport did not close: ${error?.message ?? error}`;
-      if (typeof log === 'function') log('error', message); else console.error(message);
-    }
+        closing.has(worldRef) || !owned || owned.hasUnsettledRecords) return;
+    await closeWorld(worldRef);
+  }
+  // Transport teardown and ownership are one lifecycle: the world's
+  // reservation and transport are released only after the transport has
+  // actually closed. A rejected close leaves the transport reachable in
+  // `open` and the world owned (close-pending), so no competing binding or
+  // second transport can start while the old one may still live; the failure
+  // is logged. The next AuthorizeBinding for that world, or shutdown,
+  // attempts the close again; concurrent callers share one attempt.
+  const closing = new Map();      // worldRef -> close attempt in flight
+  const closePending = new Set(); // worldRefs whose last close was rejected
+  function closeWorld(worldRef) {
+    if (closing.has(worldRef)) return closing.get(worldRef);
+    const attempt = (async () => {
+      const transport = open.get(worldRef);
+      // The backend held no record that needs recovery; it is not kept.
+      ownedBackends.delete(worldRef);
+      try { if (transport) await transport.close(); }
+      catch (error) {
+        closePending.add(worldRef);
+        const message = error?.message ?? String(error);
+        const text = `world ${worldRef}: transport close failed; world stays held until a later close succeeds: ${message}`;
+        if (typeof log === 'function') log('error', text); else console.error(text);
+        return { ok: false, message };
+      }
+      open.delete(worldRef);
+      boundConnection.delete(worldRef);
+      closePending.delete(worldRef);
+      return { ok: true };
+    })().finally(() => closing.delete(worldRef));
+    closing.set(worldRef, attempt);
+    return attempt;
   }
   async function recover(request, run) {
     const worldRef = request.worldRef;
@@ -314,6 +331,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       if (descriptor.worldRef !== request.worldRef) fault('WORLD_NOT_FOUND');
       if (descriptor.capabilityRevision !== request.expectedCapabilityRevision)
         fault('STALE_REVISION');
+      // A world whose old transport is still being (or failed to be) closed is
+      // bound by nobody until that close succeeds; no transport is reused.
+      if (closing.has(request.worldRef) || closePending.has(request.worldRef)) {
+        const closed = await closeWorld(request.worldRef);
+        if (!closed.ok) fault('ADAPTER_UNAVAILABLE');
+      }
       reserveWorld(request.worldRef, request.connectionRef);
       let result;
       try {
@@ -399,8 +422,20 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
   return { operations, open, currentAccess, close: async () => {
-    await Promise.all([...open.values()].map(transport => transport.close())); open.clear();
-    boundConnection.clear(); ownedBackends.clear(); inflight.clear(); established.clear();
-    recovering.clear();
+    // Every transport gets a close attempt; one that is rejected stays in
+    // `open` and the failure is reported, not hidden.
+    const entries = [...open.entries()];
+    const results = await Promise.allSettled(entries.map(([, transport]) => transport.close()));
+    const failed = [];
+    results.forEach((result, i) => {
+      const [worldRef] = entries[i];
+      if (result.status === 'fulfilled') { open.delete(worldRef); closePending.delete(worldRef); }
+      else { closePending.add(worldRef); failed.push(`${worldRef}: ${result.reason?.message ?? result.reason}`); }
+    });
+    // A world whose transport did not close stays owned and close-pending.
+    for (const worldRef of [...boundConnection.keys()])
+      if (!open.has(worldRef)) boundConnection.delete(worldRef);
+    ownedBackends.clear(); inflight.clear(); established.clear(); recovering.clear();
+    if (failed.length) throw new Error(`transport close failed: ${failed.join('; ')}`);
   } };
 }
