@@ -28,7 +28,8 @@ test('local courier accepts only a current world, player and scope grant proof',
       ({ current: true, worldPath, action, worldStopped: true }) } });
   const { token } = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter',
     'transport.json'), 'utf8'));
-  const courier = await LocalEngineTransport.open(world, { serviceName: 'service' });
+  const courier = await LocalEngineTransport.open(world, { serviceName: 'service',
+    onAction: async () => ({}) });
   const url = `http://127.0.0.1:${port}`;
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   async function answer(reply) {
@@ -51,6 +52,39 @@ test('local courier accepts only a current world, player and scope grant proof',
     assert.deepEqual(grant, { current: true, engineActorName: 'alice',
       worldRef: identity.worldRef, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
       grantRef: 'engine-grant:one' });
+    const binding = { current: true, engineActorName: 'alice',
+      nativeGrantRef: grant.grantRef };
+    for (const [operation, issue] of [
+      ['snapshot', () => courier.snapshot({ coveredPositions: [[0, 0, 0]] }, binding)],
+      ['apply', () => courier.apply({ effects: [], operationDigest: 'digest' },
+        { beforeImage: {}, operationDigest: 'digest' }, binding)],
+      ['apply_state', () => courier.applyState({ operationDigest: 'digest' }, {}, {}, binding)],
+    ]) {
+      const pending = issue();
+      pending.catch(() => {});
+      const polled = await fetch(`${url}/poll`, { headers }).then(res => res.json());
+      assert.equal(polled.command.operation, operation);
+      assert.equal(polled.command.actorName, 'alice');
+      assert.equal(polled.command.grantRef, grant.grantRef,
+        `${operation} must carry the engine proof from this verification`);
+      await fetch(`${url}/result`, { method: 'POST', headers, body: JSON.stringify({
+        id: polled.command.id, worldRef: identity.worldRef, result: true }) });
+      await pending;
+    }
+    const shown = courier.presentFrame('alice', { sessionRef: 'session', actions: [] });
+    const authorize = await fetch(`${url}/poll`, { headers }).then(res => res.json());
+    assert.equal(authorize.command.operation, 'authorize');
+    await fetch(`${url}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: authorize.command.id, worldRef: identity.worldRef,
+      result: { current: true, engineActorName: 'alice', worldRef: identity.worldRef,
+        worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+        grantRef: grant.grantRef } }) });
+    const display = await fetch(`${url}/poll`, { headers }).then(res => res.json());
+    assert.equal(display.command.operation, 'present_frame');
+    assert.equal(display.command.grantRef, grant.grantRef);
+    await fetch(`${url}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: display.command.id, worldRef: identity.worldRef, result: true }) });
+    assert.equal(await shown, true);
   } finally {
     await courier.close();
     await rm(base, { recursive: true, force: true });

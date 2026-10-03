@@ -22,10 +22,11 @@ local http = {fetch = function(request, callback)
     if polls == 2 then
       callback({succeeded = true, code = 200, data = {worldRef = 'luanti:test',
         command = {id = 'cmd-2', worldRef = 'luanti:test', operation = 'present_frame',
-          engineActorName = 'alice', frame = {}}}})
+          engineActorName = 'alice', grantRef = 'grant:one', frame = {}}}})
     elseif polls == 1 then
       callback({succeeded = true, code = 200, data = {worldRef = 'luanti:test',
         command = {id = 'cmd-1', worldRef = 'luanti:test', operation = 'prepare_check',
+          grantRef = 'grant:one',
           actorName = 'alice', positions = {{0, 1, 3}}}}})
     end
   elseif request.url:match('/result$') then
@@ -41,7 +42,9 @@ local started = transport.start(http, {new = function() return {} end}, manifest
   function() return {worldRef = 'luanti:test', port = 30000, token = token} end,
   function() end, function() return {} end,
   function(name, frame) return name == 'alice' and type(frame) == 'table' end, region,
-  {verify = function() return {current = true, worldRef = 'luanti:test'} end})
+  {verify = function(_, name) return {current = true, worldRef = 'luanti:test',
+    engineActorName = name, scope = 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+    grantRef = 'grant:one'} end})
 assert(started, 'courier started')
 -- Run the scheduled poll and the follow-up callbacks once.
 local fn = table.remove(scheduled, 1); fn()

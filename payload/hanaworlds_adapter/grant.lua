@@ -42,6 +42,17 @@ function M.new(core, world_ref, world_name)
       scope = SCOPE, grantRef = ref}
   end
 
+  function self:list_current()
+    local players = core.get_connected_players and core.get_connected_players() or {}
+    local out = {}
+    for _, player in ipairs(players) do
+      local proof = self:verify(player:get_player_name())
+      if proof.current then out[#out + 1] = proof end
+    end
+    table.sort(out, function(a, b) return a.engineActorName < b.engineActorName end)
+    return out
+  end
+
   local function show(name)
     local proof = self:verify(name)
     local has_grant = proof.current

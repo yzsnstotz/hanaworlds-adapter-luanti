@@ -76,20 +76,42 @@ test('loopback in-world action: late provider relayed once; missing, withdrawn a
           operationDigest: null, analysisDigest: null, decisionRevision: null } }] });
   const present = async frame => {
     const pending = courier.presentFrame('alice', frame);
+    const authorize = await (await fetch(`${base}/poll`, { headers })).json();
+    assert.equal(authorize.command.operation, 'authorize');
+    await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: authorize.command.id, worldRef: manifest.worldRef,
+      result: { current: true, worldRef: manifest.worldRef, engineActorName: 'alice',
+        worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+        grantRef: 'native:one' }, error: null }) });
     const polled = await (await fetch(`${base}/poll`, { headers })).json();
     assert.equal(polled.command.operation, 'present_frame');
     await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
       id: polled.command.id, worldRef: manifest.worldRef, result: true, error: null }) });
     assert.equal(await pending, true);
   };
-  const act = async (frame, id) => {
+  const act = async (frame, id, expectAuthorize = true) => {
     const request = { contractVersion: 'interaction-surface/v3', actorRef: frame.actorRef,
       sessionRef: frame.sessionRef, requestId: id, authorizationRef: frame.authorizationRef,
       turnRevision: frame.turnRevision, frameRevision: frame.frameRevision, frameRef: frame.frameRef,
       actionId: 'continue', invocationId: id, surfaceAction: frame.actions[0].surfaceAction,
       surfaceActionDigest: frame.actions[0].surfaceActionDigest, input: { kind: 'TEXT', text: 'Hi' } };
-    const response = await fetch(`${base}/action`, { method: 'POST', headers,
+    const pending = fetch(`${base}/action`, { method: 'POST', headers,
       body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice', request }) });
+    if (expectAuthorize) {
+      let authorize;
+      for (let i = 0; i < 100; i++) {
+        authorize = await (await fetch(`${base}/poll`, { headers })).json();
+        if (authorize.command) break;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      assert.equal(authorize?.command?.operation, 'authorize');
+      await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+        id: authorize.command.id, worldRef: manifest.worldRef,
+        result: { current: true, worldRef: manifest.worldRef, engineActorName: 'alice',
+          worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+          grantRef: 'native:one' }, error: null }) });
+    }
+    const response = await pending;
     return { status: response.status, body: await response.json() };
   };
   const noEngineWork = async () => assert.equal(
@@ -113,7 +135,7 @@ test('loopback in-world action: late provider relayed once; missing, withdrawn a
     assert.equal(facade.calls[0].request.authorizationRef, 'grant:one');
     assert.equal(facade.calls[0].request.sessionRef, 'session:one');
     // Replaying the consumed frame is still refused.
-    assert.equal((await act(frameFor(2), 'invoke:late')).status, 409);
+    assert.equal((await act(frameFor(2), 'invoke:late', false)).status, 409);
     // 3. Provider withdrawn: refused.
     current = undefined;
     await present(frameFor(3));
@@ -228,6 +250,7 @@ test('plugin wiring: Workshop provided after Adapter start relays through the bo
     const shown = service.presentFrame({ worldRef: manifest.worldRef, engineActorName: 'alice',
       authorizationRef: 'grant:one', frame });
     assert.equal(await serve(principal), 'authorize');
+    assert.equal(await serve(principal), 'authorize');
     assert.equal(await serve(() => true), 'present_frame');
     assert.equal(await shown, true);
     const request = { contractVersion: 'interaction-surface/v3', actorRef: 'actor:alice',
@@ -235,8 +258,10 @@ test('plugin wiring: Workshop provided after Adapter start relays through the bo
       turnRevision: 'turn:one', frameRevision: 'frame-revision:one', frameRef: 'frame:one',
       actionId: 'continue', invocationId: 'invoke:plugin', surfaceAction: frame.actions[0].surfaceAction,
       surfaceActionDigest: 'a'.repeat(64), input: { kind: 'TEXT', text: 'Hi' } };
-    const relayed = await fetch(`${base}/action`, { method: 'POST', headers,
+    const relayedPending = fetch(`${base}/action`, { method: 'POST', headers,
       body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice', request }) });
+    assert.equal(await serve(principal), 'authorize');
+    const relayed = await relayedPending;
     assert.equal(relayed.status, 200);
     assert.equal(facade.calls.length, 1);
     assert.deepEqual(facade.calls[0].principal, { engineActorName: 'alice', worldRef: manifest.worldRef });

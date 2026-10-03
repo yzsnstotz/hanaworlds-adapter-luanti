@@ -63,6 +63,7 @@ export class EngineBridge {
       ...(request.adapterExecutionRevision === undefined ? {} :
         { adapterExecutionRevision: request.adapterExecutionRevision }),
       ...(request.authorRef === undefined ? {} : { authorRef: request.authorRef }),
+      ...(binding.nativeGrantRef === undefined ? {} : { nativeGrantRef: binding.nativeGrantRef }),
       ...(request.originKind === undefined ? {} : { originKind: request.originKind }),
       ...(request.affectedObjectRefs === undefined ? {} :
         { affectedObjectRefs: request.affectedObjectRefs }),

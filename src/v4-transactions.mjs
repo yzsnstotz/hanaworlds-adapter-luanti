@@ -161,6 +161,9 @@ export class V4TransactionBackend {
         typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
         typeof proof.authorRef !== 'string' || !proof.authorRef ||
         !proof.allowedActions?.includes(action)) fault('AUTHORIZATION_REVOKED');
+    const saved = this.#journal.query(request.transactionId);
+    if (saved && saved.nativeGrantRef !== proof.nativeGrantRef)
+      fault('AUTHORIZATION_REVOKED');
     return proof;
   }
   async #currentRevisions(request) {
@@ -236,6 +239,7 @@ export class V4TransactionBackend {
       beforeImageDigest, beforeImage, payload,
       expectedWorldRevision: request.expectedWorldRevision, stateProfile: this.#profile,
       adapterExecutionRevision: transactionPayloadDigest, authorRef: binding.authorRef,
+      ...(binding.nativeGrantRef === undefined ? {} : { nativeGrantRef: binding.nativeGrantRef }),
       originKind: 'HANAWORLDS', effects: request.operations.effects,
       beforeStateReadbackDigest });
     const saved = this.#journal.query(request.transactionId);
@@ -518,6 +522,7 @@ export class V4TransactionBackend {
       beforeImageDigest, beforeImage: current, payload,
       expectedWorldRevision: request.expectedWorldRevision, stateProfile: this.#profile,
       adapterExecutionRevision: transactionPayloadDigest, authorRef: binding.authorRef,
+      ...(binding.nativeGrantRef === undefined ? {} : { nativeGrantRef: binding.nativeGrantRef }),
       originKind: 'HANAWORLDS', affectedObjectRefs: request.affectedObjectRefs,
       historySourceId: request.originTransactionId, historyDirection: request.direction,
       historyOperationDigest: request.historyOperationDigest,

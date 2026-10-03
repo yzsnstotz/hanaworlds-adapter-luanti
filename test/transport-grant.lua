@@ -1,13 +1,24 @@
-local queued, posted, calls = {}, {}, 0
+local queued, posted, calls, presented = {}, {}, 0, {}
 local commands = {
   {id = 'one', worldRef = 'luanti:test', operation = 'authorize', actorName = 'alice'},
   {id = 'two', worldRef = 'luanti:test', operation = 'snapshot', actorName = 'alice',
-    positions = {{0, 0, 0}}},
+    grantRef = 'grant:one', positions = {{0, 0, 0}}},
   {id = 'three', worldRef = 'luanti:test', operation = 'authorize', actorName = 'alice'},
   {id = 'four', worldRef = 'luanti:test', operation = 'snapshot', actorName = 'alice',
-    positions = {{0, 0, 0}}},
+    grantRef = 'grant:one', positions = {{0, 0, 0}}},
+  {id = 'five', worldRef = 'luanti:test', operation = 'present_frame', actorName = 'alice',
+    engineActorName = 'bob', grantRef = 'grant:one', frame = {}},
+  {id = 'six', worldRef = 'luanti:test', operation = 'present_frame',
+    engineActorName = 'alice', grantRef = 'grant:one', frame = {}},
+  {id = 'seven', worldRef = 'luanti:test', operation = 'snapshot', actorName = 'bob',
+    engineActorName = 'alice', grantRef = 'grant:one', positions = {{0, 0, 0}}},
+  {id = 'eight', worldRef = 'luanti:test', operation = 'snapshot', actorName = 'alice',
+    grantRef = 'grant:one', positions = {{0, 0, 0}}},
+  {id = 'nine', worldRef = 'luanti:test', operation = 'snapshot', actorName = 'alice',
+    grantRef = 'grant:two', positions = {{0, 0, 0}}},
+  {id = 'ten', worldRef = 'luanti:test', operation = 'list_grants'},
 }
-local granted = false
+local granted, current_grant = false, 'grant:one'
 local function json(v)
   if type(v) == 'string' then return string.format('%q', v) end
   if type(v) == 'boolean' then return tostring(v) end
@@ -42,14 +53,20 @@ end}
 local grants = {verify = function(_, name)
   if granted and name == 'alice' then return {current = true,
     worldRef = 'luanti:test', engineActorName = name,
-    scope = 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef = 'grant:one'} end
+    scope = 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef = current_grant} end
   return {current = false}
+end, list_current = function(self)
+  local proof = self:verify('alice')
+  return proof.current and {proof} or {}
 end}
 local started = dofile('payload/hanaworlds_adapter/transport.lua').start(http, engine,
   {worldRef = 'luanti:test'}, function()
     return {worldRef = 'luanti:test', port = 30000, token = string.rep('a', 64)}
   end, function() end, function() return {worldeditAvailable = true} end,
-  function() return true end, {}, grants)
+  function(name)
+    presented[#presented + 1] = name
+    return true
+  end, {}, grants)
 assert(started)
 for i = 1, 2 do table.remove(queued, 1)() end
 assert(posted[1]:find('"current":false', 1, true), 'unconfirmed authorize denied')
@@ -60,4 +77,21 @@ for i = 3, 4 do table.remove(queued, 1)() end
 assert(posted[3]:find('"grantRef":"grant:one"', 1, true),
   'trusted courier returns native grant identity')
 assert(calls == 1, 'engine command runs only after grant')
+for i = 5, 7 do table.remove(queued, 1)() end
+assert(posted[5]:find('"PERMISSION_DENIED"', 1, true),
+  'Alice grant cannot authorize a frame actually presented to Bob')
+assert(#presented == 1 and presented[1] == 'alice',
+  'only the exact engine actor may receive a verified frame')
+assert(posted[7]:find('"PERMISSION_DENIED"', 1, true),
+  'an unrelated engineActorName cannot authorize a Bob snapshot')
+assert(calls == 1, 'mismatched actor fields cannot reach the engine')
+current_grant = 'grant:two'
+for i = 8, 9 do table.remove(queued, 1)() end
+assert(posted[8]:find('"PERMISSION_DENIED"', 1, true),
+  'an old grant reference cannot borrow a renewed native grant')
+assert(calls == 2 and posted[9]:find('"records"', 1, true),
+  'only a command carrying the current native grant reaches the engine')
+table.remove(queued, 1)()
+assert(posted[10]:find('"grants":%[', 1) and posted[10]:find('"grantRef":"grant:two"', 1, true),
+  'list reads only the current native proof over the paired courier')
 print('transport grant fixture PASS')

@@ -112,7 +112,8 @@ export class LocalEngineTransport {
     catch { respond(res, 400, { error: 'SCHEMA_INVALID' }); return; }
     if (req.url === '/action') {
       if (!this.#onAction) { respond(res, 503, { error: 'RENDERER_CAPABILITY_UNAVAILABLE' }); return; }
-      const frame = this.#actionFrames.get(message?.engineActorName);
+      const shown = this.#actionFrames.get(message?.engineActorName);
+      const frame = shown?.frame;
       const action = frame?.actions?.find(entry => entry.actionId === message?.request?.actionId);
       const request = message?.request;
       if (request?.input?.kind === 'SELECT_CHOICE' && typeof request.requestId === 'string' &&
@@ -141,6 +142,12 @@ export class LocalEngineTransport {
         }
       }
       this.#actionFrames.delete(message.engineActorName);
+      try {
+        const principal = await this.verifyPrincipal(message.engineActorName);
+        if (principal.grantRef !== shown.grantRef) throw fault('AUTHORIZATION_REVOKED');
+      } catch {
+        respond(res, 409, { error: 'ACTION_NOT_AUTHORIZED' }); return;
+      }
       try {
         // The pinned host copy supplies every nullable projection field.
         // Luanti's JSON parser may omit null keys when round-tripping Lua tables.
@@ -192,8 +199,9 @@ export class LocalEngineTransport {
 
   #actor(binding) {
     if (!binding?.current || typeof binding.engineActorName !== 'string' ||
-        !binding.engineActorName) throw fault('CONNECTION_UNAUTHORIZED');
-    return binding.engineActorName;
+        !binding.engineActorName || typeof binding.nativeGrantRef !== 'string' ||
+        !binding.nativeGrantRef) throw fault('CONNECTION_UNAUTHORIZED');
+    return { actorName: binding.engineActorName, grantRef: binding.nativeGrantRef };
   }
 
   async handshake() {
@@ -218,49 +226,68 @@ export class LocalEngineTransport {
       scope: result.scope, grantRef: result.grantRef };
   }
 
+  async listCurrentGrants() {
+    const result = await this.#dispatch('list_grants', {});
+    if (!Array.isArray(result?.grants)) throw fault('CONNECTION_UNAUTHORIZED');
+    const seen = new Set();
+    return result.grants.map(proof => {
+      if (proof?.current !== true || proof.worldRef !== this.#worldRef ||
+          typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
+          proof.scope !== 'WORLD_BUILD_WITH_ENGINE_PROTECTION' ||
+          typeof proof.grantRef !== 'string' || !proof.grantRef ||
+          seen.has(proof.engineActorName)) throw fault('CONNECTION_UNAUTHORIZED');
+      seen.add(proof.engineActorName);
+      return { current: true, worldRef: this.#worldRef, engineActorName: proof.engineActorName,
+        scope: proof.scope, grantRef: proof.grantRef };
+    });
+  }
+
   async presentFrame(engineActorName, frame) {
     if (!this.#onAction) throw fault('RENDERER_CAPABILITY_UNAVAILABLE');
     if (typeof engineActorName !== 'string' || !engineActorName ||
         typeof frame?.sessionRef !== 'string' || !Array.isArray(frame.actions))
       throw fault('INVALID_FRAME');
-    this.#actionFrames.set(engineActorName, structuredClone(frame));
+    const proof = await this.verifyPrincipal(engineActorName);
+    this.#actionFrames.set(engineActorName,
+      { frame: structuredClone(frame), grantRef: proof.grantRef });
     let result;
-    try { result = await this.#dispatch('present_frame', { engineActorName, frame }); }
+    try { result = await this.#dispatch('present_frame', { engineActorName,
+      grantRef: proof.grantRef, frame }); }
     catch (error) { this.#actionFrames.delete(engineActorName); throw error; }
     if (result !== true) { this.#actionFrames.delete(engineActorName); throw fault('INVALID_FRAME'); }
     return true;
   }
 
   snapshot(request, binding) {
-    return this.#dispatch('snapshot', { actorName: this.#actor(binding), action: 'INSPECT',
+    return this.#dispatch('snapshot', { ...this.#actor(binding), action: 'INSPECT',
       positions: request.coveredPositions });
   }
   inspect(positions, binding) {
-    return this.#dispatch('inspect', { actorName: this.#actor(binding), action: 'INSPECT',
+    return this.#dispatch('inspect', { ...this.#actor(binding), action: 'INSPECT',
       positions });
   }
   prepareCheck(positions, binding) {
-    return this.#dispatch('prepare_check', { actorName: this.#actor(binding),
+    return this.#dispatch('prepare_check', { ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', positions });
   }
   inspectRegion(args, binding) {
-    return this.#dispatch('inspect_region', { actorName: this.#actor(binding),
-      action: 'INSPECT', ...args });
+    return this.#dispatch('inspect_region', { ...args, ...this.#actor(binding),
+      action: 'INSPECT' });
   }
   apply(request, prepared, binding) {
-    return this.#dispatch('apply', { actorName: this.#actor(binding), action: 'APPLY_RECOVERABLE',
+    return this.#dispatch('apply', { ...this.#actor(binding), action: 'APPLY_RECOVERABLE',
       effects: request.effects, beforeImage: prepared.beforeImage,
       prepared: { status: 'PREPARED', operationDigest: prepared.operationDigest },
       operationDigest: request.operationDigest });
   }
   applyState(request, targetImage, beforeImage, binding) {
-    return this.#dispatch('apply_state', { actorName: this.#actor(binding),
+    return this.#dispatch('apply_state', { ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', targetImage, beforeImage,
       prepared: { status: 'PREPARED', operationDigest: request.operationDigest },
       operationDigest: request.operationDigest });
   }
   readback(request, binding) {
-    return this.#dispatch('readback', { actorName: this.#actor(binding), action: 'READBACK',
+    return this.#dispatch('readback', { ...this.#actor(binding), action: 'READBACK',
       positions: request.coveredPositions });
   }
   restore(recovery, beforeImage) {

@@ -10,6 +10,7 @@ local storage = {
 local core = {
   get_mod_storage = function() return storage end,
   get_player_by_name = function(name) return online and name == 'alice' and player or nil end,
+  get_connected_players = function() return online and {player} or {} end,
   check_player_privs = function(who, required)
     assert(who == player, 'privileges must be checked against the native player object')
     for key in pairs(required) do if not privileges[key] then return false end end
@@ -49,11 +50,14 @@ local first = grants:verify('alice')
 assert(first.current and first.worldRef == 'luanti:world-one'
   and first.engineActorName == 'alice' and first.scope == 'WORLD_BUILD_WITH_ENGINE_PROTECTION'
   and type(first.grantRef) == 'string', 'grant is bound to native player, world and scope')
+assert(#grants:list_current() == 1 and grants:list_current()[1].grantRef == first.grantRef,
+  'native list includes only current online and permitted confirmation')
 assert(saved['player:alice'] ~= nil, 'grant persists in world mod storage')
 assert(commands.hanaworlds_grant.func('alice'))
 assert(forms[#forms][3]:find('Authorized', 1, true), 'status is visible in game')
 callbacks[1](player, 'hanaworlds:grant', {hw_grant_revoke = true})
 assert(not grants:verify('alice').current, 'revoke denies new commands immediately')
+assert(#grants:list_current() == 0, 'revocation removes the native list candidate')
 assert(commands.hanaworlds_grant.func('alice'))
 callbacks[1](player, 'hanaworlds:grant', {hw_grant_confirm = true})
 local second = grants:verify('alice')
@@ -77,6 +81,7 @@ callbacks[1](player, 'hanaworlds:grant', {hw_grant_confirm = true})
 assert(grants:verify('alice').current)
 privileges.worldedit = false
 assert(not grants:verify('alice').current, 'current engine privileges are required')
+assert(#grants:list_current() == 0, 'privilege loss removes the list candidate')
 privileges.worldedit = true
 assert(not grants:verify('alice').current, 'privilege restoration cannot reuse an invalidated grant')
 assert(not dofile('payload/hanaworlds_adapter/grant.lua').new(core,

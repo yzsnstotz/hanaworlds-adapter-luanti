@@ -137,7 +137,9 @@ test('InspectWorld requires trusted object context and projects actual three-val
     .filter(([key]) => key !== 'adapterId')),
   worldRef: 'luanti:one', expectedWorldRevision: 'world:one',
   sampledBounds: { min: [0, 0, 0], max: [1, 0, 0] } };
-  const fake = { async verifyPrincipal(name) { assert.equal(name, 'alice'); },
+  const fake = { async verifyPrincipal(name) { assert.equal(name, 'alice');
+    return { current: true, worldRef: request.worldRef, engineActorName: name,
+      scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'native:one' }; },
     async inspect(positions) {
       assert.deepEqual(positions, [[0, 0, 0], [1, 0, 0]]);
       return { occupiedCells: [{ position: [0, 0, 0], nodeName: 'probe:stone', param2: 0 }],

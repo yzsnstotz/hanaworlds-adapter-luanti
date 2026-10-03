@@ -32,7 +32,8 @@ test('authorized fixture tunnel checks installed bytes and current principal', a
         payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       return { worldRef: profile.worldRef, current: true,
-        engineActorName: command.actorName, worldeditAvailable: true };
+        engineActorName: command.actorName, worldeditAvailable: true,
+        scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'native:one' };
     },
     async close() { closed++; },
   }; } };
@@ -59,7 +60,8 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
       }, async close() {},
     }) },
   });
-  const binding = { current: true, worldRef: profile.worldRef, engineActorName: 'alice' };
+  const binding = { current: true, worldRef: profile.worldRef, engineActorName: 'alice',
+    nativeGrantRef: 'native:one' };
   await transport.inspect([[0, 0, 0]], binding);
   await transport.snapshot({ coveredPositions: [[0, 0, 0]] }, binding);
   await transport.apply({ effects: [], operationDigest: 'a' },
@@ -69,6 +71,9 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
   assert.deepEqual(commands.map(command => command.operation),
     ['handshake', 'inspect', 'snapshot', 'apply', 'readback', 'restore']);
   assert.ok(commands.every(command => command.worldRef === profile.worldRef));
+  assert.ok(commands.filter(command => ['inspect', 'snapshot', 'apply', 'readback']
+    .includes(command.operation)).every(command => command.actorName === 'alice' &&
+      command.grantRef === 'native:one'));
   await transport.close();
 });
 
@@ -87,7 +92,8 @@ test('v2 remote binding uses operator tunnel and live principal fixture, without
             loadedSourceDigest: digest, manifestDigest: digest,
             payloadMatches: true, worldeditAvailable: true }
           : { worldRef: profile.worldRef, current: true,
-            engineActorName: command.actorName, worldeditAvailable: true };
+            engineActorName: command.actorName, worldeditAvailable: true,
+            scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'native:one' };
       }, async close() {} };
     } },
   });

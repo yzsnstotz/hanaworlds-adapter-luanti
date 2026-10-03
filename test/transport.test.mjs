@@ -36,7 +36,7 @@ test('per-world courier refuses unpaired calls and delivers only queued in-proce
     assert.throws(() => courier.snapshot({ coveredPositions: [[0, 0, 0]] }, { current: true }),
       /CONNECTION_UNAUTHORIZED/);
     const pending = courier.snapshot({ coveredPositions: [[0, 0, 0]] },
-      { current: true, engineActorName: 'operator' });
+      { current: true, engineActorName: 'operator', nativeGrantRef: 'native:one' });
     const auth = { Authorization: `Bearer ${config.token}` };
     const polled = await fetch(`${base}/poll`, { headers: auth });
     assert.equal(polled.status, 200);
@@ -74,6 +74,33 @@ test('paired frame action reaches only the trusted owner callback once', async (
     } });
   const base = `http://127.0.0.1:${port}`;
   const headers = { Authorization: `Bearer ${config.token}` };
+  const pollFrame = async () => {
+    const authorize = await (await fetch(`${base}/poll`, { headers })).json();
+    assert.equal(authorize.command.operation, 'authorize');
+    await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: authorize.command.id, worldRef: manifest.worldRef,
+      result: { current: true, worldRef: manifest.worldRef, engineActorName: 'alice',
+        worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+        grantRef: 'native:one' }, error: null }) });
+    return (await (await fetch(`${base}/poll`, { headers })).json()).command;
+  };
+  const invokeWithGrant = async (request, grantRef = 'native:one') => {
+    const response = fetch(`${base}/action`, { method: 'POST', headers,
+      body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice', request }) });
+    let authorize;
+    for (let i = 0; i < 100; i++) {
+      authorize = await (await fetch(`${base}/poll`, { headers })).json();
+      if (authorize.command) break;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(authorize?.command?.operation, 'authorize');
+    await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: authorize.command.id, worldRef: manifest.worldRef,
+      result: { current: true, worldRef: manifest.worldRef, engineActorName: 'alice',
+        worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+        grantRef }, error: null }) });
+    return response;
+  };
   const frame = { actorRef: 'actor:alice', authorizationRef: 'grant:one',
     sessionRef: 'session:one', turnRevision: 'turn:one', frameRef: 'frame:one',
     frameRevision: 'frame-revision:one', content: 'Continue', actions: [
@@ -85,10 +112,10 @@ test('paired frame action reaches only the trusted owner callback once', async (
     ] };
   try {
     const pending = courier.presentFrame('alice', frame);
-    const polled = await (await fetch(`${base}/poll`, { headers })).json();
-    assert.equal(polled.command.operation, 'present_frame');
+    const command = await pollFrame();
+    assert.equal(command.operation, 'present_frame');
     await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
-      id: polled.command.id, worldRef: manifest.worldRef, result: true, error: null }) });
+      id: command.id, worldRef: manifest.worldRef, result: true, error: null }) });
     assert.equal(await pending, true);
     const request = { contractVersion: 'interaction-surface/v3', actorRef: frame.actorRef,
       sessionRef: frame.sessionRef, requestId: 'invoke:one', authorizationRef: frame.authorizationRef,
@@ -97,8 +124,7 @@ test('paired frame action reaches only the trusted owner callback once', async (
       surfaceAction: frame.actions[0].surfaceAction,
       surfaceActionDigest: frame.actions[0].surfaceActionDigest,
       input: { kind: 'TEXT', text: 'Hello' } };
-    const first = await fetch(`${base}/action`, { method: 'POST', headers,
-      body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice', request }) });
+    const first = await invokeWithGrant(request);
     assert.equal(first.status, 200);
     assert.equal((await first.json()).result.ownerRef, 'workshop');
     const replay = await fetch(`${base}/action`, { method: 'POST', headers,
@@ -114,9 +140,9 @@ test('paired frame action reaches only the trusted owner callback once', async (
     selectable.actions[0].surfaceAction.actionId = 'select';
     selectable.actions[0].surfaceAction.orderedTargetRefs = ['object:a', 'object:b'];
     const delivered = courier.presentFrame('alice', selectable);
-    const next = await (await fetch(`${base}/poll`, { headers })).json();
+    const next = await pollFrame();
     await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
-      id: next.command.id, worldRef: manifest.worldRef, result: true, error: null }) });
+      id: next.id, worldRef: manifest.worldRef, result: true, error: null }) });
     await delivered;
     const selectRequest = { ...request, requestId: 'invoke:select',
       invocationId: 'invoke:select', frameRef: selectable.frameRef,
@@ -128,11 +154,22 @@ test('paired frame action reaches only the trusted owner callback once', async (
           orderedObjectRefs: ['object:invented'] } } }) });
     assert.equal(invented.status, 409);
     assert.equal(actions.length, 1);
-    const selected = await fetch(`${base}/action`, { method: 'POST', headers,
-      body: JSON.stringify({ worldRef: manifest.worldRef, engineActorName: 'alice',
-        request: selectRequest }) });
+    const selected = await invokeWithGrant(selectRequest);
     assert.equal(selected.status, 200);
     assert.deepEqual(actions[1].request.input.orderedObjectRefs, ['object:b']);
+    const oldFrame = structuredClone(frame);
+    oldFrame.frameRef = 'frame:old';
+    oldFrame.actions[0].surfaceAction.frameRef = oldFrame.frameRef;
+    const oldDelivery = courier.presentFrame('alice', oldFrame);
+    const oldCommand = await pollFrame();
+    await fetch(`${base}/result`, { method: 'POST', headers, body: JSON.stringify({
+      id: oldCommand.id, worldRef: manifest.worldRef, result: true, error: null }) });
+    await oldDelivery;
+    const oldRequest = { ...request, requestId: 'invoke:old', invocationId: 'invoke:old',
+      frameRef: oldFrame.frameRef, surfaceAction: oldFrame.actions[0].surfaceAction };
+    const renewed = await invokeWithGrant(oldRequest, 'native:two');
+    assert.equal(renewed.status, 409, 'a frame from the prior native grant cannot relay');
+    assert.equal(actions.length, 2);
     // rc.9: an in-world SELECT_CHOICE is answered here and never relayed.
     const refused = chain.invalidCases.find(c => c.id === 'INV-INWORLD-SELECT-CHOICE');
     const choice = await fetch(`${base}/action`, { method: 'POST', headers,

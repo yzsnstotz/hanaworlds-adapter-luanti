@@ -29,6 +29,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
+  const evidenceBusy = new Map(); // worldRef -> temporary local proof read
+  let closed = false;
   // worldRef -> connectionRef whose transport serves it. Inventory uniqueness
   // is (connectionRef, worldRef), so a local and a remote connection may share
   // a worldRef, while normal requests carry only worldRef: the connection that
@@ -261,6 +263,68 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return { capabilityRevision: revision(connections), connections };
   }
 
+  async function withLocalGrantEvidence(world, read) {
+    if (closed) fault('ADAPTER_UNAVAILABLE');
+    if (!world?.worldRef || !await verifyLocalOperator(world)) return null;
+    const owner = boundConnection.get(world.worldRef);
+    if (owner !== undefined && owner !== world.connectionRef) fault('CONNECTION_UNAUTHORIZED');
+    if (open.has(world.worldRef)) {
+      if (owner !== world.connectionRef || closePending.has(world.worldRef))
+        fault('CONNECTION_UNAUTHORIZED');
+      const transport = open.get(world.worldRef);
+      await transport.handshake();
+      return read(transport);
+    }
+    // A binding already in flight owns the port. Refuse an ambiguous read;
+    // binding waits for any earlier temporary proof read before opening it.
+    if (inflight.has(world.worldRef) || evidenceBusy.has(world.worldRef))
+      fault('ADAPTER_UNAVAILABLE');
+    const pending = (async () => {
+      const transport = await LocalEngineTransport.open(world.worldPath, { serviceName });
+      try { await transport.handshake(); return await read(transport); }
+      finally { await transport.close(); }
+    })();
+    evidenceBusy.set(world.worldRef, pending);
+    try { return await pending; }
+    finally { evidenceBusy.delete(world.worldRef); }
+  }
+
+  async function localGrantWorlds() {
+    return (await discoverLocalWorlds(rootPaths)).filter(world => world.worldRef);
+  }
+  const grantEvidence = {
+    async listCurrentLocalGrants() {
+      const results = [];
+      const seenWorlds = new Set();
+      for (const world of await localGrantWorlds()) {
+        if (seenWorlds.has(world.worldRef)) fault('CONNECTION_UNAUTHORIZED');
+        seenWorlds.add(world.worldRef);
+        const grants = await withLocalGrantEvidence(world,
+          transport => transport.listCurrentGrants());
+        if (grants) for (const grant of grants)
+          results.push({ connectionRef: world.connectionRef, ...grant });
+      }
+      return results;
+    },
+    async verifyCurrentLocalGrant({ worldRef, engineActorName, expectedGrantRef } = {}) {
+      if (typeof worldRef !== 'string' || !worldRef ||
+          typeof engineActorName !== 'string' || !engineActorName ||
+          typeof expectedGrantRef !== 'string' || !expectedGrantRef)
+        fault('CONNECTION_UNAUTHORIZED');
+      const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
+      if (matches.length !== 1) return { current: false };
+      let proof;
+      try { proof = await withLocalGrantEvidence(matches[0],
+        transport => transport.verifyPrincipal(engineActorName)); }
+      catch (error) {
+        if (error?.message === 'CONNECTION_UNAUTHORIZED') return { current: false };
+        throw error;
+      }
+      return proof?.grantRef === expectedGrantRef
+        ? { connectionRef: matches[0].connectionRef, ...proof } : { current: false };
+    },
+  };
+
   // Remote binding: verified tunnel for the reserved connection (the existing
   // order of checks), then the engine principal, then the backend.
   async function bindRemote(request, proof, descriptor) {
@@ -298,6 +362,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
         typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
         !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+    if (evidenceBusy.has(world.worldRef)) await evidenceBusy.get(world.worldRef);
     const { transport } = await transportFor(world.worldRef, () =>
       LocalEngineTransport.open(world.worldPath, { serviceName, onAction }));
     const loaded = await transport.handshake();
@@ -390,9 +455,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         for (let y = request.sampledBounds.min[1]; y <= request.sampledBounds.max[1]; y++)
           for (let z = request.sampledBounds.min[2]; z <= request.sampledBounds.max[2]; z++)
             positions.push([x, y, z]);
-      await transport.verifyPrincipal(proof.engineActorName);
+      const principal = await transport.verifyPrincipal(proof.engineActorName);
       const raw = await transport.inspect(positions, { current: true,
-        worldRef: request.worldRef, engineActorName: proof.engineActorName });
+        worldRef: request.worldRef, engineActorName: proof.engineActorName,
+        nativeGrantRef: principal.grantRef });
       if (!Array.isArray(raw?.occupiedCells) || !Array.isArray(raw.knownEmptyCells) ||
           !Array.isArray(raw.unknownCells) ||
           raw.occupiedCells.length + raw.knownEmptyCells.length + raw.unknownCells.length !== positions.length)
@@ -425,7 +491,9 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     AbortPreparedHistoryTransaction(request) { return recover(request, owned => owned.abortPreparedHistory(request)); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
-  return { operations, open, currentAccess, close: async () => {
+  return { operations, open, currentAccess, grantEvidence, close: async () => {
+    closed = true;
+    await Promise.allSettled([...evidenceBusy.values()]);
     // Every transport gets a close attempt; one that is rejected stays in
     // `open` and the failure is reported, not hidden.
     const entries = [...open.entries()];

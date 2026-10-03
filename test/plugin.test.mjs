@@ -14,9 +14,9 @@ function response() {
 
 test('DSH host registers loopback status and a fail-closed v4 provider', async () => {
   let route;
-  let provided;
+  const provided = new Map();
   const ctx = { webServer: { register(value) { route = value; } },
-    provide(name, value) { provided = { name, value }; } };
+    provide(name, value) { provided.set(name, value); } };
   const service = apply(ctx, {});
   assert.equal(name, 'hanaworlds-adapter-luanti');
   assert.equal(typeof DurableJournal.open, 'function');
@@ -24,8 +24,8 @@ test('DSH host registers loopback status and a fail-closed v4 provider', async (
   assert.deepEqual(inject, ['webServer']);
   assert.equal(route.kind, 'prefix');
   assert.equal(route.path, '/api-hanaworlds-luanti');
-  assert.equal(provided.name, 'hanaworldsWorldAdapterV4');
-  assert.equal(provided.value, service.worldAdapter);
+  assert.equal(provided.get('hanaworldsWorldAdapterV4'), service.worldAdapter);
+  assert.equal(typeof provided.get('hanaworldsLuantiGrantEvidence').listCurrentLocalGrants, 'function');
   assert.equal(service.status().recoverableTransport, 'GATED_BY_AUTHORITY_AND_STATE_PROFILE');
   const noAuthority = await service.worldAdapter.call('DiscoverConnections', {
     contractVersion: 'world-adapter/v4', actorRef: 'actor', sessionRef: 'session',
@@ -87,7 +87,8 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
           payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: profile.worldRef,
-          current: true, engineActorName: command.actorName, worldeditAvailable: true };
+          current: true, engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'native:one' };
         if (command.operation === 'present_frame') { shown++; return {
           worldRef: profile.worldRef, result: true }; }
         throw new Error('UNEXPECTED_ENGINE_COMMAND');

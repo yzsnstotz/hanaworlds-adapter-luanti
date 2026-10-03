@@ -60,8 +60,21 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       apply_state = true, readback = true,
     }
     if player_operation[command.operation] then
-      local proof = grants and grants:verify(command.actorName or command.engineActorName)
-      if not proof or proof.current ~= true or proof.worldRef ~= manifest.worldRef then
+      local actor
+      if command.operation == 'present_frame' then actor = command.engineActorName
+      else actor = command.actorName end
+      -- An unused second name must never select another player's grant.
+      if type(actor) ~= 'string' or actor == ''
+        or (command.actorName ~= nil and command.actorName ~= actor)
+        or (command.engineActorName ~= nil and command.engineActorName ~= actor) then
+        return nil, 'PERMISSION_DENIED'
+      end
+      local proof = grants and grants:verify(actor)
+      if not proof or proof.current ~= true or proof.worldRef ~= manifest.worldRef
+        or proof.engineActorName ~= actor
+        or proof.scope ~= 'WORLD_BUILD_WITH_ENGINE_PROTECTION'
+        or type(command.grantRef) ~= 'string' or command.grantRef == ''
+        or command.grantRef ~= proof.grantRef then
         return nil, 'PERMISSION_DENIED'
       end
     end
@@ -78,6 +91,9 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       result = {current = proof.current == true, engineActorName = name,
         worldRef = manifest.worldRef, scope = proof.scope, grantRef = proof.grantRef,
         worldeditAvailable = capabilities().worldeditAvailable}
+    elseif command.operation == 'list_grants' then
+      if capabilities().worldeditAvailable ~= true then code = 'CAPABILITY_UNAVAILABLE'
+      else result = {grants = grants and grants:list_current() or {}} end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.actorName, command.positions)
       if result then result.worldRef = manifest.worldRef end
@@ -167,6 +183,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         .. ',"knownEmptyCells":' .. array(result.knownEmptyCells,
           function(cell) return array(cell, json) end)
         .. ',"unknownCells":' .. array(result.unknownCells, json) .. '}'
+    elseif shaped and result.grants then
+      encoded = '{"grants":' .. array(result.grants, json) .. '}'
     elseif shaped and result.records then
       encoded = encode_state(result)
     end

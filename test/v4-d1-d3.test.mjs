@@ -49,7 +49,8 @@ function providers(home, digest, overrides = {}) {
           payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: remoteProfile.worldRef,
-          current: true, engineActorName: command.actorName, worldeditAvailable: true };
+          current: true, engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         throw new Error('UNEXPECTED_ENGINE_COMMAND');
       }, async close() { closes++; } }) },
     hanaworldsWorldRevisionOracle: { read: async () => 'rev-1', readObjects: async () => ({}) },
@@ -351,7 +352,8 @@ function recoveryWorld(home, digest) {
         if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
           loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef, current: true,
-          engineActorName: command.actorName, worldeditAvailable: true };
+          engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
         if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
           coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -867,7 +869,8 @@ async function mixedWorld(home, { park = async () => {}, replyOverride, stateRea
         if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
           loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef, current: true,
-          engineActorName: command.actorName, worldeditAvailable: true };
+          engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
         if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
           coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -1064,7 +1067,8 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
           if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
             loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
           if (command.operation === 'authorize') return { worldRef, current: true,
-            engineActorName: command.actorName, worldeditAvailable: true };
+            engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
           if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
           if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
             coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -1822,6 +1826,6 @@ test('Privacy: a catalogue-provider exception is never logged or returned (Inspe
   } finally { cap.restore(); await r.close(); }
   assert.equal(cap.leaked(surfaces), false, 'no provider text in host log, console or public error');
   assert.equal(code, 'CAPABILITY_UNAVAILABLE');
-  assert.equal(effects, 0, 'no engine command');
+  assert.equal(effects, 1, 'only the mandatory native grant check; no inspection or write');
   assert.equal(attributed, true, 'host log attributes the failure by a fixed label');
 });
