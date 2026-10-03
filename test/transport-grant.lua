@@ -94,4 +94,19 @@ assert(calls == 2 and posted[9]:find('"records"', 1, true),
 table.remove(queued, 1)()
 assert(posted[10]:find('"grants":%[', 1) and posted[10]:find('"grantRef":"grant:two"', 1, true),
   'list reads only the current native proof over the paired courier')
+commands[#commands + 1] = {id = 'eleven', worldRef = 'luanti:test', operation = 'list_grants'}
+grants.list_current = nil
+table.remove(queued, 1)()
+assert(posted[11]:find('"CAPABILITY_UNAVAILABLE"', 1, true),
+  'missing native grant listing cannot appear as zero candidates')
+commands[#commands + 1] = {id = 'twelve', worldRef = 'luanti:test', operation = 'list_grants'}
+local without_grants = dofile('payload/hanaworlds_adapter/transport.lua').start(http, engine,
+  {worldRef = 'luanti:test'}, function()
+    return {worldRef = 'luanti:test', port = 30000, token = string.rep('a', 64)}
+  end, function() end, function() return {worldeditAvailable = true} end,
+  function() return true end, {}, nil)
+assert(without_grants)
+table.remove(queued, #queued)()
+assert(posted[12]:find('"CAPABILITY_UNAVAILABLE"', 1, true),
+  'missing grant initializer cannot appear as zero candidates')
 print('transport grant fixture PASS')

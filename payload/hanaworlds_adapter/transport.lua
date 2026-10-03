@@ -93,7 +93,13 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         worldeditAvailable = capabilities().worldeditAvailable}
     elseif command.operation == 'list_grants' then
       if capabilities().worldeditAvailable ~= true then code = 'CAPABILITY_UNAVAILABLE'
-      else result = {grants = grants and grants:list_current() or {}} end
+      elseif type(grants) ~= 'table' or type(grants.list_current) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else
+        local current = grants:list_current()
+        if type(current) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
+        else result = {grants = current} end
+      end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.actorName, command.positions)
       if result then result.worldRef = manifest.worldRef end

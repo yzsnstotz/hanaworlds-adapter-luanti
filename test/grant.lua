@@ -90,4 +90,8 @@ assert(not dofile('payload/hanaworlds_adapter/grant.lua').new(core,
 online = false
 assert(not grants:verify('alice').current, 'offline player is denied')
 assert(not commands.hanaworlds_grant.func('alice'), 'offline name cannot open form')
+core.get_connected_players = nil
+local missing, reason = grants:list_current()
+assert(missing == nil and reason == 'CAPABILITY_UNAVAILABLE',
+  'missing native player enumeration is a capability failure, not an empty grant list')
 print('grant fixture PASS')

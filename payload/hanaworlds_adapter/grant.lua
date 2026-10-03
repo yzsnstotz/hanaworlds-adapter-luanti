@@ -43,7 +43,11 @@ function M.new(core, world_ref, world_name)
   end
 
   function self:list_current()
-    local players = core.get_connected_players and core.get_connected_players() or {}
+    if type(core.get_connected_players) ~= 'function' then
+      return nil, 'CAPABILITY_UNAVAILABLE'
+    end
+    local players = core.get_connected_players()
+    if type(players) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
     local out = {}
     for _, player in ipairs(players) do
       local proof = self:verify(player:get_player_name())
