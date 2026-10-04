@@ -128,7 +128,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.object_revisions(minetest, command.objectRefs) end
     elseif command.operation == 'snapshot' then
-      result, code = engine:snapshot(command.actorName, command.positions)
+      result, code = engine:snapshot(command.actorName, command.positions,
+        command.protectedPositions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'inspect' then
       result, code = engine:inspect(command.actorName, command.positions)
@@ -155,7 +156,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       result, code = engine:apply_state(command.actorName, command.targetImage,
         command.beforeImage, command.prepared)
     elseif command.operation == 'readback' then
-      result, code = engine:readback(command.actorName, command.positions)
+      result, code = engine:readback(command.actorName, command.positions,
+        command.protectedPositions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'restore' then
       result, code = engine:restore(command.serviceName,

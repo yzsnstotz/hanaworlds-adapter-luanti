@@ -279,7 +279,9 @@ export class LocalEngineTransport {
 
   snapshot(request, binding) {
     return this.#dispatch('snapshot', { ...this.#actor(binding), action: 'INSPECT',
-      positions: request.coveredPositions });
+      positions: request.coveredPositions,
+      ...(request.protectedPositions === undefined ? {} :
+        { protectedPositions: request.protectedPositions }) });
   }
   inspect(positions, binding) {
     return this.#dispatch('inspect', { ...this.#actor(binding), action: 'INSPECT',
@@ -309,7 +311,9 @@ export class LocalEngineTransport {
   }
   readback(request, binding) {
     return this.#dispatch('readback', { ...this.#actor(binding), action: 'READBACK',
-      positions: request.coveredPositions });
+      positions: request.coveredPositions,
+      ...(request.protectedPositions === undefined ? {} :
+        { protectedPositions: request.protectedPositions }) });
   }
   restore(recovery, beforeImage) {
     return this.#dispatch('restore', { serviceName: this.#serviceName, action: 'RESTORE',

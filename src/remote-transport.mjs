@@ -73,7 +73,9 @@ export class RemoteEngineTransport {
   }
   async snapshot(request, binding) {
     return this.request({ operation: 'snapshot', ...this.#actor(binding),
-      action: 'INSPECT', positions: request.coveredPositions });
+      action: 'INSPECT', positions: request.coveredPositions,
+      ...(request.protectedPositions === undefined ? {} :
+        { protectedPositions: request.protectedPositions }) });
   }
   async inspect(positions, binding) {
     return this.request({ operation: 'inspect', ...this.#actor(binding),
@@ -104,7 +106,9 @@ export class RemoteEngineTransport {
   }
   async readback(request, binding) {
     return this.request({ operation: 'readback', ...this.#actor(binding),
-      action: 'READBACK', positions: request.coveredPositions });
+      action: 'READBACK', positions: request.coveredPositions,
+      ...(request.protectedPositions === undefined ? {} :
+        { protectedPositions: request.protectedPositions }) });
   }
   async restore(recovery, beforeImage) {
     if (typeof this.#profile.serviceName !== 'string' || !this.#profile.serviceName)

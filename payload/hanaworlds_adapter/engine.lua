@@ -68,11 +68,23 @@ function M.new(dependencies)
     verifyRestore = dependencies.verifyRestore}, Engine)
 end
 
-local function capture(self, player_name, positions, action)
+local function capture(self, player_name, positions, action, protected_positions)
   if not self.authorize or not self.authorize(player_name, action) or not has_privilege(player_name) then
     return nil, 'PERMISSION_DENIED'
   end
   if type(positions) ~= 'table' or #positions == 0 then return nil, 'SCHEMA_INVALID' end
+  local protected = nil
+  if protected_positions ~= nil then
+    if type(protected_positions) ~= 'table' or #protected_positions == 0 then
+      return nil, 'SCHEMA_INVALID' end
+    protected = {}
+    for _, cell in ipairs(protected_positions) do
+      if not position(cell) then return nil, 'SCHEMA_INVALID' end
+      local cell_key = table.concat(cell, ',')
+      if protected[cell_key] then return nil, 'SCHEMA_INVALID' end
+      protected[cell_key] = true
+    end
+  end
   local records, covered, seen = {}, {}, {}
   for _, cell in ipairs(positions) do
     local pos = position(cell)
@@ -80,21 +92,27 @@ local function capture(self, player_name, positions, action)
     local key = table.concat(cell, ',')
     if seen[key] then return nil, 'SCHEMA_INVALID' end
     seen[key] = true
-    if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
+    if (protected == nil or protected[key]) and minetest.is_protected(pos, player_name) then
+      return nil, 'PERMISSION_DENIED' end
     local record, code = public_record(cell)
     if not record then return nil, code end
     records[#records + 1] = record
     covered[#covered + 1] = {cell[1], cell[2], cell[3]}
   end
+  if protected then
+    for cell_key in pairs(protected) do
+      if not seen[cell_key] then return nil, 'SCHEMA_INVALID' end
+    end
+  end
   return {coveredPositions = covered, records = records}
 end
 
-function Engine:snapshot(player_name, positions)
-  return capture(self, player_name, positions, 'INSPECT')
+function Engine:snapshot(player_name, positions, protected_positions)
+  return capture(self, player_name, positions, 'INSPECT', protected_positions)
 end
 
-function Engine:readback(player_name, positions)
-  return capture(self, player_name, positions, 'READBACK')
+function Engine:readback(player_name, positions, protected_positions)
+  return capture(self, player_name, positions, 'READBACK', protected_positions)
 end
 
 function Engine:inspect(player_name, positions)
@@ -189,7 +207,6 @@ function Engine:apply(player_name, effects, before_image, prepared, scope_before
       local pos = position(cell)
       if not pos or not equal(cell, scope_before_image.records[i].position)
         then return nil, 'SCHEMA_INVALID' end
-      if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
       local current, code = public_record(cell)
       if not current then return nil, code end
       if not equal(current, scope_before_image.records[i]) then

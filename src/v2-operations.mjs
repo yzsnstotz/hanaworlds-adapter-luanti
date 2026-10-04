@@ -346,18 +346,28 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   }
   const nativeFacts = {
     async readScopedState(input = {}) {
-      if (!Array.isArray(input.positions) || input.positions.length === 0) fault('SCHEMA_INVALID');
-      const positions = input.positions.map(position => {
-        if (!Array.isArray(position) || position.length !== 3 ||
+      const normalize = source => {
+        if (!Array.isArray(source) || source.length === 0) fault('SCHEMA_INVALID');
+        const result = source.map(position => {
+          if (!Array.isArray(position) || position.length !== 3 ||
             position.some(coordinate => !Number.isSafeInteger(coordinate))) fault('SCHEMA_INVALID');
-        return [...position];
-      }).sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]) || compare(a[2], b[2]));
-      if (positions.some((position, index) => index > 0 &&
-          position.every((coordinate, axis) => coordinate === positions[index - 1][axis])))
+          return [...position];
+        }).sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]) || compare(a[2], b[2]));
+        if (result.some((position, index) => index > 0 &&
+            position.every((coordinate, axis) => coordinate === result[index - 1][axis])))
+          fault('SCHEMA_INVALID');
+        return result;
+      };
+      const positions = normalize(input.positions);
+      const protectedPositions = input.protectedPositions === undefined ? undefined :
+        normalize(input.protectedPositions);
+      if (protectedPositions?.some(position => !positions.some(covered =>
+        position.every((coordinate, axis) => coordinate === covered[axis]))))
         fault('SCHEMA_INVALID');
       return readNativeFact(input, async (transport, binding) => {
         const profile = await transport.readStateProfile(binding);
-        const raw = await transport.snapshot({ coveredPositions: positions }, binding);
+        const raw = await transport.snapshot({ coveredPositions: positions,
+          protectedPositions }, binding);
         const projection = { ...raw, stateProfile: profile };
         try { validateType('ReadbackProjection', projection); }
         catch { fault('CAPABILITY_UNAVAILABLE'); }

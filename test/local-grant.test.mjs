@@ -56,6 +56,10 @@ test('local courier accepts only a current world, player and scope grant proof',
       nativeGrantRef: grant.grantRef };
     for (const [operation, issue] of [
       ['snapshot', () => courier.snapshot({ coveredPositions: [[0, 0, 0]] }, binding)],
+      ['snapshot', () => courier.snapshot({ coveredPositions: [[0, 0, 0], [1, 0, 0]],
+        protectedPositions: [[0, 0, 0]] }, binding)],
+      ['readback', () => courier.readback({ coveredPositions: [[0, 0, 0], [1, 0, 0]],
+        protectedPositions: [[0, 0, 0]] }, binding)],
       ['apply', () => courier.apply({ effects: [], operationDigest: 'digest' },
         { beforeImage: {}, operationDigest: 'digest' }, binding)],
       ['apply_state', () => courier.applyState({ operationDigest: 'digest' }, {}, {}, binding)],
@@ -67,6 +71,10 @@ test('local courier accepts only a current world, player and scope grant proof',
       assert.equal(polled.command.actorName, 'alice');
       assert.equal(polled.command.grantRef, grant.grantRef,
         `${operation} must carry the engine proof from this verification`);
+      if (polled.command.protectedPositions) {
+        assert.deepEqual(polled.command.positions, [[0, 0, 0], [1, 0, 0]]);
+        assert.deepEqual(polled.command.protectedPositions, [[0, 0, 0]]);
+      }
       await fetch(`${url}/result`, { method: 'POST', headers, body: JSON.stringify({
         id: polled.command.id, worldRef: identity.worldRef, result: true }) });
       await pending;

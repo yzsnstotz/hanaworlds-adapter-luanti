@@ -29,7 +29,7 @@ test('authorized fixture tunnel checks installed bytes and current principal', a
     async request(command) {
       commands.push(command);
       if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-        payloadVersion: '0.2.2', loadedSourceDigest: digest, manifestDigest: digest,
+        payloadVersion: '0.2.3', loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       return { worldRef: profile.worldRef, current: true,
         engineActorName: command.actorName, worldeditAvailable: true,
@@ -54,7 +54,7 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
       async request(command) {
         commands.push(command);
         if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-          payloadVersion: '0.2.2', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.3', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         return { worldRef: profile.worldRef, result: { status: 'OK' } };
       }, async close() {},
@@ -63,10 +63,12 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
   const binding = { current: true, worldRef: profile.worldRef, engineActorName: 'alice',
     nativeGrantRef: 'native:one' };
   await transport.inspect([[0, 0, 0]], binding);
-  await transport.snapshot({ coveredPositions: [[0, 0, 0]] }, binding);
+  await transport.snapshot({ coveredPositions: [[0, 0, 0], [1, 0, 0]],
+    protectedPositions: [[0, 0, 0]] }, binding);
   await transport.apply({ effects: [], operationDigest: 'a' },
     { beforeImage: {}, operationDigest: 'a' }, binding);
-  await transport.readback({ coveredPositions: [[0, 0, 0]] }, binding);
+  await transport.readback({ coveredPositions: [[0, 0, 0], [1, 0, 0]],
+    protectedPositions: [[0, 0, 0]] }, binding);
   await transport.restore({ status: 'RESTORING' }, {});
   assert.deepEqual(commands.map(command => command.operation),
     ['handshake', 'inspect', 'snapshot', 'apply', 'readback', 'restore']);
@@ -74,6 +76,9 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
   assert.ok(commands.filter(command => ['inspect', 'snapshot', 'apply', 'readback']
     .includes(command.operation)).every(command => command.actorName === 'alice' &&
       command.grantRef === 'native:one'));
+  assert.ok(commands.filter(command => ['snapshot', 'readback'].includes(command.operation))
+    .every(command => command.positions.length === 2 &&
+      command.protectedPositions.length === 1));
   await transport.close();
 });
 
@@ -81,14 +86,14 @@ test('v2 remote binding uses operator tunnel and live principal fixture, without
   const digest = await payloadDigest();
   let opened = 0;
   const descriptor = { ...profile, displayName: 'Remote fixture',
-    capabilityRevision: 'remote-revision:one', payloadVersion: '0.2.2' };
+    capabilityRevision: 'remote-revision:one', payloadVersion: '0.2.3' };
   const runtime = createLuantiOperations({ remoteProfiles: [descriptor],
     operatorAuthority: { verify: async () => ({ current: true, ...profile }) },
     remoteTunnelFactory: { async open() {
       opened++;
       return { async request(command) {
         return command.operation === 'handshake'
-          ? { worldRef: profile.worldRef, payloadVersion: '0.2.2',
+          ? { worldRef: profile.worldRef, payloadVersion: '0.2.3',
             loadedSourceDigest: digest, manifestDigest: digest,
             payloadMatches: true, worldeditAvailable: true }
           : { worldRef: profile.worldRef, current: true,

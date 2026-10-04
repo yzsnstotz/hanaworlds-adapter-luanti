@@ -94,11 +94,12 @@ export class V5TransactionBackend {
         !same(current.objects, scope.objects)) fault('STALE_REVISION');
   }
 
-  async #snapshot(scope, binding) {
+  async #snapshot(scope, effectPositions, binding) {
     if (!same(scope.stateProfile, this.#profile) ||
         typeof this.#engine?.snapshot !== 'function') fault('CAPABILITY_UNAVAILABLE');
     const positions = scope.cells.map(cell => cell.position);
-    const raw = await this.#engine.snapshot({ coveredPositions: positions }, binding);
+    const raw = await this.#engine.snapshot({ coveredPositions: positions,
+      protectedPositions: effectPositions }, binding);
     const image = { ...raw, worldRef: scope.worldRef,
       worldRevision: scopeStateRevision(scope.worldRef, this.#profile, raw.records),
       stateProfile: this.#profile };
@@ -134,10 +135,11 @@ export class V5TransactionBackend {
     const capacity = await this.#capacity.check(positions.length, request);
     if (capacity?.allowed !== true) fault(capacity?.allowed === false ? 'LIMIT_EXCEEDED' :
       'CAPABILITY_UNAVAILABLE');
-    // The paired game endpoint checks online privilege, grant and protection
-    // for every cell; prepareCheck also evaluates actual player body clearance.
-    await this.#engine.prepareCheck(positions, binding);
-    return this.#snapshot(scope, binding);
+    // Protection and player collision apply to cells this transaction may
+    // write. Read-only registered footprints still get a full-state recheck.
+    const effectPositions = request.operations.effects.map(effect => effect.position);
+    await this.#engine.prepareCheck(effectPositions, binding);
+    return this.#snapshot(scope, effectPositions, binding);
   }
 
   #saved(record, request, binding) {
@@ -353,7 +355,8 @@ export class V5TransactionBackend {
       if (result?.status !== 'APPLIED_PENDING_READBACK') fault('APPLY_FAILED');
       await this.#journal.transition(request.transactionId, 'APPLIED_PENDING_READBACK');
       const current = await this.#engine.readback({ coveredPositions:
-        record.beforeImage.coveredPositions }, binding);
+        record.beforeImage.coveredPositions,
+        protectedPositions: record.effects.map(effect => effect.position) }, binding);
       const after = { ...current, worldRef: request.worldRef,
         worldRevision: scopeStateRevision(request.worldRef, this.#profile,
           current.records), stateProfile: this.#profile };

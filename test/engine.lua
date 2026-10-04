@@ -46,6 +46,29 @@ local scope_rejected, scope_code = trusted:apply('alice',
 assert(scope_rejected == nil and scope_code == 'TRANSACTION_CONFLICT' and writes == 0,
   'game rechecks every scoped cell before first write, including unwritten cells')
 nodes['2,0,0'] = {name = 'air', param1 = 0, param2 = 0}
+nodes['1,0,0'] = {name = 'air', param1 = 0, param2 = 0}
+local readonly_denied, readonly_code = trusted:snapshot('alice', {{0, 0, 0}, {1, 0, 0}})
+assert(readonly_denied == nil and readonly_code == 'PERMISSION_DENIED',
+  'legacy snapshot still protects all read cells')
+local protected_scope, protected_scope_code = trusted:snapshot('alice',
+  {{0, 0, 0}, {1, 0, 0}}, {{0, 0, 0}})
+assert(protected_scope_code == nil and #protected_scope.records == 2,
+  'scoped snapshot reads unchanged protected footprint without authorizing a write there')
+local invalid_scope, invalid_scope_code = trusted:snapshot('alice',
+  {{0, 0, 0}}, {{1, 0, 0}})
+assert(invalid_scope == nil and invalid_scope_code == 'SCHEMA_INVALID',
+  'protected position subset must be covered by the snapshot')
+local protected_readback, protected_readback_code = trusted:readback('alice',
+  {{0, 0, 0}, {1, 0, 0}}, {{0, 0, 0}})
+assert(protected_readback_code == nil and #protected_readback.records == 2,
+  'scoped readback covers unchanged protected footprint')
+local protected_footprint_write, footprint_code = trusted:apply('alice',
+  {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 0}},
+  snapshot, {status = 'PREPARED'}, protected_scope)
+assert(footprint_code == nil and protected_footprint_write.status == 'APPLIED_PENDING_READBACK'
+  and writes == 1, 'protected read-only footprint cannot block an allowed effect')
+nodes['0,0,0'] = {name = 'air', param1 = 0, param2 = 0}
+writes = 0
 local protected, protected_code = trusted:apply('alice', {
   {position = {0, 0, 0}, nodeName = 'air', param2 = 0},
   {position = {1, 0, 0}, nodeName = 'air', param2 = 0},
@@ -72,7 +95,7 @@ meta_state = {fields = {}, inventory = {}}
 local applied, apply_code = trusted:apply('alice', {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 3}},
   snapshot, {status = 'PREPARED'}, full_scope)
 assert(apply_code == nil and applied.status == 'APPLIED_PENDING_READBACK' and writes == 1, 'WorldEdit set and param2 execute only after checks')
-assert(light_repairs == 1 and light_reads >= 1,
+assert(light_repairs == 2 and light_reads >= 2,
   'successful write recomputes and reads back derived light')
 local readback = trusted:readback('alice', {{0, 0, 0}})
 assert(readback.records[1].nodeName == 'test:stone' and readback.records[1].param2 == 3, 'complete post-write state read back')
@@ -81,5 +104,5 @@ assert(no_restore == nil and no_restore_code == 'CAPABILITY_UNAVAILABLE', 'calle
 local recovery = module.new({authorize = function() return true end, verifyRestore = function() return true end})
 local restored, restore_code = recovery:restore('operator', snapshot, {status = 'RESTORING'})
 assert(restore_code == nil and restored.status == 'ROLLED_BACK' and nodes['0,0,0'].name == 'air', 'trusted service restores and verifies full before state')
-assert(light_repairs == 2, 'recovery recomputes derived light before readback')
+assert(light_repairs == 3, 'recovery recomputes derived light before readback')
 print('engine smoke PASS')

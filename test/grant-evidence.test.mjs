@@ -41,6 +41,7 @@ test('host grant evidence lists only native current local grants and rejects old
   const cells = new Map([['0,0,0', 'air'], ['1,0,0', 'default:stone'],
     ['9,9,9', 'default:dirt']]);
   const commands = [];
+  const snapshots = [];
   const headers = { Authorization: `Bearer ${config.token}` };
   const loop = (async () => {
     while (running) {
@@ -51,7 +52,7 @@ test('host grant evidence lists only native current local grants and rejects old
       commands.push(command.operation);
       let result;
       let error = null;
-      if (command.operation === 'handshake') result = { payloadVersion: '0.2.2',
+      if (command.operation === 'handshake') result = { payloadVersion: '0.2.3',
         worldRef: manifest.worldRef, loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       else if (command.operation === 'list_grants') result = { grants: permitted && grantRef ? [
@@ -73,6 +74,7 @@ test('host grant evidence lists only native current local grants and rejects old
         gameId: 'minimal', gameRevision: 'registry:one',
         modRevisions: { minimal: 'registry:one' }, nodes: {} };
       else if (command.operation === 'snapshot') {
+        snapshots.push(command);
         if (command.positions.some(position => !cells.has(position.join(','))))
           error = 'TARGET_FACTS_INCOMPLETE';
         else result = { worldRef: manifest.worldRef, coveredPositions: command.positions,
@@ -107,6 +109,11 @@ test('host grant evidence lists only native current local grants and rejects old
     assert.equal((await facts.readCatalogue(native)).gameId, 'minimal');
     const scope = { ...native, positions: [[1, 0, 0], [0, 0, 0]] };
     const first = await facts.readScopedState(scope);
+    const narrowed = await facts.readScopedState({ ...scope,
+      protectedPositions: [[0, 0, 0]] });
+    assert.deepEqual(narrowed.cells, first.cells);
+    assert.deepEqual(snapshots.at(-1).positions, first.coveredPositions);
+    assert.deepEqual(snapshots.at(-1).protectedPositions, [[0, 0, 0]]);
     assert.deepEqual(first.coveredPositions, [[0, 0, 0], [1, 0, 0]]);
     assert.match(first.stateDigest, /^[0-9a-f]{64}$/);
     assert.deepEqual(first.cells.map(cell => cell.position), first.coveredPositions);
@@ -123,6 +130,8 @@ test('host grant evidence lists only native current local grants and rejects old
       first.cells[1].stateDigest);
     await assert.rejects(facts.readScopedState({ ...native, positions: [[0, 0, 0], [0, 0, 0]] }),
       /SCHEMA_INVALID/);
+    await assert.rejects(facts.readScopedState({ ...scope,
+      protectedPositions: [[100, 0, 0]] }), /SCHEMA_INVALID/);
     await assert.rejects(facts.readScopedState({ ...native, positions: [[100, 0, 0]] }),
       /TARGET_FACTS_INCOMPLETE/, 'unloaded positions never become empty state');
     await assert.rejects(facts.readWorldRevision(native), /CAPABILITY_UNAVAILABLE/);

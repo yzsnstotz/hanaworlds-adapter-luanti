@@ -10,6 +10,7 @@ import { validateResponse } from '#contracts/v4';
 import { DurableJournal } from '../src/journal.mjs';
 import { V5TransactionBackend } from '../src/v5-transactions.mjs';
 import { WorldAdapterV5 } from '../src/v4-port.mjs';
+import { luaEngine } from './support/lua-world.mjs';
 
 const hash = (kind, value) => digestValue(kind, value).sha256;
 const profile = { profileVersion: 'state-profile/v2',
@@ -51,12 +52,19 @@ async function rig() {
   const cells = new Map(positions.map(position => [position.join(','), cell(position)]));
   cells.set('9,0,0', cell([9, 0, 0]));
   let grantRef = 'grant-1', active = true, footprint = [object], writes = 0;
+  const checked = [], snapshots = [], readbacks = [];
   const engine = {
-    prepareCheck: async () => true,
-    snapshot: async ({ coveredPositions }) => ({ worldRef: 'world', coveredPositions,
-      records: coveredPositions.map(position => structuredClone(cells.get(position.join(',')))) }),
-    readback: async ({ coveredPositions }) => ({ worldRef: 'world', coveredPositions,
-      records: coveredPositions.map(position => structuredClone(cells.get(position.join(',')))) }),
+    prepareCheck: async effectPositions => { checked.push(effectPositions); return true; },
+    snapshot: async ({ coveredPositions, protectedPositions }) => {
+      snapshots.push({ coveredPositions, protectedPositions });
+      return { worldRef: 'world', coveredPositions,
+        records: coveredPositions.map(position => structuredClone(cells.get(position.join(',')))) };
+    },
+    readback: async ({ coveredPositions, protectedPositions }) => {
+      readbacks.push({ coveredPositions, protectedPositions });
+      return { worldRef: 'world', coveredPositions,
+        records: coveredPositions.map(position => structuredClone(cells.get(position.join(',')))) };
+    },
     apply: async (request, prepared) => {
       // The game endpoint verifies the whole scope just before writing.
       assert.deepEqual(request.scopeBeforeImage.coveredPositions, positions);
@@ -73,14 +81,16 @@ async function rig() {
     revisionOracle: { read: async () => 'current-world-rev' }, stateProfile: profile,
     verifyBinding: async request => ({ current: active, worldRef: 'world',
       sessionRef: request.sessionRef, authorizationRef: request.authorizationRef,
-      actorRef: 'actor', authorRef: 'author', nativeGrantRef: grantRef,
+      actorRef: 'actor', authorRef: 'author', engineActorName: 'alice',
+      nativeGrantRef: grantRef,
       allowedActions: ['APPLY_RECOVERABLE', 'HISTORY'] }),
     verifyService: async () => true,
     capacity: { check: async () => ({ allowed: true }) },
     registry: { readFootprints: async () => ({ current: true, durable: true,
       worldRef: 'world', objects: footprint }) },
   });
-  return { backend, journal, engine, cells, get writes() { return writes; },
+  return { backend, journal, engine, cells, checked, snapshots, readbacks,
+    get writes() { return writes; },
     revoke: () => { active = false; },
     regrant: () => { grantRef = 'grant-2'; active = true; },
     changeFootprint: () => { footprint = [{ ...object, footprintRevision: 'r2' }]; } };
@@ -109,6 +119,12 @@ test('v5 paired scope writes after outside edit, persists full image and returns
   validateResponse('world-adapter/v5', 'ApplyCompiledTransaction', {
     contractVersion: 'world-adapter/v5', requestId: 'apply', result: applied, error: null });
   assert.equal(r.writes, 1);
+  assert.deepEqual(r.checked, [[positions[0]], [positions[0]]]);
+  assert.deepEqual(r.snapshots.map(snapshot => snapshot.protectedPositions),
+    [[positions[0]], [positions[0]]]);
+  assert.deepEqual(r.snapshots[0].coveredPositions, positions);
+  assert.deepEqual(r.readbacks[0], { coveredPositions: positions,
+    protectedPositions: [positions[0]] });
   assert.equal(r.journal.query('tx').status, 'VERIFIED_PENDING_HISTORY');
 });
 
@@ -126,6 +142,25 @@ test('v5 failed engine write restores through the trusted barrier and never says
   assert.equal(r.journal.query('tx').status, 'ROLLED_BACK');
   validateResponse('world-adapter/v5', 'ApplyCompiledTransaction', {
     contractVersion: 'world-adapter/v5', requestId: 'apply', result, error: null });
+});
+
+test('v5 real Lua preparation ignores protected and occupied read-only footprints but denies protected effects', async () => {
+  const r = await rig();
+  const world = { protected: [{ principal: 'alice', min: positions[1], max: positions[1] }],
+    players: [{ name: 'bob', pos: positions[1], yaw: 0,
+      collisionbox: [-0.3, -0.5, -0.3, 0.3, 0.5, 0.3] }] };
+  r.engine.prepareCheck = luaEngine(world, ['bob']).prepareCheck;
+  const saved = await r.backend.prepare({ ...common, requestId: 'prepare' });
+  const applied = await r.backend.apply({ ...common, requestId: 'apply',
+    preparedTransaction: projectScopedPreparedTransaction(saved) });
+  assert.equal(applied.status, 'VERIFIED');
+  assert.equal(r.writes, 1);
+  world.protected[0] = { principal: 'alice', min: positions[0], max: positions[0] };
+  const second = await rig();
+  second.engine.prepareCheck = luaEngine(world, ['bob']).prepareCheck;
+  await assert.rejects(() => second.backend.prepare({ ...common, requestId: 'prepare' }),
+    /PERMISSION_DENIED/);
+  assert.equal(second.writes, 0);
 });
 
 test('v5 unknown or unloaded cells and caller supplied footprints reject at admission', () => {
