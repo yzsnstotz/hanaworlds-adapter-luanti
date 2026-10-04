@@ -38,6 +38,8 @@ test('host grant evidence lists only native current local grants and rejects old
   let grantRef = 'native:one';
   let running = true;
   let permitted = true;
+  const cells = new Map([['0,0,0', 'air'], ['1,0,0', 'default:stone'],
+    ['9,9,9', 'default:dirt']]);
   const commands = [];
   const headers = { Authorization: `Bearer ${config.token}` };
   const loop = (async () => {
@@ -48,6 +50,7 @@ test('host grant evidence lists only native current local grants and rejects old
       if (!command) { await new Promise(resolve => setTimeout(resolve, 5)); continue; }
       commands.push(command.operation);
       let result;
+      let error = null;
       if (command.operation === 'handshake') result = { payloadVersion: '0.2.1',
         worldRef: manifest.worldRef, loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
@@ -69,6 +72,14 @@ test('host grant evidence lists only native current local grants and rejects old
         profileVersion: 'catalogue/v2', engineProfile: 'luanti-runtime-registry',
         gameId: 'minimal', gameRevision: 'registry:one',
         modRevisions: { minimal: 'registry:one' }, nodes: {} };
+      else if (command.operation === 'snapshot') {
+        if (command.positions.some(position => !cells.has(position.join(','))))
+          error = 'TARGET_FACTS_INCOMPLETE';
+        else result = { worldRef: manifest.worldRef, coveredPositions: command.positions,
+          records: command.positions.map(position => ({ position,
+            nodeName: cells.get(position.join(',')), param1: 0, param2: 0,
+            metadata: {}, inventory: {}, timer: null })) };
+      }
       else if (command.operation === 'fact_world_revision' ||
         command.operation === 'fact_object_revisions') {
         await fetch(`http://127.0.0.1:${port}/result`, { method: 'POST', headers,
@@ -78,7 +89,7 @@ test('host grant evidence lists only native current local grants and rejects old
       }
       else throw new Error(`Unexpected engine operation ${command.operation}`);
       await fetch(`http://127.0.0.1:${port}/result`, { method: 'POST', headers,
-        body: JSON.stringify({ id: command.id, worldRef: manifest.worldRef, result, error: null }) });
+        body: JSON.stringify({ id: command.id, worldRef: manifest.worldRef, result, error }) });
     }
   })();
   try {
@@ -94,6 +105,20 @@ test('host grant evidence lists only native current local grants and rejects old
     assert.equal((await facts.readStateProfile(native)).profileVersion, 'state-profile/v2');
     assert.equal((await facts.checkCapacity({ ...native, cellCount: 11 })).allowed, false);
     assert.equal((await facts.readCatalogue(native)).gameId, 'minimal');
+    const scope = { ...native, positions: [[1, 0, 0], [0, 0, 0]] };
+    const first = await facts.readScopedState(scope);
+    assert.deepEqual(first.coveredPositions, [[0, 0, 0], [1, 0, 0]]);
+    assert.match(first.stateDigest, /^[0-9a-f]{64}$/);
+    cells.set('9,9,9', 'default:gold');
+    assert.equal((await facts.readScopedState(scope)).stateDigest, first.stateDigest,
+      'an edit outside the bound scope does not stale it');
+    cells.set('1,0,0', 'default:gold');
+    assert.notEqual((await facts.readScopedState(scope)).stateDigest, first.stateDigest,
+      'an edit inside the bound scope changes the observed state');
+    await assert.rejects(facts.readScopedState({ ...native, positions: [[0, 0, 0], [0, 0, 0]] }),
+      /SCHEMA_INVALID/);
+    await assert.rejects(facts.readScopedState({ ...native, positions: [[100, 0, 0]] }),
+      /TARGET_FACTS_INCOMPLETE/, 'unloaded positions never become empty state');
     await assert.rejects(facts.readWorldRevision(native), /CAPABILITY_UNAVAILABLE/);
     await assert.rejects(facts.readObjectRevisions({ ...native, objectRefs: ['object:one'] }),
       /CAPABILITY_UNAVAILABLE/);
@@ -103,6 +128,7 @@ test('host grant evidence lists only native current local grants and rejects old
     grantRef = 'native:two';
     assert.deepEqual(await query('native:one'), { current: false }, 'new grant never revives old ref');
     await assert.rejects(facts.readStateProfile(native), /AUTHORIZATION_REVOKED/);
+    await assert.rejects(facts.readScopedState(scope), /AUTHORIZATION_REVOKED/);
     assert.equal((await query('native:two')).current, true);
     permitted = false;
     assert.deepEqual(await query('native:two'), { current: false }, 'privilege loss fails');
