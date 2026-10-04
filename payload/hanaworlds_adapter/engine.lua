@@ -149,6 +149,20 @@ local function stateless(record)
     and record.timer == nil
 end
 
+local function light_capable()
+  return type(minetest.fix_light) == 'function'
+    and type(minetest.get_node_light) == 'function'
+end
+
+local function refresh_light(positions)
+  for _, cell in ipairs(positions) do
+    local pos = position(cell)
+    if not pos or minetest.fix_light(pos, pos) ~= true
+      or type(minetest.get_node_light(pos)) ~= 'number' then return false end
+  end
+  return true
+end
+
 function Engine:apply(player_name, effects, before_image, prepared)
   if not self.authorize or not self.authorize(player_name, 'APPLY_RECOVERABLE') or
       not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
@@ -182,7 +196,8 @@ function Engine:apply(player_name, effects, before_image, prepared)
   end
   local editing = rawget(_G, 'worldedit')
   if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+    or type(editing.set_param2) ~= 'function' or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE' end
   local count = 0
   for _, effect in ipairs(effects) do
     local pos = position(effect.position)
@@ -194,6 +209,7 @@ function Engine:apply(player_name, effects, before_image, prepared)
     if not param_ok or param_changed ~= 1 then return nil, 'APPLY_FAILED' end
     count = count + 1
   end
+  if not refresh_light(before_image.coveredPositions) then return nil, 'APPLY_FAILED' end
   return {status = 'APPLIED_PENDING_READBACK', writtenCells = count}
 end
 
@@ -218,7 +234,8 @@ function Engine:apply_state(player_name, target_image, before_image, prepared)
   end
   local editing = rawget(_G, 'worldedit')
   if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+    or type(editing.set_param2) ~= 'function' or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE' end
   -- Check every cell and exact current state before the first write.
   for i, target in ipairs(target_image.records) do
     local prior = before_image.records[i]
@@ -275,6 +292,7 @@ function Engine:apply_state(player_name, target_image, before_image, prepared)
     if not state_ok then return nil, 'APPLY_FAILED' end
     count = count + 1
   end
+  if not refresh_light(target_image.coveredPositions) then return nil, 'APPLY_FAILED' end
   for _, target in ipairs(target_image.records) do
     local current = public_record(target.position)
     if not current or not equal(current, target) then return nil, 'READBACK_MISMATCH' end
@@ -290,7 +308,8 @@ function Engine:restore(service_name, before_image, recovery)
     or #before_image.records == 0 then return nil, 'SCHEMA_INVALID' end
   local editing = rawget(_G, 'worldedit')
   if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+    or type(editing.set_param2) ~= 'function' or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE' end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
     if not pos or minetest.is_protected(pos, service_name) then return nil, 'RESTORE_FAILED' end
@@ -319,6 +338,7 @@ function Engine:restore(service_name, before_image, recovery)
     end)
     if not timer_ok then return nil, 'RESTORE_FAILED' end
   end
+  if not refresh_light(before_image.coveredPositions) then return nil, 'RESTORE_FAILED' end
   for _, record in ipairs(before_image.records) do
     local current = public_record(record.position)
     if not current or not equal(current, record) then return nil, 'RESTORE_FAILED' end

@@ -22,6 +22,7 @@ test('v4 carried: v3 retains verified before/after and performs author scoped hi
   let nodeName = 'air';
   let writes = 0;
   let originCurrent = true;
+  let nativeGrantRef = 'native:one';
   const engine = {
     prepareCheck: async () => ({ checked: 1 }), snapshot: async () => { const { stateProfile, ...rest } = projection(nodeName); return rest; },
     readback: async () => { const { stateProfile, ...rest } = projection(nodeName); return rest; },
@@ -35,7 +36,9 @@ test('v4 carried: v3 retains verified before/after and performs author scoped hi
     authorRef: 'author', allowedActions: ['APPLY_RECOVERABLE', 'READBACK', 'HISTORY', 'UNDO'] };
   const backend = new V3TransactionBackend({ journal, engine, stateProfile: profile,
     revisionOracle: { read: async () => 'world-rev', readObjects: async () => ({}) },
-    verifyBinding: async request => ({ ...binding, sessionRef: request.sessionRef, authorizationRef: request.authorizationRef, engineActorName: 'alice' }), verifyService: async () => true,
+    verifyBinding: async request => ({ ...binding, sessionRef: request.sessionRef,
+      authorizationRef: request.authorizationRef, engineActorName: 'alice', nativeGrantRef }),
+    verifyService: async () => true,
     capacity: { check: async () => ({ allowed: true }) },
     historyAuthority: { verifyOrigin: async () => ({ current: originCurrent, worldRef: 'world',
       authorRef: 'author', originTransactionId: 'origin', affectedObjectRefs: ['object'],
@@ -59,10 +62,18 @@ test('v4 carried: v3 retains verified before/after and performs author scoped hi
     guarantee: 'RECOVERABLE_VERIFIED' };
   const prepared = await backend.prepare(prepareRequest);
   assert.equal(journal.query('origin').authorRef, 'author');
+  assert.equal(journal.query('origin').nativeGrantRef, 'native:one');
   // Seam A: the saved before image's readback digest is returned at Prepare.
   assert.equal(prepared.beforeStateReadbackDigest, digest('readback', projection('air')));
   validateType('PreparedTransactionResult', prepared);
   const { beforeStateReadbackDigest: _seamA, ...sevenFields } = prepared;
+  nativeGrantRef = 'native:two';
+  await assert.rejects(() => backend.apply({ ...prepareRequest,
+    preparedTransaction: sevenFields }), /AUTHORIZATION_REVOKED/,
+  'a prepared write cannot continue under a renewed native grant');
+  assert.equal(writes, 0);
+  assert.equal(journal.query('origin').status, 'PREPARED');
+  nativeGrantRef = 'native:one'; // restore the fixture to exercise the existing success path
   await backend.apply({ ...prepareRequest, preparedTransaction: sevenFields });
   const after = await backend.readback({ ...common, coveredPositions: [[0, 0, 0]],
     stateProfile: profile });
@@ -92,7 +103,18 @@ test('v4 carried: v3 retains verified before/after and performs author scoped hi
   const historyPrepared = await backend.prepareHistory(historyRequest);
   validateType('PreparedHistoryTransaction', historyPrepared);
   assert.equal(historyPrepared.status, 'PREPARED');
+  assert.equal(journal.query('undo').beforeStateReadbackDigest,
+    digest('readback', projection('fixture:stone')),
+  'a pending history restore needs the saved before-state proof');
   assert.equal(writes, 1);
+  assert.equal(journal.query('undo').nativeGrantRef, 'native:one');
+  nativeGrantRef = 'native:two';
+  await assert.rejects(() => backend.applyHistory({ ...historyRequest,
+    preparedHistoryTransaction: historyPrepared }), /AUTHORIZATION_REVOKED/,
+  'a prepared history write cannot continue under a renewed native grant');
+  assert.equal(writes, 1);
+  assert.equal(journal.query('undo').status, 'PREPARED');
+  nativeGrantRef = 'native:one'; // restore the fixture to exercise the existing success path
   originCurrent = false;
   await assert.rejects(() => backend.applyHistory({ ...historyRequest,
     preparedHistoryTransaction: historyPrepared }), /PERMISSION_DENIED/);

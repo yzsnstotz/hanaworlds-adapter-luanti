@@ -46,10 +46,11 @@ function providers(home, digest, overrides = {}) {
       async request(command) {
         provider++;
         if (command.operation === 'handshake') return { worldRef: remoteProfile.worldRef,
-          payloadVersion: '0.2.0', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: remoteProfile.worldRef,
-          current: true, engineActorName: command.actorName, worldeditAvailable: true };
+          current: true, engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         throw new Error('UNEXPECTED_ENGINE_COMMAND');
       }, async close() { closes++; } }) },
     hanaworldsWorldRevisionOracle: { read: async () => 'rev-1', readObjects: async () => ({}) },
@@ -156,10 +157,10 @@ test('D3 local: a built recoverable backend is advertised with its exact state p
   const { services } = providers(home, await payloadDigest());
   const { service, pending, serve, manifest, digest } = await localBind(services, home);
   try {
-    await serve(() => ({ payloadVersion: '0.2.0', worldRef: manifest.worldRef, loadedSourceDigest: digest,
+    await serve(() => ({ payloadVersion: '0.2.1', worldRef: manifest.worldRef, loadedSourceDigest: digest,
       manifestDigest: digest, payloadMatches: true, worldeditAvailable: true }));
     await serve(c => ({ current: true, engineActorName: c.actorName, worldRef: manifest.worldRef,
-      worldeditAvailable: true }));
+      worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' }));
     const bound = await pending;
     assert.equal(bound.error, null, JSON.stringify(bound.error));
     assert.equal((await journals(home)).length, 1);
@@ -173,10 +174,10 @@ test('D3 local negative: without a state profile provider nothing is advertised 
   const { services } = providers(home, await payloadDigest(), { hanaworldsLuantiStateProfile: undefined });
   const { service, pending, serve, manifest, digest } = await localBind(services, home);
   try {
-    await serve(() => ({ payloadVersion: '0.2.0', worldRef: manifest.worldRef, loadedSourceDigest: digest,
+    await serve(() => ({ payloadVersion: '0.2.1', worldRef: manifest.worldRef, loadedSourceDigest: digest,
       manifestDigest: digest, payloadMatches: true, worldeditAvailable: true }));
     await serve(c => ({ current: true, engineActorName: c.actorName, worldRef: manifest.worldRef,
-      worldeditAvailable: true }));
+      worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' }));
     const bound = await pending;
     assert.equal(bound.result.capabilities.recoveryGuarantee, null);
     assert.equal(bound.result.capabilities.stateProfile, null);
@@ -348,10 +349,11 @@ function recoveryWorld(home, digest) {
       async request(command) {
         engine.commands.push(command.operation);
         const worldRef = remoteProfile.worldRef;
-        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
           loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef, current: true,
-          engineActorName: command.actorName, worldeditAvailable: true };
+          engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
         if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
           coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -567,10 +569,11 @@ async function localMatrix(services, { serviceCurrent = () => true, remoteProfil
     const override = replyOverride?.(command, worldRef, digest);
     if (override) return override;
     switch (command.operation) {
-      case 'handshake': return { result: { payloadVersion: '0.2.0', worldRef, loadedSourceDigest: digest,
+      case 'handshake': return { result: { payloadVersion: '0.2.1', worldRef, loadedSourceDigest: digest,
         manifestDigest: digest, payloadMatches: true, worldeditAvailable: true } };
       case 'authorize': return { result: { current: true, engineActorName: command.actorName, worldRef,
-        worldeditAvailable: true } };
+        worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+        grantRef: 'grant:engine' } };
       case 'prepare_check': return { result: { checked: command.positions.length } };
       case 'snapshot': return { result: { worldRef, coveredPositions: command.positions,
         records: command.positions.map(air) } };
@@ -863,10 +866,11 @@ async function mixedWorld(home, { park = async () => {}, replyOverride, stateRea
       async request(command) {
         tunnel.commands.push(command.operation);
         const worldRef = shared;
-        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+        if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
           loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef, current: true,
-          engineActorName: command.actorName, worldeditAvailable: true };
+          engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
         if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
         if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
           coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -1060,10 +1064,11 @@ async function remotePair(home, { failOpen = new Set(), serviceCurrent = () => t
           const worldRef = SHARED;
           const overridden = requestOverride?.(command, t);
           if (overridden) return overridden;
-          if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.0',
+          if (command.operation === 'handshake') return { worldRef, payloadVersion: '0.2.1',
             loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true };
           if (command.operation === 'authorize') return { worldRef, current: true,
-            engineActorName: command.actorName, worldeditAvailable: true };
+            engineActorName: command.actorName, worldeditAvailable: true,
+          scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' };
           if (command.operation === 'prepare_check') return { worldRef, result: { checked: command.positions.length } };
           if (command.operation === 'snapshot') return { worldRef, result: { worldRef,
             coveredPositions: command.positions, records: command.positions.map(air) } };
@@ -1193,10 +1198,10 @@ async function localPair(home) {
       if (!polled?.command) { await new Promise(done => setTimeout(done, 10)); continue; }
       const c = polled.command;
       w.commands.push(c.operation);
-      const result = c.operation === 'handshake' ? { payloadVersion: '0.2.0', worldRef: shared,
+      const result = c.operation === 'handshake' ? { payloadVersion: '0.2.1', worldRef: shared,
         loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true, worldeditAvailable: true } :
         c.operation === 'authorize' ? { current: true, engineActorName: c.actorName, worldRef: shared,
-          worldeditAvailable: true } :
+          worldeditAvailable: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef: 'grant:engine' } :
         c.operation === 'prepare_check' ? { checked: c.positions.length } :
         c.operation === 'snapshot' ? { worldRef: shared, coveredPositions: c.positions,
           records: c.positions.map(air) } : null;
@@ -1261,7 +1266,7 @@ test('Concurrency C04 remote: a failed first opener leaves no reservation or tra
 test('Concurrency C04 local: a failed local handshake leaves no reservation or open transport; a remote connection then binds', async () => {
   const home = await dshHome();
   const world = await mixedWorld(home, { replyOverride: command =>
-    command.operation === 'handshake' ? { result: { payloadVersion: '0.2.0', payloadMatches: false } } : null });
+    command.operation === 'handshake' ? { result: { payloadVersion: '0.2.1', payloadMatches: false } } : null });
   try {
     const failed = await world.bindLocal('local-fails');
     assert.notEqual(failed.error, null, 'injected handshake failure');
@@ -1821,6 +1826,6 @@ test('Privacy: a catalogue-provider exception is never logged or returned (Inspe
   } finally { cap.restore(); await r.close(); }
   assert.equal(cap.leaked(surfaces), false, 'no provider text in host log, console or public error');
   assert.equal(code, 'CAPABILITY_UNAVAILABLE');
-  assert.equal(effects, 0, 'no engine command');
+  assert.equal(effects, 1, 'only the mandatory native grant check; no inspection or write');
   assert.equal(attributed, true, 'host log attributes the failure by a fixed label');
 });

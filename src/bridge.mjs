@@ -63,6 +63,7 @@ export class EngineBridge {
       ...(request.adapterExecutionRevision === undefined ? {} :
         { adapterExecutionRevision: request.adapterExecutionRevision }),
       ...(request.authorRef === undefined ? {} : { authorRef: request.authorRef }),
+      ...(binding.nativeGrantRef === undefined ? {} : { nativeGrantRef: binding.nativeGrantRef }),
       ...(request.originKind === undefined ? {} : { originKind: request.originKind }),
       ...(request.affectedObjectRefs === undefined ? {} :
         { affectedObjectRefs: request.affectedObjectRefs }),
@@ -167,14 +168,16 @@ export class EngineBridge {
     if (!this.engine?.restore) throw new Error('CAPABILITY_UNAVAILABLE');
     const state = this.journal.query(request.originTransactionId);
     if (!state || state.operationDigest !== request.operationDigest ||
-        state.beforeImageDigest !== request.beforeImageDigest) throw new Error('REPLAY_MISMATCH');
+        state.beforeImageDigest !== request.beforeImageDigest ||
+        state.beforeImage?.worldRef !== request.worldRef) throw new Error('REPLAY_MISMATCH');
     if (state.restoreAttemptIdentity !== undefined &&
       state.restoreAttemptIdentity !== request.restoreAttemptIdentity) throw new Error('REPLAY_MISMATCH');
     if (state.status === 'ROLLED_BACK') return { status: 'ROLLED_BACK', causeCode: state.causeCode ?? null };
     // PREPARED proves this Adapter has not crossed the APPLYING write barrier.
     // Restoring its old image could overwrite an unrelated engine/player edit.
     // Keep the prepared record and its declared-writer scope lock intact.
-    if (state.status === 'PREPARED') throw new Error('STALE_TRANSACTION');
+    if (!['RECOVERY_PENDING', 'RESTORE_FAILED'].includes(state.status))
+      throw new Error('STALE_TRANSACTION');
     await this.journal.transition(request.originTransactionId, 'RESTORING',
       { restoreAttemptIdentity: request.restoreAttemptIdentity });
     try {

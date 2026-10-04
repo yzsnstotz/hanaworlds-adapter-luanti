@@ -5,7 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
-import { ContractError, validateResponse } from '#contracts/v4';
+import { ContractError, validateResponse, validateType } from '#contracts/v4';
 
 function fault(code) { throw new Error(code); }
 // Fixed, provider-text-free code for a rejected transport close.
@@ -29,6 +29,8 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
+  const evidenceBusy = new Map(); // worldRef -> temporary local proof read
+  let closed = false;
   // worldRef -> connectionRef whose transport serves it. Inventory uniqueness
   // is (connectionRef, worldRef), so a local and a remote connection may share
   // a worldRef, while normal requests carry only worldRef: the connection that
@@ -261,6 +263,132 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return { capabilityRevision: revision(connections), connections };
   }
 
+  async function withLocalGrantEvidence(world, read) {
+    if (closed) fault('ADAPTER_UNAVAILABLE');
+    if (!world?.worldRef || !await verifyLocalOperator(world)) return null;
+    const owner = boundConnection.get(world.worldRef);
+    if (owner !== undefined && owner !== world.connectionRef) fault('CONNECTION_UNAUTHORIZED');
+    if (open.has(world.worldRef)) {
+      if (owner !== world.connectionRef || closePending.has(world.worldRef))
+        fault('CONNECTION_UNAUTHORIZED');
+      const transport = open.get(world.worldRef);
+      await transport.handshake();
+      return read(transport);
+    }
+    // A binding already in flight owns the port. Refuse an ambiguous read;
+    // binding waits for any earlier temporary proof read before opening it.
+    if (inflight.has(world.worldRef) || evidenceBusy.has(world.worldRef))
+      fault('ADAPTER_UNAVAILABLE');
+    const pending = (async () => {
+      const transport = await LocalEngineTransport.open(world.worldPath, { serviceName });
+      try { await transport.handshake(); return await read(transport); }
+      finally { await transport.close(); }
+    })();
+    evidenceBusy.set(world.worldRef, pending);
+    try { return await pending; }
+    finally { evidenceBusy.delete(world.worldRef); }
+  }
+
+  async function localGrantWorlds() {
+    return (await discoverLocalWorlds(rootPaths)).filter(world => world.worldRef);
+  }
+  const grantEvidence = {
+    async listCurrentLocalGrants() {
+      const results = [];
+      const seenWorlds = new Set();
+      for (const world of await localGrantWorlds()) {
+        if (seenWorlds.has(world.worldRef)) fault('CONNECTION_UNAUTHORIZED');
+        seenWorlds.add(world.worldRef);
+        const grants = await withLocalGrantEvidence(world,
+          transport => transport.listCurrentGrants());
+        if (grants) for (const grant of grants)
+          results.push({ connectionRef: world.connectionRef, ...grant });
+      }
+      return results;
+    },
+    async verifyCurrentLocalGrant({ worldRef, engineActorName, expectedGrantRef } = {}) {
+      if (typeof worldRef !== 'string' || !worldRef ||
+          typeof engineActorName !== 'string' || !engineActorName ||
+          typeof expectedGrantRef !== 'string' || !expectedGrantRef)
+        fault('CONNECTION_UNAUTHORIZED');
+      const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
+      if (matches.length !== 1) return { current: false };
+      let proof;
+      try { proof = await withLocalGrantEvidence(matches[0],
+        transport => transport.verifyPrincipal(engineActorName)); }
+      catch (error) {
+        if (error?.message === 'CONNECTION_UNAUTHORIZED') return { current: false };
+        throw error;
+      }
+      return proof?.grantRef === expectedGrantRef
+        ? { connectionRef: matches[0].connectionRef, ...proof } : { current: false };
+    },
+  };
+
+  async function readNativeFact({ worldRef, engineActorName, expectedGrantRef } = {}, read) {
+    if (typeof worldRef !== 'string' || !worldRef ||
+        typeof engineActorName !== 'string' || !engineActorName ||
+        typeof expectedGrantRef !== 'string' || !expectedGrantRef)
+      fault('CONNECTION_UNAUTHORIZED');
+    const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
+    if (matches.length !== 1) fault('WORLD_NOT_BOUND');
+    const result = await withLocalGrantEvidence(matches[0], async transport => {
+      const first = await transport.verifyPrincipal(engineActorName);
+      if (first.grantRef !== expectedGrantRef) fault('AUTHORIZATION_REVOKED');
+      const binding = { ...first, nativeGrantRef: first.grantRef };
+      const value = await read(transport, binding);
+      const last = await transport.verifyPrincipal(engineActorName);
+      if (last.grantRef !== expectedGrantRef) fault('AUTHORIZATION_REVOKED');
+      return value;
+    });
+    if (result === null) fault('CONNECTION_UNAUTHORIZED');
+    return result;
+  }
+  const nativeFacts = {
+    async readStateProfile(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readStateProfile(binding));
+      try { return validateType('StateProfile', value); }
+      catch { fault('CAPABILITY_UNAVAILABLE'); }
+    },
+    async checkCapacity(input = {}) {
+      if (!Number.isSafeInteger(input.cellCount) || input.cellCount < 0)
+        fault('CAPABILITY_UNAVAILABLE');
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.checkCapacity(input.cellCount, binding));
+      if (typeof value?.allowed !== 'boolean' ||
+          !Number.isSafeInteger(value.maxCells) || value.maxCells < 0 ||
+          value.source !== 'PAIRED_COURIER_RESPONSE_BYTES' ||
+          value.allowed !== (input.cellCount <= value.maxCells))
+        fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+    async readCatalogue(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readCatalogue(binding));
+      try { return validateType('Catalogue', value); }
+      catch { fault('CAPABILITY_UNAVAILABLE'); }
+    },
+    async readWorldRevision(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readWorldRevision(binding));
+      if (typeof value !== 'string' || !value) fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+    async readObjectRevisions(input = {}) {
+      const refs = input.objectRefs;
+      if (!Array.isArray(refs) || refs.some(ref => typeof ref !== 'string' || !ref))
+        fault('CAPABILITY_UNAVAILABLE');
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readObjectRevisions(refs, binding));
+      if (!value || typeof value !== 'object' || Array.isArray(value) ||
+          Object.keys(value).length !== refs.length ||
+          refs.some(ref => typeof value[ref] !== 'string' || !value[ref]))
+        fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+  };
+
   // Remote binding: verified tunnel for the reserved connection (the existing
   // order of checks), then the engine principal, then the backend.
   async function bindRemote(request, proof, descriptor) {
@@ -298,6 +426,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     if (!world?.worldRef || typeof serviceName !== 'string' || !serviceName ||
         typeof proof.engineActorName !== 'string' || !proof.engineActorName ||
         !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+    if (evidenceBusy.has(world.worldRef)) await evidenceBusy.get(world.worldRef);
     const { transport } = await transportFor(world.worldRef, () =>
       LocalEngineTransport.open(world.worldPath, { serviceName, onAction }));
     const loaded = await transport.handshake();
@@ -390,9 +519,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         for (let y = request.sampledBounds.min[1]; y <= request.sampledBounds.max[1]; y++)
           for (let z = request.sampledBounds.min[2]; z <= request.sampledBounds.max[2]; z++)
             positions.push([x, y, z]);
-      await transport.verifyPrincipal(proof.engineActorName);
+      const principal = await transport.verifyPrincipal(proof.engineActorName);
       const raw = await transport.inspect(positions, { current: true,
-        worldRef: request.worldRef, engineActorName: proof.engineActorName });
+        worldRef: request.worldRef, engineActorName: proof.engineActorName,
+        nativeGrantRef: principal.grantRef });
       if (!Array.isArray(raw?.occupiedCells) || !Array.isArray(raw.knownEmptyCells) ||
           !Array.isArray(raw.unknownCells) ||
           raw.occupiedCells.length + raw.knownEmptyCells.length + raw.unknownCells.length !== positions.length)
@@ -425,7 +555,9 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     AbortPreparedHistoryTransaction(request) { return recover(request, owned => owned.abortPreparedHistory(request)); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
-  return { operations, open, currentAccess, close: async () => {
+  return { operations, open, currentAccess, grantEvidence, nativeFacts, close: async () => {
+    closed = true;
+    await Promise.allSettled([...evidenceBusy.values()]);
     // Every transport gets a close attempt; one that is rejected stays in
     // `open` and the failure is reported, not hidden.
     const entries = [...open.entries()];

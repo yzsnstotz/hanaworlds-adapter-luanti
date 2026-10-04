@@ -1,6 +1,7 @@
 -- Private loopback courier. It never accepts world commands from a player
 -- form or arbitrary HTTP caller; the host must possess the per-world secret.
 local M = {}
+local MAX_BODY_BYTES = 4 * 1024 * 1024
 
 -- Error text for the server log without positions, yaw or box values.
 function M.redact(message)
@@ -14,7 +15,7 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region)
+  region, grants, facts)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -52,6 +53,34 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   local function run(command)
     if type(command) ~= 'table' or type(command.id) ~= 'string'
       or command.worldRef ~= manifest.worldRef then return nil, 'CONNECTION_UNAUTHORIZED' end
+    -- The paired host cannot nominate an unconsenting player. Every new
+    -- player command rechecks the engine's current grant, session and privs.
+    local player_operation = {
+      present_frame = true, snapshot = true, inspect = true,
+      prepare_check = true, inspect_region = true, apply = true,
+      apply_state = true, readback = true, fact_profile = true,
+      fact_capacity = true, fact_catalogue = true, fact_world_revision = true,
+      fact_object_revisions = true,
+    }
+    if player_operation[command.operation] then
+      local actor
+      if command.operation == 'present_frame' then actor = command.engineActorName
+      else actor = command.actorName end
+      -- An unused second name must never select another player's grant.
+      if type(actor) ~= 'string' or actor == ''
+        or (command.actorName ~= nil and command.actorName ~= actor)
+        or (command.engineActorName ~= nil and command.engineActorName ~= actor) then
+        return nil, 'PERMISSION_DENIED'
+      end
+      local proof = grants and grants:verify(actor)
+      if not proof or proof.current ~= true or proof.worldRef ~= manifest.worldRef
+        or proof.engineActorName ~= actor
+        or proof.scope ~= 'WORLD_BUILD_WITH_ENGINE_PROTECTION'
+        or type(command.grantRef) ~= 'string' or command.grantRef == ''
+        or command.grantRef ~= proof.grantRef then
+        return nil, 'PERMISSION_DENIED'
+      end
+    end
     current = command
     local result, code
     if command.operation == 'present_frame' then
@@ -61,11 +90,39 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       result = capabilities()
     elseif command.operation == 'authorize' then
       local name = command.actorName
-      local player = type(name) == 'string' and minetest.get_player_by_name(name) or nil
-      local can_build = player and minetest.check_player_privs(name, {interact = true,
-        worldedit = true})
-      result = {current = can_build == true, engineActorName = name,
-        worldRef = manifest.worldRef, worldeditAvailable = capabilities().worldeditAvailable}
+      local proof = grants and grants:verify(name) or {current = false}
+      result = {current = proof.current == true, engineActorName = name,
+        worldRef = manifest.worldRef, scope = proof.scope, grantRef = proof.grantRef,
+        worldeditAvailable = capabilities().worldeditAvailable}
+    elseif command.operation == 'list_grants' then
+      if capabilities().worldeditAvailable ~= true then code = 'CAPABILITY_UNAVAILABLE'
+      elseif type(grants) ~= 'table' or type(grants.list_current) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else
+        local current = grants:list_current()
+        if type(current) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
+        else result = {grants = current} end
+      end
+    elseif command.operation == 'fact_profile' then
+      if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.state_profile(minetest, rawget(_G, 'worldedit')) end
+    elseif command.operation == 'fact_capacity' then
+      if type(facts) ~= 'table' or type(facts.capacity) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.capacity(minetest, command.cellCount, MAX_BODY_BYTES) end
+    elseif command.operation == 'fact_catalogue' then
+      if type(facts) ~= 'table' or type(facts.catalogue) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.catalogue(minetest) end
+    elseif command.operation == 'fact_world_revision' then
+      if type(facts) ~= 'table' or type(facts.world_revision) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.world_revision(minetest) end
+    elseif command.operation == 'fact_object_revisions' then
+      if type(facts) ~= 'table' or type(facts.object_revisions) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.object_revisions(minetest, command.objectRefs) end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.actorName, command.positions)
       if result then result.worldRef = manifest.worldRef end
@@ -155,6 +212,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         .. ',"knownEmptyCells":' .. array(result.knownEmptyCells,
           function(cell) return array(cell, json) end)
         .. ',"unknownCells":' .. array(result.unknownCells, json) .. '}'
+    elseif shaped and result.grants then
+      encoded = '{"grants":' .. array(result.grants, json) .. '}'
     elseif shaped and result.records then
       encoded = encode_state(result)
     end
@@ -186,6 +245,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
           result, code = nil, 'CAPABILITY_UNAVAILABLE'
         end
         local body = encode_reply(decoded.command.id, result, code)
+        if #body > MAX_BODY_BYTES then
+          minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
+          body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
+        end
         http.fetch({url = base .. '/result', method = 'POST', data = body,
           extra_headers = header, quiet = true}, function()
           minetest.after(0.2, poll)

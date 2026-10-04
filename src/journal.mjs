@@ -106,10 +106,12 @@ export class DurableJournal {
     return this.#exclusive(async () => {
       const { transactionId, operationDigest, transactionPayloadDigest, beforeImageDigest, beforeImage,
         payload, expectedWorldRevision, stateProfile, adapterExecutionRevision,
-        authorRef, originKind, affectedObjectRefs, historySourceId, historyDirection,
+        authorRef, nativeGrantRef, originKind, affectedObjectRefs, historySourceId, historyDirection,
         historyOperationDigest, targetImage, targetStateDigest, effects,
         originVerifiedReceiptDigest, expectedHistoryRevision, beforeStateReadbackDigest } = input;
       if (!pureJson(input)) throw fault('SCHEMA_INVALID');
+      if (nativeGrantRef !== undefined &&
+          (typeof nativeGrantRef !== 'string' || !nativeGrantRef)) throw fault('SCHEMA_INVALID');
       if (typeof transactionId !== 'string' || !transactionId ||
           !Array.isArray(beforeImage?.coveredPositions) ||
           beforeImage.coveredPositions.length !== beforeImage.records?.length ||
@@ -119,7 +121,8 @@ export class DurableJournal {
       const old = this.#records.get(transactionId);
       if (old) {
         if (old.operationDigest !== operationDigest || old.transactionPayloadDigest !== transactionPayloadDigest ||
-            old.beforeImageDigest !== beforeImageDigest) throw fault('REPLAY_MISMATCH');
+            old.beforeImageDigest !== beforeImageDigest ||
+            old.nativeGrantRef !== nativeGrantRef) throw fault('REPLAY_MISMATCH');
         return this.query(transactionId);
       }
       const positions = new Set(beforeImage.coveredPositions.map(pos => key(beforeImage.worldRef, pos)));
@@ -133,6 +136,7 @@ export class DurableJournal {
       const record = { transactionId, operationDigest, transactionPayloadDigest, beforeImageDigest,
         beforeImage: copy(beforeImage),
         ...(authorRef === undefined ? {} : { authorRef }),
+        ...(nativeGrantRef === undefined ? {} : { nativeGrantRef }),
         ...(originKind === undefined ? {} : { originKind }),
         ...(affectedObjectRefs === undefined ? {} : { affectedObjectRefs: copy(affectedObjectRefs) }),
         ...(historySourceId === undefined ? {} : { historySourceId }),

@@ -22,11 +22,16 @@ local http = {fetch = function(request, callback)
     if polls == 2 then
       callback({succeeded = true, code = 200, data = {worldRef = 'luanti:test',
         command = {id = 'cmd-2', worldRef = 'luanti:test', operation = 'present_frame',
-          engineActorName = 'alice', frame = {}}}})
+          engineActorName = 'alice', grantRef = 'grant:one', frame = {}}}})
     elseif polls == 1 then
       callback({succeeded = true, code = 200, data = {worldRef = 'luanti:test',
         command = {id = 'cmd-1', worldRef = 'luanti:test', operation = 'prepare_check',
+          grantRef = 'grant:one',
           actorName = 'alice', positions = {{0, 1, 3}}}}})
+    elseif polls == 3 then
+      callback({succeeded = true, code = 200, data = {worldRef = 'luanti:test',
+        command = {id = 'cmd-3', worldRef = 'luanti:test', operation = 'fact_catalogue',
+          grantRef = 'grant:one', actorName = 'alice'}}})
     end
   elseif request.url:match('/result$') then
     posted[#posted + 1] = request.data
@@ -40,7 +45,11 @@ end}
 local started = transport.start(http, {new = function() return {} end}, manifest,
   function() return {worldRef = 'luanti:test', port = 30000, token = token} end,
   function() end, function() return {} end,
-  function(name, frame) return name == 'alice' and type(frame) == 'table' end, region)
+  function(name, frame) return name == 'alice' and type(frame) == 'table' end, region,
+  {verify = function(_, name) return {current = true, worldRef = 'luanti:test',
+    engineActorName = name, scope = 'WORLD_BUILD_WITH_ENGINE_PROTECTION',
+    grantRef = 'grant:one'} end},
+  {catalogue = function() return {raw_json = '"' .. string.rep('x', 4 * 1024 * 1024) .. '"'} end})
 assert(started, 'courier started')
 -- Run the scheduled poll and the follow-up callbacks once.
 local fn = table.remove(scheduled, 1); fn()
@@ -63,4 +72,8 @@ assert(#posted == 2, 'present_frame reply posted')
 assert(posted[2]:find('"result":true', 1, true), 'boolean result encoded as true: ' .. posted[2])
 assert(posted[2]:find('"error":null', 1, true), 'no error for a delivered frame')
 for i = errors_before + 1, #logs do assert(logs[i][1] ~= 'error', 'no error logged') end
+fn = table.remove(scheduled, 1); fn()
+assert(#posted == 3, 'oversized catalogue gets a typed reply')
+assert(#posted[3] <= 4 * 1024 * 1024, 'courier reply respects host body bound')
+assert(posted[3]:find('"LIMIT_EXCEEDED"', 1, true), 'oversized fact fails explicitly')
 print('transport error handling PASS')

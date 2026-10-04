@@ -92,7 +92,7 @@ export function apply(ctx, config = {}) {
     // facade present when this backend was built: a withdrawn or replaced
     // provider must not keep authorizing, nor block a late legitimate one.
     const currentAuthority = () => optionalHostService(ctx, 'hanaworldsAuthority');
-    const verifyBinding = async (request, action, { requireOnline = true } = {}) => {
+    const verifyBinding = async (request, action) => {
       const current = currentAuthority();
       if (typeof current?.verifyEngineBinding !== 'function') {
         log('warn', `${action}: hanaworldsAuthority.verifyEngineBinding not provided`);
@@ -107,18 +107,24 @@ export function apply(ctx, config = {}) {
           binding.sessionRef !== request.sessionRef ||
           binding.authorizationRef !== request.authorizationRef ||
           !binding.allowedActions?.includes(action)) return null;
-      // Mutation needs the principal connected with its privileges; a
-      // read-only region inspection for a Shell-started turn does not.
-      if (requireOnline) {
-        try { await transport.verifyPrincipal(binding.engineActorName); }
-        catch {
-          // The engine/tunnel error text is untrusted (it may carry a URL or
-          // credential): only a fixed label is logged.
-          log('warn', `${action}: ENGINE_PRINCIPAL_UNVERIFIED`);
-          return null;
-        }
+      // Every player operation needs a current native grant. Never accept a
+      // grant reference supplied by the host binding as proof of its own age.
+      let principal;
+      try { principal = await transport.verifyPrincipal(binding.engineActorName); }
+      catch {
+        // Engine/tunnel text is untrusted and may contain a credential.
+        log('warn', `${action}: ENGINE_PRINCIPAL_UNVERIFIED`);
+        return null;
       }
-      return binding;
+      if (principal?.current !== true || principal.worldRef !== worldRef ||
+          principal.engineActorName !== binding.engineActorName ||
+          principal.scope !== 'WORLD_BUILD_WITH_ENGINE_PROTECTION' ||
+          typeof principal.grantRef !== 'string' || !principal.grantRef) return null;
+      const saved = typeof request.transactionId === 'string'
+        ? journal.query(request.transactionId) : null;
+      if (saved && saved.nativeGrantRef !== principal.grantRef) return null;
+      const { nativeGrantRef: ignoredHostRef, ...hostBinding } = binding;
+      return { ...hostBinding, nativeGrantRef: principal.grantRef };
     };
     const inspection = optionalHostService(ctx, 'hanaworldsLuantiInspectionContext');
     const catalogue = typeof inspection?.readCatalogue === 'function'
@@ -211,6 +217,10 @@ export function apply(ctx, config = {}) {
     },
   };
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
+  if (typeof ctx.provide === 'function')
+    ctx.provide('hanaworldsLuantiGrantEvidence', runtime.grantEvidence);
+  if (typeof ctx.provide === 'function')
+    ctx.provide('hanaworldsLuantiNativeFacts', runtime.nativeFacts);
   if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
   ctx.webServer.register({
     kind: 'prefix',

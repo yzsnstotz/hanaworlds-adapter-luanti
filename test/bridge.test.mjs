@@ -84,11 +84,11 @@ test('apply failure attempts independently authorized restoration and records it
   assert.equal(journal.query('tx-1').causeCode, 'APPLY_FAILED');
   const identity = journal.query('tx-1').restoreAttemptIdentity;
   assert.equal(typeof identity, 'string');
-  const repeated = await bridge.restore({ originTransactionId: 'tx-1', operationDigest: request.operationDigest,
+  const repeated = await bridge.restore({ worldRef: request.worldRef, originTransactionId: 'tx-1', operationDigest: request.operationDigest,
     beforeImageDigest: request.beforeImageDigest, restoreAttemptIdentity: identity });
   assert.equal(repeated.status, 'ROLLED_BACK');
   assert.equal(restores, 1, 'terminal restore replays receipt without world write');
-  await assert.rejects(() => bridge.restore({ originTransactionId: 'tx-1', operationDigest: request.operationDigest,
+  await assert.rejects(() => bridge.restore({ worldRef: request.worldRef, originTransactionId: 'tx-1', operationDigest: request.operationDigest,
     beforeImageDigest: request.beforeImageDigest, restoreAttemptIdentity: 'different' }), /REPLAY_MISMATCH/);
 });
 
@@ -138,7 +138,7 @@ test('PREPARED restore never overwrites an external edit or releases its scope',
     verifyService: async () => true, digestBeforeImage: () => 'c'.repeat(64) });
   await bridge.prepare(request);
   cell = 'B'; // A different engine writer changed the world, outside this Adapter chain.
-  await assert.rejects(() => bridge.restore({ originTransactionId: 'tx-1',
+  await assert.rejects(() => bridge.restore({ worldRef: request.worldRef, originTransactionId: 'tx-1',
     operationDigest: request.operationDigest, beforeImageDigest: request.beforeImageDigest,
     restoreAttemptIdentity: 'restore-prepared' }), /STALE_TRANSACTION/);
   assert.equal(cell, 'B');
@@ -165,7 +165,7 @@ test('crash at RESTORING resumes with the same identity and terminal retry never
     verifyService: async () => true,
     engine: { restore: async (_, image) => { restores++; assert.deepEqual(image, before);
       return { status: 'ROLLED_BACK' }; } } });
-  const recovery = { originTransactionId: 'tx-1', operationDigest: request.operationDigest,
+  const recovery = { worldRef: request.worldRef, originTransactionId: 'tx-1', operationDigest: request.operationDigest,
     beforeImageDigest: request.beforeImageDigest, restoreAttemptIdentity: 'restore-same' };
   const result = await bridge.restore(recovery);
   assert.equal(result.status, 'ROLLED_BACK');
@@ -192,7 +192,7 @@ test('failed RESTORING restart retains UNKNOWN and affected-cell scope', async (
   const bridge = new EngineBridge({ journal: reopened, admit: (_, value) => value,
     verifyService: async () => true,
     engine: { restore: async () => { throw new Error('diagnostic restore fault'); } } });
-  await assert.rejects(() => bridge.restore({ originTransactionId: 'tx-1',
+  await assert.rejects(() => bridge.restore({ worldRef: request.worldRef, originTransactionId: 'tx-1',
     operationDigest: request.operationDigest, beforeImageDigest: request.beforeImageDigest,
     restoreAttemptIdentity: 'restore-fail' }), /RESTORE_FAILED/);
   assert.equal(reopened.query('tx-1').status, 'RESTORE_FAILED');

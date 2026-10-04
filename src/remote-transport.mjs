@@ -57,47 +57,51 @@ export class RemoteEngineTransport {
     if (typeof engineActorName !== 'string' || !engineActorName)
       fault('CONNECTION_UNAUTHORIZED');
     const reply = await this.request({ operation: 'authorize', actorName: engineActorName });
-    if (reply.current !== true || reply.engineActorName !== engineActorName ||
-        reply.worldeditAvailable !== true) fault('CONNECTION_UNAUTHORIZED');
-    return { current: true, engineActorName, worldRef: this.#profile.worldRef };
+    if (reply?.current !== true || reply.worldRef !== this.#profile.worldRef ||
+        reply.engineActorName !== engineActorName || reply.worldeditAvailable !== true ||
+        reply.scope !== 'WORLD_BUILD_WITH_ENGINE_PROTECTION' ||
+        typeof reply.grantRef !== 'string' || !reply.grantRef) fault('CONNECTION_UNAUTHORIZED');
+    return { current: true, engineActorName, worldRef: this.#profile.worldRef,
+      scope: reply.scope, grantRef: reply.grantRef };
   }
   #actor(binding) {
     if (!binding?.current || typeof binding.engineActorName !== 'string' ||
-        !binding.engineActorName || binding.worldRef !== this.#profile.worldRef)
+        !binding.engineActorName || binding.worldRef !== this.#profile.worldRef ||
+        typeof binding.nativeGrantRef !== 'string' || !binding.nativeGrantRef)
       fault('CONNECTION_UNAUTHORIZED');
-    return binding.engineActorName;
+    return { actorName: binding.engineActorName, grantRef: binding.nativeGrantRef };
   }
   async snapshot(request, binding) {
-    return this.request({ operation: 'snapshot', actorName: this.#actor(binding),
+    return this.request({ operation: 'snapshot', ...this.#actor(binding),
       action: 'INSPECT', positions: request.coveredPositions });
   }
   async inspect(positions, binding) {
-    return this.request({ operation: 'inspect', actorName: this.#actor(binding),
+    return this.request({ operation: 'inspect', ...this.#actor(binding),
       action: 'INSPECT', positions });
   }
   async prepareCheck(positions, binding) {
-    return this.request({ operation: 'prepare_check', actorName: this.#actor(binding),
+    return this.request({ operation: 'prepare_check', ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', positions });
   }
   async inspectRegion(args, binding) {
-    return this.request({ operation: 'inspect_region', actorName: this.#actor(binding),
-      action: 'INSPECT', ...args });
+    return this.request({ operation: 'inspect_region', ...args, ...this.#actor(binding),
+      action: 'INSPECT' });
   }
   async apply(request, prepared, binding) {
-    return this.request({ operation: 'apply', actorName: this.#actor(binding),
+    return this.request({ operation: 'apply', ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', effects: request.effects,
       beforeImage: prepared.beforeImage,
       prepared: { status: 'PREPARED', operationDigest: prepared.operationDigest },
       operationDigest: request.operationDigest });
   }
   async applyState(request, targetImage, beforeImage, binding) {
-    return this.request({ operation: 'apply_state', actorName: this.#actor(binding),
+    return this.request({ operation: 'apply_state', ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', targetImage, beforeImage,
       prepared: { status: 'PREPARED', operationDigest: request.operationDigest },
       operationDigest: request.operationDigest });
   }
   async readback(request, binding) {
-    return this.request({ operation: 'readback', actorName: this.#actor(binding),
+    return this.request({ operation: 'readback', ...this.#actor(binding),
       action: 'READBACK', positions: request.coveredPositions });
   }
   async restore(recovery, beforeImage) {
@@ -108,7 +112,9 @@ export class RemoteEngineTransport {
   }
   async presentFrame(engineActorName, frame) {
     if (typeof engineActorName !== 'string' || !engineActorName) fault('CONNECTION_UNAUTHORIZED');
-    const result = await this.request({ operation: 'present_frame', engineActorName, frame });
+    const proof = await this.verifyPrincipal(engineActorName);
+    const result = await this.request({ operation: 'present_frame', engineActorName,
+      grantRef: proof.grantRef, frame });
     if (result !== true) fault('INVALID_FRAME');
     return true;
   }

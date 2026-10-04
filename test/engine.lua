@@ -1,4 +1,4 @@
-local writes = 0
+local writes, light_repairs, light_reads = 0, 0, 0
 local nodes = {['0,0,0'] = {name = 'air', param1 = 0, param2 = 0}}
 local meta_state = {fields = {}, inventory = {}}
 local function key(p) return p.x .. ',' .. p.y .. ',' .. p.z end
@@ -10,6 +10,8 @@ _G.minetest = {
   get_meta = function() return {to_table = function() return meta_state end, from_table = function(_, value) meta_state = value; return true end} end,
   get_node_timer = function() return {get_timeout = function() return 0 end, get_elapsed = function() return 0 end, stop = function() end} end,
   swap_node = function(p, node) nodes[key(p)] = node end,
+  fix_light = function() light_repairs = light_repairs + 1; return true end,
+  get_node_light = function() light_reads = light_reads + 1; return 15 end,
   registered_nodes = {air = {}, ['test:stone'] = {}}
 }
 _G.worldedit = {
@@ -60,6 +62,8 @@ assert(rejected_inventory == nil and inventory_code == 'UNSUPPORTED_MUTATION_SEM
 meta_state = {fields = {}, inventory = {}}
 local applied, apply_code = trusted:apply('alice', {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 3}}, snapshot, {status = 'PREPARED'})
 assert(apply_code == nil and applied.status == 'APPLIED_PENDING_READBACK' and writes == 1, 'WorldEdit set and param2 execute only after checks')
+assert(light_repairs == 1 and light_reads >= 1,
+  'successful write recomputes and reads back derived light')
 local readback = trusted:readback('alice', {{0, 0, 0}})
 assert(readback.records[1].nodeName == 'test:stone' and readback.records[1].param2 == 3, 'complete post-write state read back')
 local no_restore, no_restore_code = trusted:restore('operator', snapshot, {status = 'RESTORING'})
@@ -67,4 +71,5 @@ assert(no_restore == nil and no_restore_code == 'CAPABILITY_UNAVAILABLE', 'calle
 local recovery = module.new({authorize = function() return true end, verifyRestore = function() return true end})
 local restored, restore_code = recovery:restore('operator', snapshot, {status = 'RESTORING'})
 assert(restore_code == nil and restored.status == 'ROLLED_BACK' and nodes['0,0,0'].name == 'air', 'trusted service restores and verifies full before state')
+assert(light_repairs == 2, 'recovery recomputes derived light before readback')
 print('engine smoke PASS')
