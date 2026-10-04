@@ -219,6 +219,8 @@ export function apply(ctx, config = {}) {
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiGrantEvidence', runtime.grantEvidence);
+  if (typeof ctx.provide === 'function')
+    ctx.provide('hanaworldsLuantiNativeFacts', runtime.nativeFacts);
   if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
   ctx.webServer.register({
     kind: 'prefix',

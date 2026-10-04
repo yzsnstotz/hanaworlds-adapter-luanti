@@ -242,6 +242,25 @@ export class LocalEngineTransport {
     });
   }
 
+  readStateProfile(binding) {
+    return this.#dispatch('fact_profile', this.#actor(binding));
+  }
+  checkCapacity(cellCount, binding) {
+    if (!Number.isSafeInteger(cellCount) || cellCount < 0) throw fault('CAPABILITY_UNAVAILABLE');
+    return this.#dispatch('fact_capacity', { ...this.#actor(binding), cellCount });
+  }
+  readCatalogue(binding) {
+    return this.#dispatch('fact_catalogue', this.#actor(binding));
+  }
+  readWorldRevision(binding) {
+    return this.#dispatch('fact_world_revision', this.#actor(binding));
+  }
+  readObjectRevisions(objectRefs, binding) {
+    if (!Array.isArray(objectRefs) || objectRefs.some(ref => typeof ref !== 'string' || !ref))
+      throw fault('CAPABILITY_UNAVAILABLE');
+    return this.#dispatch('fact_object_revisions', { ...this.#actor(binding), objectRefs });
+  }
+
   async presentFrame(engineActorName, frame) {
     if (!this.#onAction) throw fault('RENDERER_CAPABILITY_UNAVAILABLE');
     if (typeof engineActorName !== 'string' || !engineActorName ||

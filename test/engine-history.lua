@@ -15,6 +15,8 @@ _G.minetest = {
     stop = function() timer = {timeout = 0, elapsed = 0} end,
   } end,
   swap_node = function(_, value) node = value end,
+  fix_light = function() return true end,
+  get_node_light = function() return 15 end,
   registered_nodes = {air = {}, ['test:stone'] = {}, ['test:brick'] = {}}
 }
 _G.worldedit = {

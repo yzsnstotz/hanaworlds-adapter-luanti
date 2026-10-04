@@ -9,6 +9,7 @@ local modpath = minetest.get_modpath(minetest.get_current_modname())
 local engine_module = dofile(modpath .. '/engine.lua')
 local region_module = dofile(modpath .. '/region.lua')
 local grant_module = dofile(modpath .. '/grant.lua')
+local facts_module = dofile(modpath .. '/facts.lua')
 local transport_ready = false
 local SURFACE = 'interaction-surface/v3'
 local RENDERED_KINDS = {TEXT = true, NAME = true, DECISION = true, SELECT_OBJECTS = true,
@@ -28,7 +29,7 @@ local function loaded_digest()
   if not minetest.sha256 then return nil end
   local parts = {}
   for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua',
-    'grant.lua'}) do
+    'grant.lua', 'facts.lua'}) do
     local content = read_own_file(name)
     if not content then return nil end
     parts[#parts + 1] = name .. '\n' .. content
@@ -340,7 +341,7 @@ if identity_verified then
         minetest.log('action', 'HanaWorlds local courier paired on loopback')
       end
       transport_ready = ready
-    end, adapter.capabilities, adapter.present_frame, region, grants)
+    end, adapter.capabilities, adapter.present_frame, region, grants, facts_module)
   if action_transport then adapter.invoke_action = action_transport.invoke_action end
 end
 local capability = adapter.capabilities()

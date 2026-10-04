@@ -22,7 +22,7 @@ end
 local prefix = 'payload/hanaworlds_adapter/'
 local source_bytes = ''
 for _, name in ipairs({'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua',
-  'grant.lua'}) do
+  'grant.lua', 'facts.lua'}) do
   local f = assert(io.open(prefix .. name, 'rb'))
   source_bytes = source_bytes .. name .. '\n' .. f:read('*a')
   f:close()

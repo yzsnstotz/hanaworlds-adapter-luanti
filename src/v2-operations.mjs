@@ -5,7 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
-import { ContractError, validateResponse } from '#contracts/v4';
+import { ContractError, validateResponse, validateType } from '#contracts/v4';
 
 function fault(code) { throw new Error(code); }
 // Fixed, provider-text-free code for a rejected transport close.
@@ -325,6 +325,70 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     },
   };
 
+  async function readNativeFact({ worldRef, engineActorName, expectedGrantRef } = {}, read) {
+    if (typeof worldRef !== 'string' || !worldRef ||
+        typeof engineActorName !== 'string' || !engineActorName ||
+        typeof expectedGrantRef !== 'string' || !expectedGrantRef)
+      fault('CONNECTION_UNAUTHORIZED');
+    const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
+    if (matches.length !== 1) fault('WORLD_NOT_BOUND');
+    const result = await withLocalGrantEvidence(matches[0], async transport => {
+      const first = await transport.verifyPrincipal(engineActorName);
+      if (first.grantRef !== expectedGrantRef) fault('AUTHORIZATION_REVOKED');
+      const binding = { ...first, nativeGrantRef: first.grantRef };
+      const value = await read(transport, binding);
+      const last = await transport.verifyPrincipal(engineActorName);
+      if (last.grantRef !== expectedGrantRef) fault('AUTHORIZATION_REVOKED');
+      return value;
+    });
+    if (result === null) fault('CONNECTION_UNAUTHORIZED');
+    return result;
+  }
+  const nativeFacts = {
+    async readStateProfile(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readStateProfile(binding));
+      try { return validateType('StateProfile', value); }
+      catch { fault('CAPABILITY_UNAVAILABLE'); }
+    },
+    async checkCapacity(input = {}) {
+      if (!Number.isSafeInteger(input.cellCount) || input.cellCount < 0)
+        fault('CAPABILITY_UNAVAILABLE');
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.checkCapacity(input.cellCount, binding));
+      if (typeof value?.allowed !== 'boolean' ||
+          !Number.isSafeInteger(value.maxCells) || value.maxCells < 0 ||
+          value.source !== 'PAIRED_COURIER_RESPONSE_BYTES' ||
+          value.allowed !== (input.cellCount <= value.maxCells))
+        fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+    async readCatalogue(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readCatalogue(binding));
+      try { return validateType('Catalogue', value); }
+      catch { fault('CAPABILITY_UNAVAILABLE'); }
+    },
+    async readWorldRevision(input) {
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readWorldRevision(binding));
+      if (typeof value !== 'string' || !value) fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+    async readObjectRevisions(input = {}) {
+      const refs = input.objectRefs;
+      if (!Array.isArray(refs) || refs.some(ref => typeof ref !== 'string' || !ref))
+        fault('CAPABILITY_UNAVAILABLE');
+      const value = await readNativeFact(input, (transport, binding) =>
+        transport.readObjectRevisions(refs, binding));
+      if (!value || typeof value !== 'object' || Array.isArray(value) ||
+          Object.keys(value).length !== refs.length ||
+          refs.some(ref => typeof value[ref] !== 'string' || !value[ref]))
+        fault('CAPABILITY_UNAVAILABLE');
+      return value;
+    },
+  };
+
   // Remote binding: verified tunnel for the reserved connection (the existing
   // order of checks), then the engine principal, then the backend.
   async function bindRemote(request, proof, descriptor) {
@@ -491,7 +555,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     AbortPreparedHistoryTransaction(request) { return recover(request, owned => owned.abortPreparedHistory(request)); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
-  return { operations, open, currentAccess, grantEvidence, close: async () => {
+  return { operations, open, currentAccess, grantEvidence, nativeFacts, close: async () => {
     closed = true;
     await Promise.allSettled([...evidenceBusy.values()]);
     // Every transport gets a close attempt; one that is rejected stays in

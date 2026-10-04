@@ -9,4 +9,4 @@ export const UPGRADABLE_PAYLOADS = Object.freeze({
   '0.2.0': Object.freeze(['mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua']),
 });
 export const PAYLOAD_FILES = Object.freeze(['mod.conf', 'init.lua', 'engine.lua',
-  'transport.lua', 'region.lua', 'grant.lua']);
+  'transport.lua', 'region.lua', 'grant.lua', 'facts.lua']);

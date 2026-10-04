@@ -1,6 +1,7 @@
 -- Private loopback courier. It never accepts world commands from a player
 -- form or arbitrary HTTP caller; the host must possess the per-world secret.
 local M = {}
+local MAX_BODY_BYTES = 4 * 1024 * 1024
 
 -- Error text for the server log without positions, yaw or box values.
 function M.redact(message)
@@ -14,7 +15,7 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region, grants)
+  region, grants, facts)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -57,7 +58,9 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     local player_operation = {
       present_frame = true, snapshot = true, inspect = true,
       prepare_check = true, inspect_region = true, apply = true,
-      apply_state = true, readback = true,
+      apply_state = true, readback = true, fact_profile = true,
+      fact_capacity = true, fact_catalogue = true, fact_world_revision = true,
+      fact_object_revisions = true,
     }
     if player_operation[command.operation] then
       local actor
@@ -100,6 +103,26 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         if type(current) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
         else result = {grants = current} end
       end
+    elseif command.operation == 'fact_profile' then
+      if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.state_profile(minetest, rawget(_G, 'worldedit')) end
+    elseif command.operation == 'fact_capacity' then
+      if type(facts) ~= 'table' or type(facts.capacity) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.capacity(minetest, command.cellCount, MAX_BODY_BYTES) end
+    elseif command.operation == 'fact_catalogue' then
+      if type(facts) ~= 'table' or type(facts.catalogue) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.catalogue(minetest) end
+    elseif command.operation == 'fact_world_revision' then
+      if type(facts) ~= 'table' or type(facts.world_revision) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.world_revision(minetest) end
+    elseif command.operation == 'fact_object_revisions' then
+      if type(facts) ~= 'table' or type(facts.object_revisions) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.object_revisions(minetest, command.objectRefs) end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.actorName, command.positions)
       if result then result.worldRef = manifest.worldRef end
@@ -222,6 +245,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
           result, code = nil, 'CAPABILITY_UNAVAILABLE'
         end
         local body = encode_reply(decoded.command.id, result, code)
+        if #body > MAX_BODY_BYTES then
+          minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
+          body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
+        end
         http.fetch({url = base .. '/result', method = 'POST', data = body,
           extra_headers = header, quiet = true}, function()
           minetest.after(0.2, poll)

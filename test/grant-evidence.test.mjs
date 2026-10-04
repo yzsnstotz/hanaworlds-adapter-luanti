@@ -32,6 +32,7 @@ test('host grant evidence lists only native current local grants and rejects old
   const adapter = apply({ webServer: { register() {} }, provide: (name, value) => provided.set(name, value),
     get: name => services[name] }, { localWorldRoots: [root], serviceName: 'operator' });
   const evidence = provided.get('hanaworldsLuantiGrantEvidence');
+  const facts = provided.get('hanaworldsLuantiNativeFacts');
   assert.equal(typeof evidence.listCurrentLocalGrants, 'function');
   assert.equal(typeof evidence.verifyCurrentLocalGrant, 'function');
   let grantRef = 'native:one';
@@ -57,6 +58,24 @@ test('host grant evidence lists only native current local grants and rejects old
         worldRef: manifest.worldRef, engineActorName: command.actorName,
         scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef,
         worldeditAvailable: true };
+      else if (command.operation === 'fact_profile') result = {
+        profileVersion: 'state-profile/v2', nodeFields: ['nodeName', 'param1', 'param2'],
+        metadataMode: 'exact', inventoryMode: 'exact', timerMode: 'exact',
+        derivedLightMode: 'recompute-with-readback' };
+      else if (command.operation === 'fact_capacity') result = {
+        allowed: command.cellCount <= 10, maxCells: 10,
+        source: 'PAIRED_COURIER_RESPONSE_BYTES' };
+      else if (command.operation === 'fact_catalogue') result = {
+        profileVersion: 'catalogue/v2', engineProfile: 'luanti-runtime-registry',
+        gameId: 'minimal', gameRevision: 'registry:one',
+        modRevisions: { minimal: 'registry:one' }, nodes: {} };
+      else if (command.operation === 'fact_world_revision' ||
+        command.operation === 'fact_object_revisions') {
+        await fetch(`http://127.0.0.1:${port}/result`, { method: 'POST', headers,
+          body: JSON.stringify({ id: command.id, worldRef: manifest.worldRef,
+            result: null, error: 'CAPABILITY_UNAVAILABLE' }) });
+        continue;
+      }
       else throw new Error(`Unexpected engine operation ${command.operation}`);
       await fetch(`http://127.0.0.1:${port}/result`, { method: 'POST', headers,
         body: JSON.stringify({ id: command.id, worldRef: manifest.worldRef, result, error: null }) });
@@ -70,11 +89,20 @@ test('host grant evidence lists only native current local grants and rejects old
     const query = expectedGrantRef => evidence.verifyCurrentLocalGrant({ worldRef: manifest.worldRef,
       engineActorName: 'alice', expectedGrantRef });
     assert.equal((await query('native:one')).current, true);
+    const native = { worldRef: manifest.worldRef, engineActorName: 'alice',
+      expectedGrantRef: 'native:one' };
+    assert.equal((await facts.readStateProfile(native)).profileVersion, 'state-profile/v2');
+    assert.equal((await facts.checkCapacity({ ...native, cellCount: 11 })).allowed, false);
+    assert.equal((await facts.readCatalogue(native)).gameId, 'minimal');
+    await assert.rejects(facts.readWorldRevision(native), /CAPABILITY_UNAVAILABLE/);
+    await assert.rejects(facts.readObjectRevisions({ ...native, objectRefs: ['object:one'] }),
+      /CAPABILITY_UNAVAILABLE/);
     assert.deepEqual(await query('native:wrong'), { current: false });
     grantRef = null;
     assert.deepEqual(await query('native:one'), { current: false }, 'revoked grant fails');
     grantRef = 'native:two';
     assert.deepEqual(await query('native:one'), { current: false }, 'new grant never revives old ref');
+    await assert.rejects(facts.readStateProfile(native), /AUTHORIZATION_REVOKED/);
     assert.equal((await query('native:two')).current, true);
     permitted = false;
     assert.deepEqual(await query('native:two'), { current: false }, 'privilege loss fails');
