@@ -103,6 +103,9 @@ test('v4 carried: v3 retains verified before/after and performs author scoped hi
   const historyPrepared = await backend.prepareHistory(historyRequest);
   validateType('PreparedHistoryTransaction', historyPrepared);
   assert.equal(historyPrepared.status, 'PREPARED');
+  assert.equal(journal.query('undo').beforeStateReadbackDigest,
+    digest('readback', projection('fixture:stone')),
+  'a pending history restore needs the saved before-state proof');
   assert.equal(writes, 1);
   assert.equal(journal.query('undo').nativeGrantRef, 'native:one');
   nativeGrantRef = 'native:two';

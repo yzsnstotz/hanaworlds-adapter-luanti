@@ -118,8 +118,11 @@ try {
   const firstLoaded = await courier.handshake();
   assert.equal(firstLoaded.worldRef, first.worldRef);
   assert.equal(firstLoaded.payloadDigest, sourcePayloadDigest);
+  // A current player-confirmed native grant is required even in diagnostics.
+  const principal = await courier.verifyPrincipal('operator');
   const binding = { current: true, worldRef: first.worldRef,
-    engineActorName: 'operator', allowedActions: ['APPLY_RECOVERABLE', 'READBACK', 'HISTORY'] };
+    engineActorName: 'operator', nativeGrantRef: principal.grantRef,
+    allowedActions: ['APPLY_RECOVERABLE', 'READBACK', 'HISTORY'] };
   const positions = [[0, 0, 0]];
   const before = await courier.snapshot({ coveredPositions: positions }, binding);
   assert.equal(before.records[0].nodeName, 'air');
@@ -135,7 +138,8 @@ try {
   assert.equal((await bridge.apply(request)).status, 'APPLIED_PENDING_READBACK');
   assert.equal((await bridge.readback(request)).projection.records[0].nodeName,
     'hw_lifecycle_probe:stone');
-  assert.equal((await bridge.restore({ originTransactionId: request.transactionId,
+  assert.equal((await bridge.restore({ worldRef: request.worldRef,
+    originTransactionId: request.transactionId,
     operationDigest: request.operationDigest, beforeImageDigest: request.beforeImageDigest,
     restoreAttemptIdentity: 'restore-lifecycle-real' })).status, 'ROLLED_BACK');
   assert.equal((await courier.readback({ coveredPositions: positions }, binding))
