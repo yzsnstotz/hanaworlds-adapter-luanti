@@ -150,12 +150,10 @@ export class V5TransactionBackend {
         record.scopeDigest !== request.scopeDigest ||
         !same(record.scope, request.scope) ||
         !same(record.operations, request.operations) ||
-        !same(record.effects, request.operations.effects) ||
-        hash('before-image', record.beforeImage) !== record.beforeImageDigest ||
-        hash('readback', readbackView(record.beforeImage)) !== record.beforeStateReadbackDigest ||
-        hash('scoped-transaction-payload', record.payload) !== record.transactionPayloadDigest)
+        !same(record.effects, request.operations.effects))
       fault('REPLAY_MISMATCH');
-    this.#savedIntegrity(record);
+    try { this.#savedIntegrity(record); }
+    catch { fault('REPLAY_MISMATCH'); }
   }
 
   #savedIntegrity(record) {
@@ -182,10 +180,21 @@ export class V5TransactionBackend {
             record.operations.effects.map(effect => byPosition.get(key(effect.position)))) ||
           !same(record.effects, record.operations.effects))
         fault('SAVED_RESOURCE_UNAVAILABLE');
-      if (record.status === 'VERIFIED_PENDING_HISTORY' &&
-          (!record.afterImage || !record.observedWorldRevision ||
-            hash('readback', readbackView(record.afterImage)) !==
-              record.afterReadbackDigest)) fault('SAVED_RESOURCE_UNAVAILABLE');
+      if (record.status === 'VERIFIED_PENDING_HISTORY') {
+        validateType('BeforeImage', record.afterImage);
+        if (!same(record.afterImage.coveredPositions,
+          record.beforeImage.coveredPositions) ||
+          !same(record.afterImage.stateProfile, record.stateProfile) ||
+          record.afterImage.worldRef !== record.beforeImage.worldRef ||
+          record.observedWorldRevision !== record.afterImage.worldRevision ||
+          hash('readback', readbackView(record.afterImage)) !==
+            record.afterReadbackDigest) fault('SAVED_RESOURCE_UNAVAILABLE');
+      }
+      if (record.status === 'ROLLED_BACK' &&
+          (!record.observedWorldRevision ||
+            record.restoredReadbackDigest !==
+              hash('readback', readbackView(record.writeBeforeImage))))
+        fault('SAVED_RESOURCE_UNAVAILABLE');
     } catch { fault('SAVED_RESOURCE_UNAVAILABLE'); }
   }
 
@@ -231,13 +240,8 @@ export class V5TransactionBackend {
         saved.operationDigest !== request.operationDigest ||
         saved.authorRef !== binding.authorRef ||
         saved.nativeGrantRef !== binding.nativeGrantRef) fault('REPLAY_MISMATCH');
-    if (hash('before-image', saved.beforeImage) !== saved.beforeImageDigest ||
-        hash('readback', readbackView(saved.beforeImage)) !==
-          saved.beforeStateReadbackDigest ||
-        hash('scoped-world', saved.scope) !== saved.scopeDigest ||
-        hash('scoped-transaction-payload', saved.payload) !== saved.transactionPayloadDigest)
-      fault('CAPABILITY_UNAVAILABLE');
-    this.#savedIntegrity(saved);
+    try { this.#savedIntegrity(saved); }
+    catch { fault('CAPABILITY_UNAVAILABLE'); }
     return prepared(saved);
   }
 
@@ -250,7 +254,8 @@ export class V5TransactionBackend {
         record.nativeGrantRef !== binding.nativeGrantRef ||
         record.transactionPayloadDigest !== request.transactionPayloadDigest)
       fault('REPLAY_MISMATCH');
-    this.#savedIntegrity(record);
+    try { this.#savedIntegrity(record); }
+    catch { fault('RECOVERY_PENDING'); }
     if (record.status === 'PREPARED') fault('RECOVERY_PENDING');
     return receipt(record);
   }
@@ -294,16 +299,11 @@ export class V5TransactionBackend {
     const attempt = createHash('sha256').update(
       `HanaWorlds|adapter-v5-restore|${record.transactionId}|${record.operationDigest}`).digest('hex');
     if (request.restoreAttemptIdentity !== attempt) fault('REPLAY_MISMATCH');
-    if (record.status === 'ROLLED_BACK') return receipt(record);
-    if (!['RECOVERY_PENDING', 'RESTORE_FAILED'].includes(record.status))
+    if (!['RECOVERY_PENDING', 'RESTORE_FAILED', 'ROLLED_BACK'].includes(record.status))
       fault('STALE_TRANSACTION');
-    if (hash('before-image', record.beforeImage) !== record.beforeImageDigest ||
-        hash('readback', readbackView(record.beforeImage)) !==
-          record.beforeStateReadbackDigest ||
-        hash('scoped-world', record.scope) !== record.scopeDigest ||
-        hash('scoped-transaction-payload', record.payload) !== record.transactionPayloadDigest)
-      fault('SAVED_RESOURCE_UNAVAILABLE');
-    this.#savedIntegrity(record);
+    try { this.#savedIntegrity(record); }
+    catch { fault('RECOVERY_PENDING'); }
+    if (record.status === 'ROLLED_BACK') return receipt(record);
     return this.#recover(record, record.causeCode ?? 'APPLY_FAILED');
   }
 
