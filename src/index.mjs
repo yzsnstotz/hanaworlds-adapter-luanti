@@ -10,18 +10,21 @@ export { createLuantiOperations } from './v2-operations.mjs';
 export { V2TransactionBackend, projectionDigest } from './v2-transactions.mjs';
 export { WorldAdapterV3, worldAdapterV3Operations } from './v3-port.mjs';
 export { V3TransactionBackend } from './v3-transactions.mjs';
-export { WorldAdapterV4, worldAdapterV4Operations } from './v4-port.mjs';
+export { WorldAdapterV4, WorldAdapterV5, worldAdapterV4Operations,
+  worldAdapterV5Operations } from './v4-port.mjs';
 export { V4TransactionBackend } from './v4-transactions.mjs';
+export { V5TransactionBackend } from './v5-transactions.mjs';
 export { workshopRelay } from './workshop-relay.mjs';
 export { nativeJournalDirectory } from './native-storage.mjs';
 
 import { placementInvariants } from '#contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
-import { WorldAdapterV4 } from './v4-port.mjs';
+import { WorldAdapterV4, WorldAdapterV5 } from './v4-port.mjs';
 import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLocalPayload }
   from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
 import { V4TransactionBackend } from './v4-transactions.mjs';
+import { V5TransactionBackend } from './v5-transactions.mjs';
 import { workshopRelay } from './workshop-relay.mjs';
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
@@ -62,14 +65,11 @@ export function apply(ctx, config = {}) {
     const historyAuthority = optionalHostService(ctx, 'hanaworldsHistoryOriginAuthority');
     if (typeof authority?.verifyEngineBinding !== 'function' ||
         typeof authority?.verifyService !== 'function' ||
-        typeof revisionOracle?.read !== 'function' ||
-        typeof revisionOracle?.readObjects !== 'function' ||
         typeof capacity?.check !== 'function' ||
         typeof state?.read !== 'function') {
       log('warn', `world ${worldRef}: transaction backend not created; missing host providers: ${[
         typeof authority?.verifyEngineBinding !== 'function' && 'hanaworldsAuthority.verifyEngineBinding',
         typeof authority?.verifyService !== 'function' && 'hanaworldsAuthority.verifyService',
-        typeof revisionOracle?.read !== 'function' && 'hanaworldsWorldRevisionOracle',
         typeof capacity?.check !== 'function' && 'hanaworldsLuantiCapacity',
         typeof state?.read !== 'function' && 'hanaworldsLuantiStateProfile',
       ].filter(Boolean).join(', ')}`);
@@ -138,10 +138,20 @@ export function apply(ctx, config = {}) {
       const verified = await current.verifyService(recovery, operation);
       return verified?.current === true && verified.worldRef === worldRef;
     };
-    return new V4TransactionBackend({ journal, engine: transport, revisionOracle,
-      stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority,
-      catalogue, log,
-      executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` });
+    const backend = typeof revisionOracle?.read === 'function' &&
+      typeof revisionOracle?.readObjects === 'function'
+      ? new V4TransactionBackend({ journal, engine: transport, revisionOracle,
+        stateProfile: profile, verifyBinding, verifyService, capacity, historyAuthority,
+        catalogue, log,
+        executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` })
+      : { stateProfile: profile, get hasUnsettledRecords() {
+        return journal.unsettledCount > 0; },
+        restore: request => backend.scoped.restoreTrusted(request),
+        abortPrepared: request => backend.scoped.abortPreparedTrusted(request) };
+    backend.scoped = new V5TransactionBackend({ journal, engine: transport,
+      stateProfile: profile, verifyBinding, verifyService, capacity,
+      registry: () => optionalHostService(ctx, 'hanaworldsCanvasFootprintRegistry') });
+    return backend;
   }
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
@@ -158,8 +168,13 @@ export function apply(ctx, config = {}) {
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
     currentAccess: runtime.currentAccess,
     operations: runtime.operations });
+  const worldAdapterV5 = new WorldAdapterV5({
+    resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
+    currentAccess: runtime.currentAccess,
+    operations: runtime.scopedOperations });
   const service = {
     worldAdapter,
+    worldAdapterV5,
     async provisionLocal(worldPath, transportPort, { freshIdentity = false } = {}) {
       return provisionLocalPayload(worldPath, {
         operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort,
@@ -199,7 +214,7 @@ export function apply(ctx, config = {}) {
         component: name,
         version: ADAPTER_VERSION,
         payloadLifecycle: 'LOCAL_PROVISION_SOURCE',
-        worldAdapterContract: 'world-adapter/v4',
+        worldAdapterContract: 'world-adapter/v5',
         interactionSurfaceContract: 'interaction-surface/v3',
         contractHandshake: worldAdapter.contractHandshake,
         inWorldRenderer: { inputKinds: ['DECISION', 'NAME', 'PICK_WORLD_POINT',
@@ -217,6 +232,7 @@ export function apply(ctx, config = {}) {
     },
   };
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
+  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV5', worldAdapterV5);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiGrantEvidence', runtime.grantEvidence);
   if (typeof ctx.provide === 'function')

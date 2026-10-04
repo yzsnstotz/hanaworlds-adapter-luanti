@@ -51,7 +51,7 @@ test('host grant evidence lists only native current local grants and rejects old
       commands.push(command.operation);
       let result;
       let error = null;
-      if (command.operation === 'handshake') result = { payloadVersion: '0.2.1',
+      if (command.operation === 'handshake') result = { payloadVersion: '0.2.2',
         worldRef: manifest.worldRef, loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       else if (command.operation === 'list_grants') result = { grants: permitted && grantRef ? [
@@ -109,12 +109,18 @@ test('host grant evidence lists only native current local grants and rejects old
     const first = await facts.readScopedState(scope);
     assert.deepEqual(first.coveredPositions, [[0, 0, 0], [1, 0, 0]]);
     assert.match(first.stateDigest, /^[0-9a-f]{64}$/);
+    assert.deepEqual(first.cells.map(cell => cell.position), first.coveredPositions);
+    assert.ok(first.cells.every(cell => cell.availability === 'KNOWN' &&
+      /^[0-9a-f]{64}$/.test(cell.stateDigest)));
     cells.set('9,9,9', 'default:gold');
     assert.equal((await facts.readScopedState(scope)).stateDigest, first.stateDigest,
       'an edit outside the bound scope does not stale it');
+    assert.deepEqual((await facts.readScopedState(scope)).cells, first.cells);
     cells.set('1,0,0', 'default:gold');
     assert.notEqual((await facts.readScopedState(scope)).stateDigest, first.stateDigest,
       'an edit inside the bound scope changes the observed state');
+    assert.notEqual((await facts.readScopedState(scope)).cells[1].stateDigest,
+      first.cells[1].stateDigest);
     await assert.rejects(facts.readScopedState({ ...native, positions: [[0, 0, 0], [0, 0, 0]] }),
       /SCHEMA_INVALID/);
     await assert.rejects(facts.readScopedState({ ...native, positions: [[100, 0, 0]] }),

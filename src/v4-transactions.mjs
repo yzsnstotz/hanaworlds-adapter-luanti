@@ -440,6 +440,10 @@ export class V4TransactionBackend {
   async restore(request) {
     const record = this.#journal.query(request.originTransactionId);
     if (!record || record.originKind !== 'HANAWORLDS') fault('PERMISSION_DENIED');
+    if (record.payload?.contractVersion === 'world-adapter/v5') {
+      if (typeof this.scoped?.restoreTrusted !== 'function') fault('CAPABILITY_UNAVAILABLE');
+      return this.scoped.restoreTrusted(request);
+    }
     if (record.beforeImage?.worldRef !== request.worldRef ||
         record.operationDigest !== request.operationDigest ||
         record.beforeImageDigest !== request.beforeImageDigest ||
@@ -456,6 +460,10 @@ export class V4TransactionBackend {
     if (typeof this.#service !== 'function' ||
         !await this.#service(request, 'AbortPreparedTransaction')) fault('PERMISSION_DENIED');
     const record = this.#journal.query(request.transactionId);
+    if (record?.payload?.contractVersion === 'world-adapter/v5') {
+      if (typeof this.scoped?.abortPreparedTrusted !== 'function') fault('CAPABILITY_UNAVAILABLE');
+      return this.scoped.abortPreparedTrusted(request);
+    }
     if (!record || record.operationDigest !== request.operationDigest ||
         record.payload?.authorizationBindingDigest !== request.authorizationBindingDigest ||
         record.beforeImage.worldRef !== request.worldRef || record.originKind !== 'HANAWORLDS' ||

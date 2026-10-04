@@ -29,7 +29,7 @@ test('authorized fixture tunnel checks installed bytes and current principal', a
     async request(command) {
       commands.push(command);
       if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-        payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
+        payloadVersion: '0.2.2', loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       return { worldRef: profile.worldRef, current: true,
         engineActorName: command.actorName, worldeditAvailable: true,
@@ -54,7 +54,7 @@ test('remote fixture tunnel carries the complete guarded engine transaction comm
       async request(command) {
         commands.push(command);
         if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-          payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.2', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         return { worldRef: profile.worldRef, result: { status: 'OK' } };
       }, async close() {},
@@ -81,14 +81,14 @@ test('v2 remote binding uses operator tunnel and live principal fixture, without
   const digest = await payloadDigest();
   let opened = 0;
   const descriptor = { ...profile, displayName: 'Remote fixture',
-    capabilityRevision: 'remote-revision:one', payloadVersion: '0.2.1' };
+    capabilityRevision: 'remote-revision:one', payloadVersion: '0.2.2' };
   const runtime = createLuantiOperations({ remoteProfiles: [descriptor],
     operatorAuthority: { verify: async () => ({ current: true, ...profile }) },
     remoteTunnelFactory: { async open() {
       opened++;
       return { async request(command) {
         return command.operation === 'handshake'
-          ? { worldRef: profile.worldRef, payloadVersion: '0.2.1',
+          ? { worldRef: profile.worldRef, payloadVersion: '0.2.2',
             loadedSourceDigest: digest, manifestDigest: digest,
             payloadMatches: true, worldeditAvailable: true }
           : { worldRef: profile.worldRef, current: true,

@@ -5,7 +5,7 @@ import { LocalEngineTransport } from './local-transport.mjs';
 import { RemoteEngineTransport, verifyRemoteOperator } from './remote-transport.mjs';
 import { projectionDigest } from './v2-transactions.mjs';
 import { ADAPTER_ID, PAYLOAD_VERSION } from './version.mjs';
-import { ContractError, validateResponse, validateType } from '#contracts/v4';
+import { ContractError, canonicalJSON, validateResponse, validateType } from '#contracts/v4';
 
 function fault(code) { throw new Error(code); }
 // Fixed, provider-text-free code for a rejected transport close.
@@ -366,6 +366,10 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
           fault('CAPABILITY_UNAVAILABLE');
         return { worldRef: input.worldRef, coveredPositions: positions,
           stateDigest: projectionDigest('readback', projection),
+          cells: projection.records.map(record => ({ position: record.position,
+            availability: 'KNOWN', stateDigest: createHash('sha256')
+              .update('HanaWorlds|adapter-scoped-cell/v1\n')
+              .update(canonicalJSON({ profile, record })).digest('hex') })),
           source: 'PAIRED_LUANTI_STATE_READBACK' };
       });
     },
@@ -579,7 +583,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     AbortPreparedHistoryTransaction(request) { return recover(request, owned => owned.abortPreparedHistory(request)); },
     InspectRegion(request) { return backend(request).inspectRegion(request); },
   };
-  return { operations, open, currentAccess, grantEvidence, nativeFacts, close: async () => {
+  const scopedOperations = {
+    PrepareRecoverableTransaction(request) { return backend(request).scoped.prepare(request); },
+    ApplyCompiledTransaction(request) { return backend(request).scoped.apply(request); },
+    QueryPreparedTransaction(request) { return backend(request).scoped.queryPrepared(request); },
+  };
+  return { operations, scopedOperations, open, currentAccess, grantEvidence, nativeFacts, close: async () => {
     closed = true;
     await Promise.allSettled([...evidenceBusy.values()]);
     // Every transport gets a close attempt; one that is rejected stays in

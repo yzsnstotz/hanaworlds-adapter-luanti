@@ -1,6 +1,6 @@
 // Verifies the bundled hanaworlds-contracts subset against the admitted
-// contracts@0.3.0 artifact (sha256 47a2e5cc…). Offline (default): the manifest
-// names the admitted digest and all 923 entries; every bundled file must be a
+// contracts@0.3.3 artifact. Offline (default): the manifest
+// names the admitted digest and all package entries; every bundled file must be a
 // manifest entry with identical bytes, nothing else may be bundled, and the
 // static import closure of the #contracts entries must be bundled.
 // --source [tarball]: additionally re-derive the admitted pack from public

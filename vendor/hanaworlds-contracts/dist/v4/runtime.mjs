@@ -45,7 +45,9 @@ function operation(wire, operationName) {
   return result;
 }
 export function validateRequest(wire, operationName, value) {
-  return validateType(operation(wire, operationName).request, value);
+  const request = validateType(operation(wire, operationName).request, value);
+  if (wire === 'world-adapter/v5') validateScopedRequest(operationName, request);
+  return request;
 }
 export function admitRequest(wire, operationName, bytes) {
   // Raw admission precedes any operation-level/provider access.
@@ -116,6 +118,44 @@ export function validateDigestBinding(kind, payload, providedDigest) {
 /** Referential coherence checks for payloads that actually carry both sides of
  * a binding. This is not a grant verifier and never claims provider authenticity. */
 const sameJSON = (a, b) => canonicalJSON(a) === canonicalJSON(b);
+function validateScopedRequest(operationName, request) {
+  if (operationName === 'QueryPreparedTransaction') return request;
+  validateDigestBinding('operations', request.operations, request.operationDigest);
+  validateDigestBinding('authorization-binding', request.authorizationBinding,
+    request.scope.authorizationBindingDigest);
+  validateDigestBinding('scoped-world', request.scope, request.scopeDigest);
+  requireFact(request.scope.authorizationBindingDigest ===
+    digestValue('authorization-binding', request.authorizationBinding).sha256,
+    'NON_CANONICAL_AMBIGUITY', 'PAYLOAD_CHANGED');
+  if (operationName === 'ApplyCompiledTransaction') {
+    const p = request.preparedTransaction;
+    validateDigestBinding('scoped-transaction-payload', p.payload, p.transactionPayloadDigest);
+    requireFact(p.scopeDigest === request.scopeDigest && p.payload.scopeDigest === request.scopeDigest,
+      'STALE_REVISION', 'REVISION_CHANGED');
+    requireFact(p.payload.worldRef === request.worldRef && p.payload.transactionId === request.transactionId &&
+      p.payload.operationDigest === request.operationDigest &&
+      p.payload.authorizationBindingDigest === request.scope.authorizationBindingDigest &&
+      p.guarantee === request.guarantee && sameJSON(p.stateProfile, request.scope.stateProfile),
+      'REPLAY_MISMATCH', 'PAYLOAD_CHANGED');
+    const effectPositions = request.operations.effects.map(effect => JSON.stringify(effect.position)).sort();
+    requireFact(sameJSON(p.protectedPositions.map(position => JSON.stringify(position)).sort(), effectPositions),
+      'TARGET_FACTS_INCOMPLETE', 'REQUIRED_FACT_UNKNOWN');
+  }
+  return request;
+}
+/** Pure cross-envelope check; the Adapter still authenticates reads and re-reads
+ * the same cells from the paired world immediately before the write barrier. */
+export function validateScopedTransition(prepareInput, applyInput) {
+  const prepare = validateRequest('world-adapter/v5', 'PrepareRecoverableTransaction', prepareInput);
+  const apply = validateRequest('world-adapter/v5', 'ApplyCompiledTransaction', applyInput);
+  requireFact(prepare.worldRef === apply.worldRef && prepare.transactionId === apply.transactionId &&
+    prepare.operationDigest === apply.operationDigest && prepare.scopeDigest === apply.scopeDigest &&
+    prepare.guarantee === apply.guarantee &&
+    sameJSON(prepare.authorizationBinding, apply.authorizationBinding) &&
+    sameJSON(prepare.operations, apply.operations) && sameJSON(prepare.scope, apply.scope),
+    'STALE_REVISION', 'REVISION_CHANGED');
+  return deepFreeze({ prepare, apply });
+}
 /** Payload-carried part of the canvas/v4 Apply region binding. The Canvas record
  * match (issued inspectionId, evidence/position lists, record revision) needs the
  * provider's durable record and is never decided here. */
@@ -147,7 +187,7 @@ export function validateBoundRequest(wire, operationName, value) {
     ['targetFacts','targetFactsDigest','target-facts'],['safetyProfile','safetyProfileDigest','safety-profile'],['compilationConfig','compilationConfigDigest','compilation-config'],
     ['surfaceAction','surfaceActionDigest','surface-action'],['analysis','analysisDigest','affected-analysis'],['authorizationBinding','authorizationBindingDigest','authorization-binding'],['manifest','resourceManifestDigest','saved-work-resources']];
   for (const [field, hashField, kind] of pairs) if (Object.hasOwn(request, field) && Object.hasOwn(request, hashField)) validateDigestBinding(kind, request[field], request[hashField]);
-  if (request.preparedTransaction) {
+  if (request.preparedTransaction && wire !== 'world-adapter/v5') {
     const p = request.preparedTransaction;
     validateDigestBinding('transaction-payload', p.payload, p.transactionPayloadDigest);
     ambiguity(p.payload.transactionId === request.transactionId && p.payload.operationDigest === request.operationDigest);
@@ -159,7 +199,9 @@ export function validateBoundRequest(wire, operationName, value) {
     const auth = request.authorizationBinding;
     // world-adapter/v4 is called only by Canvas (InspectRegion "caller is Canvas only"; Prepare/Apply behind the
     // trusted Canvas domain), so its request actorRef names the calling principal, not the bound end-user actor.
-    const fields = wire === 'world-adapter/v4' ? ['sessionRef','worldRef','transactionId','operationDigest'] : ['actorRef','sessionRef','worldRef','transactionId','operationDigest'];
+    const fields = wire === 'world-adapter/v4' || wire === 'world-adapter/v5'
+      ? ['sessionRef','worldRef','transactionId','operationDigest']
+      : ['actorRef','sessionRef','worldRef','transactionId','operationDigest'];
     for (const field of fields) if (Object.hasOwn(request, field)) requireFact(auth[field] === request[field], 'CONNECTION_UNAUTHORIZED', 'SCOPE_DENIED', 'authorize');
   }
   if (wire === 'BUILD/V2' && operationName === 'BuildDocument') {
@@ -260,6 +302,12 @@ export function projectPreparedTransaction(value) {
   const fields = Object.keys(schemaBundle.definitions.PreparedTransaction.properties);
   return validateType('PreparedTransaction', Object.fromEntries(fields.map(field => [field, result[field]])));
 }
+export function projectScopedPreparedTransaction(value) {
+  const result = validateType('ScopedPreparedTransactionResult', value);
+  validateDigestBinding('scoped-transaction-payload', result.payload, result.transactionPayloadDigest);
+  const fields = Object.keys(schemaBundle.definitions.ScopedPreparedTransaction.properties);
+  return validateType('ScopedPreparedTransaction', Object.fromEntries(fields.map(field => [field, result[field]])));
+}
 /** ContractHandshake (rc.7): every required wire and fact profile must be advertised
  * exactly; otherwise UNSUPPORTED_VERSION before any request, with no fallback. */
 export function checkContractHandshake(advertisedInput, requiredInput) {
@@ -269,6 +317,33 @@ export function checkContractHandshake(advertisedInput, requiredInput) {
   const supported = required.wires.every(w => advertised.wireVersions.includes(w)) && required.factProfiles.every(f => advertised.factProfiles.includes(f));
   requireFact(supported, 'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
   return deepFreeze({ result: 'HANDSHAKE_VERSION_MATCH', advertised });
+}
+/** A session/v2 major match alone does not advertise the added readback
+ * operation. Reject an older package peer before issuing this operation. */
+export function checkSessionReadbackHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput, { wires: ['session/v2'], factProfiles: [] });
+  requireFact(['hanaworlds-contracts@0.3.1', 'hanaworlds-contracts@0.3.2', 'hanaworlds-contracts@0.3.3'].includes(advertised.contracts) &&
+    operationContracts['session/v2'].some(op => op.operation === 'ReadSessionTurnDetails'),
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
+}
+/** Undo requires the 0.3.2 package advertisement; a 0.3.1 peer's matching
+ * canvas/v4 and session/v2 majors do not advertise these added operations. */
+export function checkSessionUndoHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput, { wires: ['canvas/v4', 'session/v2'], factProfiles: [] });
+  requireFact(['hanaworlds-contracts@0.3.2', 'hanaworlds-contracts@0.3.3'].includes(advertised.contracts) &&
+    ['ReadCurrentUndoStatus', 'UndoCurrentBuild'].every(name =>
+      operationContracts['session/v2'].some(op => op.operation === name)),
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
+}
+export function checkScopedWorldHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput, { wires: ['world-adapter/v5'], factProfiles: [] });
+  requireFact(advertised.contracts === 'hanaworlds-contracts@0.3.3' &&
+    ['PrepareRecoverableTransaction', 'ApplyCompiledTransaction', 'QueryPreparedTransaction'].every(name =>
+      operationContracts['world-adapter/v5'].some(op => op.operation === name)),
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
 }
 /** interaction-surface/v3 SELECT_CHOICE: the value must be one listed choice of the
  * same frameRef/frameRevision/actionId; renderers never parse frame text for options. */

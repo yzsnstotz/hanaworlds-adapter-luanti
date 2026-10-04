@@ -19,7 +19,7 @@ function fault(code, phase, reason, details) {
 }
 
 function publicFailure(thrown, operation, request, postwriteValidation = false,
-  handlerEntered = false) {
+  handlerEntered = false, permitted = allowed.get(operation)) {
   if (postwriteValidation && uncertain.has(operation)) {
     const phase = operation === 'Readback' ? 'readback' :
       operation === 'RestoreTransaction' ? 'restore' : 'apply';
@@ -30,7 +30,6 @@ function publicFailure(thrown, operation, request, postwriteValidation = false,
     }).publicError;
   }
   const code = thrown?.publicError?.code ?? thrown?.message;
-  const permitted = allowed.get(operation);
   if (permitted?.has(code) && thrown?.publicError) return thrown.publicError;
   if (permitted?.has(code)) {
     const phase = ['PERMISSION_DENIED', 'AUTHORIZATION_REVOKED',
@@ -77,18 +76,24 @@ export class WorldAdapterV4 {
   #currentAccess;
   #operations;
   #replay = new Map();
+  #version;
+  #allowed;
   /**
    * `resolveAuthority`, when given, is called on every request so a host
    * authority registered after the Adapter is used and a withdrawn one denies;
    * there is no fallback to `authority` in that case.
    */
-  constructor({ authority, resolveAuthority, currentAccess, operations } = {}) {
+  constructor({ authority, resolveAuthority, currentAccess, operations,
+    version = VERSION } = {}) {
     // Optional host-side current-access check (remote operator/tunnel), run
     // after the grant and before the replay cache.
     this.#currentAccess = typeof currentAccess === 'function' ? currentAccess : null;
     this.#authority = authority;
     this.#resolveAuthority = typeof resolveAuthority === 'function' ? resolveAuthority : null;
     this.#operations = operations;
+    this.#version = version;
+    this.#allowed = new Map(operationContracts[version].map(entry =>
+      [entry.operation, new Set(entry.failureCodes)]));
   }
   /** ContractHandshake advertised before any request (contracts@0.3.0 set). */
   get contractHandshake() { return snapshotJSON(contractHandshake); }
@@ -96,8 +101,8 @@ export class WorldAdapterV4 {
     // A rejected wire has no legal requestId. Preserve the Contracts typed
     // pre-admission error instead of inventing an operation response.
     const request = raw instanceof Uint8Array || typeof raw === 'string'
-      ? admitRequest(VERSION, operation, Buffer.from(raw))
-      : validateRequest(VERSION, operation, raw);
+      ? admitRequest(this.#version, operation, Buffer.from(raw))
+      : validateRequest(this.#version, operation, raw);
     let resultProduced = false;
     let handlerEntered = false;
     try {
@@ -122,23 +127,28 @@ export class WorldAdapterV4 {
         if (old.identity !== identity) fault('REPLAY_MISMATCH', 'replay', 'PAYLOAD_CHANGED');
         return structuredClone(old.response);
       }
-      validateBoundRequest(VERSION, operation, request);
+      validateBoundRequest(this.#version, operation, request);
       const handler = this.#operations?.[operation];
       if (typeof handler !== 'function') fault('CAPABILITY_UNAVAILABLE', 'validate', 'POLICY_UNAVAILABLE');
       handlerEntered = true;
       const result = await handler(request, proof);
       resultProduced = true;
-      const response = validateResponse(VERSION, operation, {
-        contractVersion: VERSION, requestId: request.requestId, result, error: null,
+      const response = validateResponse(this.#version, operation, {
+        contractVersion: this.#version, requestId: request.requestId, result, error: null,
       });
       this.#replay.set(key, { identity, response });
       return structuredClone(response);
     } catch (thrown) {
-      return { contractVersion: VERSION, requestId: request.requestId,
+      return { contractVersion: this.#version, requestId: request.requestId,
         result: null, error: publicFailure(thrown, operation, request, resultProduced,
-          handlerEntered) };
+          handlerEntered, this.#allowed.get(operation)) };
     }
   }
 }
 
 export const worldAdapterV4Operations = Object.freeze([...allowed.keys()]);
+export class WorldAdapterV5 extends WorldAdapterV4 {
+  constructor(options = {}) { super({ ...options, version: 'world-adapter/v5' }); }
+}
+export const worldAdapterV5Operations = Object.freeze(
+  operationContracts['world-adapter/v5'].map(entry => entry.operation));

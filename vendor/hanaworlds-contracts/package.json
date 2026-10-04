@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-contracts",
-  "version": "0.3.0",
+  "version": "0.3.3",
   "description": "Independent non-runtime HanaWorlds public contracts: the v2/v3 lanes plus the approved rc.8 v4 lane (interaction-surface/v3, world-adapter/v4, canvas/v4, painter/v3, target-facts/v3, ContractHandshake), strict raw JSON, explicit digests and pure FIXTURE conformance models.",
   "type": "module",
   "private": true,
@@ -96,6 +96,11 @@
       "types": "./bindings/v4/world-adapter-v4.d.ts",
       "import": "./dist/v4/bindings/world-adapter-v4.mjs"
     },
+    "./world-adapter/v5": {
+      "types": "./bindings/v4/world-adapter-v5.d.ts",
+      "import": "./dist/v4/bindings/world-adapter-v5.mjs"
+    },
+    "./v4/profile/SCOPED_WORLD_EXTENSION": "./schemas/v4/profile/SCOPED_WORLD_EXTENSION.json",
     "./canvas/v2": {
       "types": "./bindings/canvas-v2.d.ts",
       "import": "./dist/bindings/canvas-v2.mjs"
@@ -147,8 +152,8 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "test:v3": "node test/v3.mjs",
-    "test:v4": "node test/v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
-    "test": "node test/conformance.mjs && node test/v3.mjs && node test/v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
+    "test:v4": "node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
+    "test": "node test/conformance.mjs && node test/v3.mjs && node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
     "test:legacy": "node test/conformance.mjs",
     "test:source-fixture": "node --experimental-loader ./test/source-fixture-loader.mjs test/conformance.mjs",
     "test:strict": "node test/strict.mjs",

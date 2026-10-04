@@ -37,6 +37,15 @@ assert(rejected == nil and missing == 'CAPABILITY_UNAVAILABLE' and writes == 0, 
 local forged, forged_code = engine:apply('alice', {{position = {0, 0, 0}, nodeName = 'air', param2 = 0}}, snapshot, {status = 'PREPARED'})
 assert(forged == nil and forged_code == 'CAPABILITY_UNAVAILABLE' and writes == 0, 'caller JSON cannot assert durable preparation')
 local trusted = module.new({authorize = function() return true end, verifyPrepared = function() return true end})
+nodes['2,0,0'] = {name = 'air', param1 = 0, param2 = 0}
+local full_scope = trusted:snapshot('alice', {{0, 0, 0}, {2, 0, 0}})
+nodes['2,0,0'] = {name = 'test:stone', param1 = 0, param2 = 0}
+local scope_rejected, scope_code = trusted:apply('alice',
+  {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 0}},
+  snapshot, {status = 'PREPARED'}, full_scope)
+assert(scope_rejected == nil and scope_code == 'TRANSACTION_CONFLICT' and writes == 0,
+  'game rechecks every scoped cell before first write, including unwritten cells')
+nodes['2,0,0'] = {name = 'air', param1 = 0, param2 = 0}
 local protected, protected_code = trusted:apply('alice', {
   {position = {0, 0, 0}, nodeName = 'air', param2 = 0},
   {position = {1, 0, 0}, nodeName = 'air', param2 = 0},
@@ -60,7 +69,8 @@ local rejected_inventory, inventory_code = trusted:apply('alice', {{position = {
   inventory_image, {status = 'PREPARED'})
 assert(rejected_inventory == nil and inventory_code == 'UNSUPPORTED_MUTATION_SEMANTICS' and writes == 0)
 meta_state = {fields = {}, inventory = {}}
-local applied, apply_code = trusted:apply('alice', {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 3}}, snapshot, {status = 'PREPARED'})
+local applied, apply_code = trusted:apply('alice', {{position = {0, 0, 0}, nodeName = 'test:stone', param2 = 3}},
+  snapshot, {status = 'PREPARED'}, full_scope)
 assert(apply_code == nil and applied.status == 'APPLIED_PENDING_READBACK' and writes == 1, 'WorldEdit set and param2 execute only after checks')
 assert(light_repairs == 1 and light_reads >= 1,
   'successful write recomputes and reads back derived light')

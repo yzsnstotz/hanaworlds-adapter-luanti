@@ -163,7 +163,7 @@ local function refresh_light(positions)
   return true
 end
 
-function Engine:apply(player_name, effects, before_image, prepared)
+function Engine:apply(player_name, effects, before_image, prepared, scope_before_image)
   if not self.authorize or not self.authorize(player_name, 'APPLY_RECOVERABLE') or
       not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
   if not prepared or prepared.status ~= 'PREPARED' or not self.verifyPrepared
@@ -175,6 +175,31 @@ function Engine:apply(player_name, effects, before_image, prepared)
     or type(before_image.coveredPositions) ~= 'table'
     or #before_image.coveredPositions ~= #effects then
     return nil, 'SCHEMA_INVALID'
+  end
+  -- A v5 writer carries the entire fsynced inspected scope. Check it in the
+  -- game immediately before mutation, including cells it will not write.
+  if scope_before_image ~= nil then
+    if type(scope_before_image) ~= 'table' or
+      type(scope_before_image.coveredPositions) ~= 'table' or
+      type(scope_before_image.records) ~= 'table' or
+      #scope_before_image.coveredPositions ~= #scope_before_image.records or
+      #scope_before_image.records == 0 then return nil, 'SCHEMA_INVALID' end
+    local scope_cells = {}
+    for i, cell in ipairs(scope_before_image.coveredPositions) do
+      local pos = position(cell)
+      if not pos or not equal(cell, scope_before_image.records[i].position)
+        then return nil, 'SCHEMA_INVALID' end
+      if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
+      local current, code = public_record(cell)
+      if not current then return nil, code end
+      if not equal(current, scope_before_image.records[i]) then
+        return nil, 'TRANSACTION_CONFLICT' end
+      scope_cells[table.concat(cell, ',')] = true
+    end
+    for _, effect in ipairs(effects) do
+      if not scope_cells[table.concat(effect.position, ',')] then
+        return nil, 'SCHEMA_INVALID' end
+    end
   end
   for i, effect in ipairs(effects) do
     local pos = position(effect.position)

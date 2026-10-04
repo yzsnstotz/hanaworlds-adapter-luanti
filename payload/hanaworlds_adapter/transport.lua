@@ -36,7 +36,11 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   local current
   local engine = engine_module.new({
     authorize = function(name, action)
-      return current and name == current.actorName and action == current.action
+      if not current or name ~= current.actorName or action ~= current.action then
+        return false end
+      local proof = grants and grants:verify(name)
+      return proof and proof.current == true and proof.worldRef == manifest.worldRef
+        and proof.grantRef == current.grantRef
     end,
     verifyPrepared = function(_, _, _, prepared)
       return current and (current.operation == 'apply' or current.operation == 'apply_state')
@@ -146,7 +150,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       end
     elseif command.operation == 'apply' then
       result, code = engine:apply(command.actorName, command.effects,
-        command.beforeImage, command.prepared)
+        command.beforeImage, command.prepared, command.scopeBeforeImage)
     elseif command.operation == 'apply_state' then
       result, code = engine:apply_state(command.actorName, command.targetImage,
         command.beforeImage, command.prepared)

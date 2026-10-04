@@ -1,5 +1,5 @@
 // The bundled contracts subset is verified offline against the manifest of the
-// admitted contracts@0.3.0 package; tampering of any kind is refused.
+// admitted contracts@0.3.3 package; tampering of any kind is refused.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -25,8 +25,8 @@ const V = 'vendor/hanaworlds-contracts';
 test('bundled contracts subset matches the admitted package manifest', () => {
   const result = verifyIn();
   assert.equal(result.ok, true, JSON.stringify(result.problems));
-  assert.equal(result.sha256, '47a2e5cc77590fb471ffedde715682564e169a0d88dbc5005b71d8d542b38f5c');
-  assert.equal(result.manifestEntries, 923);
+  assert.equal(result.sha256, 'e5a3d831283e53c538b26c69c8378edc2bf2d270358c0c852a9e8272df51af29');
+  assert.equal(result.manifestEntries, 958);
 });
 
 for (const [label, mutate] of [

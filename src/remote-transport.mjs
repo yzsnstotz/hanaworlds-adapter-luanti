@@ -91,6 +91,8 @@ export class RemoteEngineTransport {
     return this.request({ operation: 'apply', ...this.#actor(binding),
       action: 'APPLY_RECOVERABLE', effects: request.effects,
       beforeImage: prepared.beforeImage,
+      ...(request.scopeBeforeImage === undefined ? {} :
+        { scopeBeforeImage: request.scopeBeforeImage }),
       prepared: { status: 'PREPARED', operationDigest: prepared.operationDigest },
       operationDigest: request.operationDigest });
   }

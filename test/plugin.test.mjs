@@ -35,7 +35,7 @@ test('DSH host registers loopback status and a fail-closed v4 provider', async (
   const remote = new EventEmitter();
   remote.method = 'GET';
   remote.url = '/api-hanaworlds-luanti/status';
-  remote.socket = { remoteAddress: '192.0.2.1' };
+  remote.socket = { remoteAddress: '192.0.2.2' };
   const denied = response();
   await route.handler(remote, denied);
   assert.equal(denied.statusCode, 403);
@@ -84,7 +84,7 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
     hanaworldsRemoteTunnelFactory: { open: async () => ({
       async request(command) {
         if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-          payloadVersion: '0.2.1', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.2', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: profile.worldRef,
           current: true, engineActorName: command.actorName, worldeditAvailable: true,

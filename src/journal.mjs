@@ -108,7 +108,8 @@ export class DurableJournal {
         payload, expectedWorldRevision, stateProfile, adapterExecutionRevision,
         authorRef, nativeGrantRef, originKind, affectedObjectRefs, historySourceId, historyDirection,
         historyOperationDigest, targetImage, targetStateDigest, effects,
-        originVerifiedReceiptDigest, expectedHistoryRevision, beforeStateReadbackDigest } = input;
+        originVerifiedReceiptDigest, expectedHistoryRevision, beforeStateReadbackDigest,
+        scope, scopeDigest, writeBeforeImage, operations } = input;
       if (!pureJson(input)) throw fault('SCHEMA_INVALID');
       if (nativeGrantRef !== undefined &&
           (typeof nativeGrantRef !== 'string' || !nativeGrantRef)) throw fault('SCHEMA_INVALID');
@@ -147,6 +148,10 @@ export class DurableJournal {
         ...(targetImage === undefined ? {} : { targetImage: copy(targetImage) }),
         ...(targetStateDigest === undefined ? {} : { targetStateDigest }),
         ...(beforeStateReadbackDigest === undefined ? {} : { beforeStateReadbackDigest }),
+        ...(scope === undefined ? {} : { scope: copy(scope) }),
+        ...(scopeDigest === undefined ? {} : { scopeDigest }),
+        ...(writeBeforeImage === undefined ? {} : { writeBeforeImage: copy(writeBeforeImage) }),
+        ...(operations === undefined ? {} : { operations: copy(operations) }),
         ...(effects === undefined ? {} : { effects: copy(effects) }),
         ...(payload === undefined ? {} : { payload: copy(payload) }),
         ...(expectedWorldRevision === undefined ? {} : { expectedWorldRevision }),
@@ -201,7 +206,8 @@ export class DurableJournal {
     });
   }
 
-  async recordAfterState(transactionId, afterImage, afterReadbackDigest, beforeStateReadbackDigest) {
+  async recordAfterState(transactionId, afterImage, afterReadbackDigest,
+    beforeStateReadbackDigest, observedWorldRevision) {
     return this.#exclusive(async () => {
       const current = this.#records.get(transactionId);
       if (!current || current.status !== 'APPLIED_PENDING_READBACK' ||
@@ -212,12 +218,14 @@ export class DurableJournal {
           current.beforeStateReadbackDigest !== beforeStateReadbackDigest)
         throw fault('SAVED_RESOURCE_UNAVAILABLE');
       const record = { ...current, afterImage: copy(afterImage), afterReadbackDigest,
+        ...(observedWorldRevision === undefined ? {} : { observedWorldRevision }),
         beforeStateReadbackDigest, status: 'VERIFIED_PENDING_HISTORY', mutationState: 'VERIFIED' };
       await this.#save(record);
       this.#records.set(transactionId, record);
       return copy(record);
     });
   }
+
 }
 
 function samePositionSet(before, after) {

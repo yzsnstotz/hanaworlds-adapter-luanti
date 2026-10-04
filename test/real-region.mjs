@@ -174,7 +174,7 @@ async function adapterFor(courier, worldRef, journalDir) {
     },
     verifyService: async () => true, capacity: { check: async () => ({ allowed: true }) },
     catalogue: { read: async () => catalogue },
-    executionRevision: `hanaworlds-adapter-luanti@0.2.1+payload.${await v2.payloadDigest()}` });
+    executionRevision: `hanaworlds-adapter-luanti@0.2.2+payload.${await v2.payloadDigest()}` });
   return new v2.WorldAdapterV4({ authority: {
     verify: async request => ({ current: true, sessionRef: request.sessionRef,
       authorizationRef: request.authorizationRef, worldRef, domainOwner: 'hanaworlds-canvas' }),
@@ -230,11 +230,11 @@ try {
     loadedDigest: oldLoaded.payloadDigest, manifestDigest: old.payloadDigest });
   await stopAll(); await courier.close();
 
-  // 2. Upgrade to 0.2.1 with the same world identity and pairing.
+  // 2. Upgrade to 0.2.2 with the same world identity and pairing.
   const service = v2.apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
   const up = await service.provisionLocal(world, null);
   assert.equal(up.worldRef, old.worldRef);
-  assert.equal(up.payloadVersion, '0.2.1');
+  assert.equal(up.payloadVersion, '0.2.2');
   courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
   const upLog = await start('v020', 'HanaWorlds region probe ready; payload=true; region=true');
   await waitFor(upLog, 'HanaWorlds local courier paired on loopback', server);
@@ -344,7 +344,7 @@ try {
   courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
   await start('re-upgraded', 'HanaWorlds region probe ready; payload=true; region=true');
   assert.equal((await courier.handshake()).payloadDigest, installedDigest);
-  note('re-upgrade-0.2.1', { worldRef: reup.worldRef });
+  note('re-upgrade-0.2.2', { worldRef: reup.worldRef });
   await stopAll(); await courier.close(); courier = null;
 
   // 8. Uninstall and reinstall the payload.
@@ -352,7 +352,7 @@ try {
   await rm(worldmod, { recursive: true });
   await start('uninstalled', 'HanaWorlds region probe ready; payload=false');
   await stopAll();
-  // Saved payloads (0.1.1 backup, retained 0.2.1) still carry the old identity:
+  // Saved payloads (0.1.1 backup, retained 0.2.2) still carry the old identity:
   // reinstall refuses until the operator chooses restore or a fresh identity.
   const refused = await service.provisionLocal(world, transportPort).then(() => null, e => e);
   assert.equal(refused?.message, 'RECOVERY_PENDING');
