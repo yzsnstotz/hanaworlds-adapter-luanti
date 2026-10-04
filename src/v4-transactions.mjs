@@ -433,6 +433,10 @@ export class V4TransactionBackend {
   async query(request) {
     const binding = await this.#currentBinding(request, 'HISTORY');
     const record = this.#journal.query(request.transactionId);
+    if (record?.payload?.contractVersion === 'world-adapter/v5') {
+      if (typeof this.scoped?.queryTransaction !== 'function') fault('CAPABILITY_UNAVAILABLE');
+      return this.scoped.queryTransaction(request);
+    }
     if (!record || record.authorRef !== binding.authorRef) fault('PERMISSION_DENIED');
     await this.#v2.query(request);
     return receipt(this.#journal.query(request.transactionId));

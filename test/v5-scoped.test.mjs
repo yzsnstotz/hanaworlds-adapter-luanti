@@ -74,7 +74,7 @@ async function rig() {
     verifyBinding: async request => ({ current: active, worldRef: 'world',
       sessionRef: request.sessionRef, authorizationRef: request.authorizationRef,
       actorRef: 'actor', authorRef: 'author', nativeGrantRef: grantRef,
-      allowedActions: ['APPLY_RECOVERABLE'] }),
+      allowedActions: ['APPLY_RECOVERABLE', 'HISTORY'] }),
     verifyService: async () => true,
     capacity: { check: async () => ({ allowed: true }) },
     registry: { readFootprints: async () => ({ current: true, durable: true,
@@ -103,6 +103,9 @@ test('v5 paired scope writes after outside edit, persists full image and returns
   const applied = await r.backend.apply({ ...common, requestId: 'apply',
     preparedTransaction: projectScopedPreparedTransaction(saved) });
   assert.equal(applied.status, 'VERIFIED');
+  assert.equal((await r.backend.queryTransaction({ worldRef: 'world',
+    sessionRef: 'session', authorizationRef: 'grant', transactionId: 'tx',
+    transactionPayloadDigest: saved.transactionPayloadDigest })).status, 'VERIFIED');
   validateResponse('world-adapter/v5', 'ApplyCompiledTransaction', {
     contractVersion: 'world-adapter/v5', requestId: 'apply', result: applied, error: null });
   assert.equal(r.writes, 1);

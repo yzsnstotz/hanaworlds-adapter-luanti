@@ -146,6 +146,7 @@ export function apply(ctx, config = {}) {
         executionRevision: `${ADAPTER_ID}@${ADAPTER_VERSION}+payload.${await payloadDigest()}` })
       : { stateProfile: profile, get hasUnsettledRecords() {
         return journal.unsettledCount > 0; },
+        query: request => backend.scoped.queryTransaction(request),
         restore: request => backend.scoped.restoreTrusted(request),
         abortPrepared: request => backend.scoped.abortPreparedTrusted(request) };
     backend.scoped = new V5TransactionBackend({ journal, engine: transport,

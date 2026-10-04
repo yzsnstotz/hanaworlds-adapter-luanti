@@ -65,15 +65,15 @@ export class V5TransactionBackend {
     this.#service = verifyService; this.#capacity = capacity; this.#registry = registry;
   }
 
-  async #bindingNow(request) {
+  async #bindingNow(request, action = 'APPLY_RECOVERABLE') {
     if (typeof this.#binding !== 'function') fault('PERMISSION_DENIED');
-    const proof = await this.#binding(request, 'APPLY_RECOVERABLE');
+    const proof = await this.#binding(request, action);
     if (!proof?.current || proof.worldRef !== request.worldRef ||
         proof.sessionRef !== request.sessionRef ||
         proof.authorizationRef !== request.authorizationRef ||
         (request.authorizationBinding &&
           proof.actorRef !== request.authorizationBinding.actorRef) ||
-        !proof.allowedActions?.includes('APPLY_RECOVERABLE') ||
+        !proof.allowedActions?.includes(action) ||
         !proof.nativeGrantRef || !proof.authorRef) fault('AUTHORIZATION_REVOKED');
     const saved = this.#journal.query(request.transactionId);
     if (saved && saved.nativeGrantRef !== proof.nativeGrantRef) fault('AUTHORIZATION_REVOKED');
@@ -239,6 +239,20 @@ export class V5TransactionBackend {
       fault('CAPABILITY_UNAVAILABLE');
     this.#savedIntegrity(saved);
     return prepared(saved);
+  }
+
+  async queryTransaction(request) {
+    const binding = await this.#bindingNow(request, 'HISTORY');
+    const record = this.#journal.query(request.transactionId);
+    if (!record || record.payload?.contractVersion !== 'world-adapter/v5' ||
+        record.beforeImage?.worldRef !== request.worldRef ||
+        record.authorRef !== binding.authorRef ||
+        record.nativeGrantRef !== binding.nativeGrantRef ||
+        record.transactionPayloadDigest !== request.transactionPayloadDigest)
+      fault('REPLAY_MISMATCH');
+    this.#savedIntegrity(record);
+    if (record.status === 'PREPARED') fault('RECOVERY_PENDING');
+    return receipt(record);
   }
 
   async #recover(record, causeCode) {
