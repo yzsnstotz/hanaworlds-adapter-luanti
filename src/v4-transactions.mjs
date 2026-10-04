@@ -440,6 +440,15 @@ export class V4TransactionBackend {
   async restore(request) {
     const record = this.#journal.query(request.originTransactionId);
     if (!record || record.originKind !== 'HANAWORLDS') fault('PERMISSION_DENIED');
+    if (record.beforeImage?.worldRef !== request.worldRef ||
+        record.operationDigest !== request.operationDigest ||
+        record.beforeImageDigest !== request.beforeImageDigest ||
+        (record.restoreAttemptIdentity !== undefined &&
+          record.restoreAttemptIdentity !== request.restoreAttemptIdentity))
+      fault('REPLAY_MISMATCH');
+    if (!['RECOVERY_PENDING', 'RESTORE_FAILED', 'ROLLED_BACK'].includes(record.status))
+      fault('STALE_TRANSACTION');
+    this.#requireSaved(record, 'RestoreTransaction');
     await this.#v2.restore(request);
     return receipt(this.#journal.query(request.originTransactionId));
   }
@@ -449,7 +458,8 @@ export class V4TransactionBackend {
     const record = this.#journal.query(request.transactionId);
     if (!record || record.operationDigest !== request.operationDigest ||
         record.payload?.authorizationBindingDigest !== request.authorizationBindingDigest ||
-        record.beforeImage.worldRef !== request.worldRef || record.originKind !== 'HANAWORLDS')
+        record.beforeImage.worldRef !== request.worldRef || record.originKind !== 'HANAWORLDS' ||
+        record.historySourceId !== undefined)
       fault('REPLAY_MISMATCH');
     await this.#journal.abortPrepared(request.transactionId, record.authorRef);
     return { transactionId: request.transactionId, status: 'ABORTED_PREPARED', mutationState: 'NONE' };
@@ -528,7 +538,8 @@ export class V4TransactionBackend {
       historyOperationDigest: request.historyOperationDigest,
       originVerifiedReceiptDigest: request.originVerifiedReceiptDigest,
       expectedHistoryRevision: request.expectedHistoryRevision,
-      targetImage: target, targetStateDigest: request.targetStateDigest });
+      targetImage: target, targetStateDigest: request.targetStateDigest,
+      beforeStateReadbackDigest: hash('readback', readbackView(current)) });
     return preparedHistory(this.#journal.query(request.transactionId));
   }
   async queryPreparedHistory(request) {
@@ -605,7 +616,8 @@ export class V4TransactionBackend {
     if (!record || record.beforeImage.worldRef !== request.worldRef ||
         record.historySourceId !== request.originTransactionId ||
         record.historyOperationDigest !== request.historyOperationDigest ||
-        record.payload?.authorizationBindingDigest !== request.authorizationBindingDigest)
+        record.payload?.authorizationBindingDigest !== request.authorizationBindingDigest ||
+        record.originKind !== 'HANAWORLDS' || !record.historyDirection)
       fault('REPLAY_MISMATCH');
     await this.#journal.abortPrepared(request.transactionId, record.authorRef);
     return { transactionId: request.transactionId, status: 'ABORTED_PREPARED', mutationState: 'NONE' };

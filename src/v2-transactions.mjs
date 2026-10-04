@@ -230,8 +230,10 @@ export class V2TransactionBackend {
   async restore(request) {
     try { await this.#bridge.restore(request); }
     catch (failure) {
-      // A rejected PREPARED restore is a prewrite fault, not uncertain recovery.
-      if (this.#journal.query(request.originTransactionId)?.status === 'PREPARED')
+      // Admission and state rejections happen before the RESTORING barrier.
+      // Preserve their exact error rather than projecting uncertain recovery.
+      if (['PERMISSION_DENIED', 'CAPABILITY_UNAVAILABLE', 'REPLAY_MISMATCH',
+        'STALE_TRANSACTION'].includes(failure?.message))
         throw failure;
       this.#recoveryError(request.originTransactionId, 'RESTORE_FAILED');
     }
