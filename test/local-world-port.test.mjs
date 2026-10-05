@@ -7,7 +7,7 @@ import { apply } from '../src/index.mjs';
 import { PAYLOAD_VERSION } from '../src/version.mjs';
 
 // SOURCE/FIXTURE: native Host is a model. The real Host/Luanti self-test is separate.
-async function fixture(t) {
+async function fixture(t, Context = null) {
   const cache = join(homedir(), '.cache/hanaworlds-runs/S1-AD-LOCAL-PROVISIONING-01');
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(join(cache, 'port-fixture-'));
@@ -39,9 +39,25 @@ async function fixture(t) {
     },
   };
   services.hanaworldsNativeEngineControl = model;
-  const adapter = apply({ get: n => services[n], provide: (n, v) => provided.set(n, v),
-    webServer: { register() {} } }, { serviceName: 'fixture:operator' });
-  const port = provided.get('hanaworldsLuantiLocalWorlds');
+  let adapter, port, diagnostics = [];
+  if (Context) {
+    const ctx = new Context();
+    ctx.provide('webServer', {register() {}});
+    ctx.provide('hanaworldsNativeEngineControl', model);
+    ctx.logger.exporter({levels:{'hanaworlds-adapter-luanti':2},export(message) {
+      if(message.name === 'hanaworlds-adapter-luanti' && message.args.length === 1 &&
+        /^LOCAL_/.test(message.args[0])) diagnostics.push(message.args[0]);
+    }});
+    let owned;
+    await ctx.plugin({name:'hanaworlds-adapter-luanti', inject:['webServer'],
+      apply(ctx,config) { owned = apply(ctx,config); }}, {serviceName:'fixture:operator'});
+    adapter = {close: async () => {await owned.close();await ctx.fiber.dispose();}};
+    port = ctx.get('hanaworldsLuantiLocalWorlds');
+  } else {
+    adapter = apply({ get: n => services[n], provide: (n, v) => provided.set(n, v),
+      webServer: { register() {} } }, { serviceName: 'fixture:operator' });
+    port = provided.get('hanaworldsLuantiLocalWorlds');
+  }
   t.after(async () => { await adapter.close(); await rm(root, { recursive: true, force: true }); });
   assert.ok(port, 'public local-world service must be registered');
   await port.setRoots({ roots: [root] });
@@ -51,8 +67,24 @@ async function fixture(t) {
   const acquire = async (change = {}) => port.acquire({ ...input, ...change });
   const query = lease => ({ leaseRef: lease.leaseRef, requesterRef: input.requesterRef,
     connectionRef: input.connectionRef });
-  return { root, world, port, adapter, model, services, input, acquire, query, found };
+  return { root, world, port, adapter, model, services, input, acquire, query, found, diagnostics };
 }
+
+test('public Cordis registry keeps a running lease across rejected connection queries',
+  {skip: !process.env.HW_CORDIS_MODULE}, async t => {
+    const {Context} = await import(process.env.HW_CORDIS_MODULE);
+    const f = await fixture(t, Context), install = await f.acquire();
+    await f.port.provision(f.query(install));
+    const lease = await f.acquire({action:'BIND_RUNNING_WORLD'});
+    await courier(t, f);
+    await f.port.pair(f.query(lease));
+    await assert.rejects(f.port.readCurrentGrants({...f.query(lease), connectionRef:'local:other'}), /CONNECTION_UNAUTHORIZED/);
+    let current;
+    try {current = await f.port.readCurrentGrants(f.query(lease));}
+    catch(error) {console.error(JSON.stringify({sourceCordisBoundary:f.diagnostics}));throw error;}
+    assert.equal(current.grants[0].grantRef, 'fixture:grant');
+    assert.ok(f.diagnostics.includes('LOCAL_QUERY_BINDING_MISMATCH'));
+  });
 
 async function courier(t, f, { mismatch = false, onRead = () => {} } = {}) {
   const directory = join(f.world, 'worldmods/hanaworlds_adapter');

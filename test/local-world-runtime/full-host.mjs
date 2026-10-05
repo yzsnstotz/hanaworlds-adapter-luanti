@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 const input=JSON.parse(readFileSync(0,'utf8')), root=process.env.HW_COMPONENT_ROOT, run=process.env.HW_LOCAL_RUN;
-const evidence=join(run,'_evidence'),runtime=join(root,'hanaworlds-dsh');
+const evidence=process.env.HW_LOCAL_EVIDENCE||join(run,'_evidence'),runtime=join(root,'hanaworlds-dsh');
 const child=spawn(join(root,'runtime/hanaworlds-runtime/node/bin/node'),['--expose-internals',join(runtime,'node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js'),runtime,input.profile],{cwd:input.profile,env:{HOME:input.home,DSH_HOME:input.home,PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HANAWORLDS_HOST_PORT:String(input.hostPort),DSH_TELEMETRY_MODE:'DISABLED',DSH_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe','ipc']});
 let output='';const capture=b=>{output+=String(b).replace(/([?&]token=)[^\s"<>]+/g,'$1[REDACTED]');};child.stdout.on('data',capture);child.stderr.on('data',capture);
 const receipt={level:'REAL_RUNTIME packed Adapter/public DSH registry/native Host/Luanti; account/game/profile/selection/native protocol client FIXTURE',hostPid:child.pid,steps:[]};
@@ -15,6 +15,13 @@ try {
  const call=async(method,input)=>{const response=await fetch(new URL('/component-local-world',ready.url),{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({method,input})});assert.equal(response.status,200);return response.json();};
  const good=async(method,input)=>{const result=await call(method,input);assert.equal(result.ok,true,`${method}: ${result.code}`);return result.result;};
  const denied=async(method,input)=>{const result=await call(method,input);assert.equal(result.ok,false,`${method} must deny`);return result.code;};
+ if(input.diagnostic==='native-direct') {
+   receipt.level='REAL_RUNTIME delivered public native Host and official Luanti; account/game/profile/selection consumer FIXTURE; Adapter loaded but no Adapter or game-grant operation';
+   const observed=await good('nativeInspectSequence',{worldPath:input.worldPath,userPath:input.userPath,
+     requesterRef:'fixture-direct-host-requester',operationRef:'fixture-direct-current-sequence',
+     username:'NativeAdmin',password:input.passwords.NativeAdmin});
+   receipt.steps.push({directPublicNative:observed});
+ } else {
  await good('setRoots',{roots:[input.worldsRoot]});
  const [missing]=await good('discover');assert.equal(missing.worldPath,input.worldPath);assert.equal(missing.payloadStatus,'MISSING');assert.equal(missing.worldRef,null);receipt.steps.push({missing});
  const request={connectionRef:missing.connectionRef,requesterRef:'fixture-trusted-host-selection',userPath:input.userPath,username:'NativeAdmin',password:input.passwords.NativeAdmin,action:'PROVISION_PAYLOAD'};
@@ -28,6 +35,18 @@ try {
  const [world]=await good('discover');assert.ok(world.worldRef);assert.equal(world.payloadVersion,'0.2.5');assert.notEqual(world.payloadStatus,'MISSING');receipt.steps.push({installed,world,installingEngineExited:true,expired});
  const binding=await good('acquire',{...request,action:'BIND_RUNNING_WORLD'}),query=leaseQuery(binding);
  const paired=await good('pair',query);assert.equal(paired.paired,true);assert.equal(paired.worldRef,world.worldRef);
+ if(input.diagnostic==='operator-current') {
+   receipt.diagnostic='paired native-current inspect only; readCurrentGrants NOT_RUN';
+   // Different boundary diagnostic: inspect only, never readCurrentGrants.
+   // Stop at the first failed native-current observation; no replay of a failed read.
+   const observations=[];
+   for(let check=1;check<=8;check++) {
+     const observed=await call('inspect',query);
+     observations.push({check,...observed});
+     if(!observed.ok)break;
+   }
+   receipt.steps.push({paired,operatorCurrentOnly:observations,gameGrantReadAttempted:false});
+ } else {
  receipt.steps.push({paired,wrongRead:await denied('readCurrentGrants',{...query,connectionRef:'local:other'})});
  const initial=await good('readCurrentGrants',query);assert.deepEqual(initial.grants,[]);receipt.steps.push({nativeAdminDoesNotGrantBuild:initial});
  const command=execFileSync('/bin/ps',['-p',String(binding.nativeProcessId),'-o','command='],{encoding:'utf8'}).trim();
@@ -47,6 +66,8 @@ try {
  const revokedBuild=await good('readCurrentGrants',query);assert.deepEqual(revokedBuild.grants,[]);receipt.steps.push({revokedBuild});
  receipt.steps.push({revokeOperator:native('/revoke NativeAdmin server')});
  receipt.steps.push({operatorRevoked:await denied('inspect',query),currentReadDenied:await denied('readCurrentGrants',query),oldPairDenied:await denied('pair',query)});
+ }
+ }
  receipt.packageSha256=createHash('sha256').update(readFileSync(join(run,'hanaworlds-adapter-luanti-0.2.5.tgz'))).digest('hex');
  writeFileSync(join(evidence,'public-runtime-observation.json'),JSON.stringify(receipt,null,2)+'\n');console.log(JSON.stringify(receipt,null,2));
 } finally {

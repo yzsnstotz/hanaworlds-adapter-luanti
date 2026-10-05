@@ -4,10 +4,10 @@ Inputs: HW_COMPONENT_ROOT, HW_LOCAL_RUN, HW_WORLDEDIT_SOURCE, HW_AUTH_FIXTURE.
 """
 import os, pathlib, secrets, socket, subprocess, json, shutil, hashlib
 repo=pathlib.Path(__file__).resolve().parents[2]
-run=pathlib.Path(os.environ['HW_LOCAL_RUN']).resolve(); evidence=run/'_evidence'
+run=pathlib.Path(os.environ['HW_LOCAL_RUN']).resolve(); evidence=pathlib.Path(os.environ.get('HW_LOCAL_EVIDENCE',str(run/'_evidence'))).resolve()
 component=pathlib.Path(os.environ['HW_COMPONENT_ROOT']).resolve()
 root=run/'self-test-environment'; assert not root.exists(), 'Fresh own environment required'
-root.mkdir(); evidence.mkdir(exist_ok=True)
+root.mkdir(); evidence.mkdir(parents=True,exist_ok=True)
 worlds=root/'worlds'; world=worlds/'Local Test World';world.mkdir(parents=True)
 profile=root/'native-profile';game=profile/'games/localfixture';(game/'mods').mkdir(parents=True)
 (game/'game.conf').write_text('title = Local component fixture\n')
@@ -42,8 +42,8 @@ installed=json.loads((hostprofile/'package.json').read_text());assert 'hanaworld
 # Normal public profile overlay; base/web bundles resolve from installation anchor.
 (hostprofile/'cordis.patch.yml').write_text('- id: hanaworlds-luanti-adapter\n  config:\n    serviceName: hanaworlds-host\n- insert:\n    - id: local-component-consumer\n      name: '+json.dumps(str(repo/'test/local-world-runtime/consumer.mjs'))+'\n')
 s=socket.socket();s.bind(('127.0.0.1',0));hostport=s.getsockname()[1];s.close()
-runtimeenv={'HW_COMPONENT_ROOT':str(component),'HW_LOCAL_RUN':str(run),'HW_NATIVE_CLIENT':str(evidence/'native-game-client')}
-r=subprocess.run([str(node),str(repo/'test/local-world-runtime/full-host.mjs')],env=runtimeenv,input=json.dumps({'worldPath':str(world),'worldsRoot':str(worlds),'userPath':str(profile),'home':str(home),'profile':str(hostprofile),'hostPort':hostport,'passwords':passwords}),capture_output=True,text=True,timeout=150)
+runtimeenv={'HW_COMPONENT_ROOT':str(component),'HW_LOCAL_RUN':str(run),'HW_LOCAL_EVIDENCE':str(evidence),'HW_NATIVE_CLIENT':str(run/'_evidence/native-game-client')}
+r=subprocess.run([str(node),str(repo/'test/local-world-runtime/full-host.mjs')],env=runtimeenv,input=json.dumps({'worldPath':str(world),'worldsRoot':str(worlds),'userPath':str(profile),'home':str(home),'profile':str(hostprofile),'hostPort':hostport,'passwords':passwords,'diagnostic':os.environ.get('HW_LOCAL_DIAGNOSTIC','')}),capture_output=True,text=True,timeout=150)
 (evidence/'self-test-stdout.log').write_text(r.stdout);(evidence/'self-test-stderr.log').write_text(r.stderr)
 print(r.stdout,end='');print(r.stderr,end='',file=__import__('sys').stderr)
 assert r.returncode==0,'Packed public local-world self-test failed'

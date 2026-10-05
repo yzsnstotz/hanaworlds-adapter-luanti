@@ -81,7 +81,10 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       ['leaseRef', 'requesterRef', 'connectionRef']);
     if (![q.leaseRef, q.requesterRef, q.connectionRef].every(text)) deny('SCHEMA_INVALID');
     const row = leases.get(q.leaseRef);
-    if (!row || row.requesterRef !== q.requesterRef || row.world.connectionRef !== q.connectionRef) deny();
+    if (!row) { log('warn', 'LOCAL_QUERY_LEASE_UNKNOWN'); deny(); }
+    if (row.requesterRef !== q.requesterRef || row.world.connectionRef !== q.connectionRef) {
+      log('warn', 'LOCAL_QUERY_BINDING_MISMATCH'); deny();
+    }
     return { q, row };
   }
   function observations(row, facts) {
@@ -199,7 +202,9 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     async readCurrentGrants(input) {
       const { row } = query(input);
       return track(async () => {
-        if (!row.paired || running.get(row.world.worldPath) !== row) deny();
+        if (!row.paired || running.get(row.world.worldPath) !== row) {
+          log('warn', 'LOCAL_GAME_PAIRED_LEASE_REJECTED'); deny();
+        }
         await inspectRow(row);
         let received;
         try { received = await runtime.grantEvidence.listCurrentLocalGrants(); }
