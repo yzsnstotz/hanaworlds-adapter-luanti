@@ -25,7 +25,7 @@
 - [x] Run full Node/Lua/build/offline pin checks; document public method shapes and fixture/runtime boundaries.
 - [x] Pack one candidate and install its exact bytes in a fresh public DSH profile alongside the fixed delivered CURRENT Host; use public registry ports only. Fixture setup creates test native accounts/game/selection; real native permission, stop, payload/courier and game authorization remain actual.
 - [x] Record missing→acquire→stopped install→running pair→current facts and negatives with a repeatable script, without signing an independent gate.
-- [ ] Commit/push each completed source node. Remove only own used fixtures/build caches; retain one latest package and all `_evidence`; write REPORT, locally commit only that root file, notify current PM.
+- [x] Commit/push each completed source node. Remove only own used fixtures/build caches; retain one latest package and all `_evidence`; write REPORT, locally commit only that root file, notify current PM.
 
 The CARD already authorizes this design and real native test preparation. Independent App verification follows REPORT; no subagents, formal installation/UI/clean-machine gate or owner acceptance here.
 
