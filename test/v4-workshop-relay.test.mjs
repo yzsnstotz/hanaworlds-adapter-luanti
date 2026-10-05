@@ -226,7 +226,7 @@ test('plugin wiring: Workshop provided after Adapter start relays through the bo
     actorRef: 'canvas', sessionRef: 'session:one', requestId: 'bind', authorizationRef: 'grant:one',
     worldRef: manifest.worldRef, connectionRef: row.connectionRef,
     expectedCapabilityRevision: row.capabilityRevision });
-  assert.equal(await serve(() => ({ payloadVersion: '0.2.4', worldRef: manifest.worldRef,
+  assert.equal(await serve(() => ({ payloadVersion: '0.2.5', worldRef: manifest.worldRef,
     loadedSourceDigest: digest, manifestDigest: digest, payloadMatches: true,
     worldeditAvailable: true })), 'handshake');
   const principal = c => ({ current: true, engineActorName: c.actorName, worldRef: manifest.worldRef,

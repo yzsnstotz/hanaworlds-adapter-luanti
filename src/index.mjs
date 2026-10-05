@@ -28,6 +28,7 @@ import { V5TransactionBackend } from './v5-transactions.mjs';
 import { workshopRelay } from './workshop-relay.mjs';
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { createSessionAuthorizationPort } from './session-authorization.mjs';
+import { createLocalWorldPort } from './local-world-port.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 export const name = ADAPTER_ID;
@@ -155,10 +156,16 @@ export function apply(ctx, config = {}) {
       registry: () => optionalHostService(ctx, 'hanaworldsCanvasFootprintRegistry') });
     return backend;
   }
+  let localWorlds;
+  const operatorAuthority = { async verify(input) {
+    if (localWorlds?.manages(input.worldPath)) return localWorlds.verifyOperator(input);
+    const external = optionalHostService(ctx, 'hanaworldsOperatorAuthority');
+    return typeof external?.verify === 'function' ? external.verify(input) : { current: false };
+  } };
   const runtime = createLuantiOperations({
     roots: config.localWorldRoots ?? [], remoteProfiles: config.remoteProfiles ?? [],
     // Resolved at each use, never captured at apply (install order varies).
-    operatorAuthority: () => optionalHostService(ctx, 'hanaworldsOperatorAuthority'),
+    operatorAuthority: () => operatorAuthority,
     remoteTunnelFactory: () => optionalHostService(ctx, 'hanaworldsRemoteTunnelFactory'),
     createBackend,
     inspectContext: () => optionalHostService(ctx, 'hanaworldsLuantiInspectionContext'),
@@ -166,6 +173,8 @@ export function apply(ctx, config = {}) {
     onAction: workshopRelay(() => optionalHostService(ctx, 'hanaworldsWorkshop'), log),
     log,
   });
+  localWorlds = createLocalWorldPort({ roots: config.localWorldRoots ?? [], runtime,
+    resolveControl: () => optionalHostService(ctx, 'hanaworldsNativeEngineControl') });
   const worldAdapter = new WorldAdapterV4({
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
     currentAccess: runtime.currentAccess,
@@ -214,7 +223,7 @@ export function apply(ctx, config = {}) {
       return transport.presentFrame(engineActorName, { ...frame, actorRef: proof.actorRef,
         authorizationRef });
     },
-    close() { return runtime.close(); },
+    async close() { await localWorlds.close(); await runtime.close(); },
     status() {
       return {
         component: name,
@@ -239,6 +248,7 @@ export function apply(ctx, config = {}) {
   };
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV5', worldAdapterV5);
+  if (typeof ctx.provide === 'function') ctx.provide('hanaworldsLuantiLocalWorlds', localWorlds.port);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiGrantEvidence', runtime.grantEvidence);
   if (typeof ctx.provide === 'function')

@@ -94,3 +94,8 @@ that the separately installed WorldEdit is MIT.
 ## S1-AD-AUTO-01 provenance
 
 The 0.2.4 grant/mode implementation and fixtures are new MIT origin code. No Luanti engine source was copied or bundled and no dependency was added. Native administrator/owner semantics were checked against the [Luanti privileges documentation](https://docs.luanti.org/for-players/privileges/) and [builtin privileges](https://github.com/luanti-org/luanti/blob/master/builtin/game/privileges.lua) / [native auth handler](https://github.com/luanti-org/luanti/blob/master/builtin/game/auth.lua). Luanti remains an external engine under LGPL-2.1-or-later; the previously recorded WorldEdit and contracts licenses/pins remain unchanged. These references document API use, not an authorization to release.
+
+
+## S1-AD-LOCAL-PROVISIONING-01 provenance
+
+Version 0.2.5 adds MIT origin code for the trusted public local-world port and its tests. It imports no sibling implementation, adds no production dependency and copies no engine source. The admitted contracts and external WorldEdit boundaries above remain unchanged. A test-only native client uses separately pinned public MIT mt/SRP libraries; it is excluded from the production package. Account/profile preparation and WorldEdit installation are isolated test inputs, not redistributed product engine binaries or a release decision.

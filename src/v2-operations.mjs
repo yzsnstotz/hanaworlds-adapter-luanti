@@ -25,7 +25,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     typeof operatorAuthority === 'function' ? operatorAuthority() : operatorAuthority;
   const currentTunnelFactory = () =>
     typeof remoteTunnelFactory === 'function' ? remoteTunnelFactory() : remoteTunnelFactory;
-  const rootPaths = roots.map(root => resolve(root));
+  let rootPaths = roots.map(root => resolve(root));
   const local = new Map();
   const remote = new Map(remoteProfiles.map(profile => [profile.connectionRef, profile]));
   const open = new Map();
@@ -95,6 +95,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   const building = new Map();    // worldRef -> backend being built
   const inflight = new Map();    // worldRef -> AuthorizeBinding calls holding it
   const established = new Set(); // worldRefs with an accepted binding
+  const paired = new Set(); // local pairing holds courier, never a Canvas binding
   function reserveWorld(worldRef, connectionRef) {
     const owner = boundConnection.get(worldRef);
     if (owner !== undefined && owner !== connectionRef) fault('CONNECTION_UNAUTHORIZED');
@@ -111,7 +112,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     const left = (inflight.get(worldRef) ?? 1) - 1;
     if (left > 0) inflight.set(worldRef, left); else inflight.delete(worldRef);
     if (!error || left > 0 || boundConnection.get(worldRef) !== connectionRef ||
-        established.has(worldRef) || building.has(worldRef) ||
+        established.has(worldRef) || paired.has(worldRef) || building.has(worldRef) ||
         ownedBackends.get(worldRef)?.hasUnsettledRecords) return;
     const closed = await closeWorld(worldRef);
     if (!closed.ok) error.closeError = closed.code;
@@ -124,7 +125,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
   const recovering = new Map(); // worldRef -> trusted recovery calls in flight
   async function retireIfSettled(worldRef) {
     const owned = ownedBackends.get(worldRef);
-    if (!boundConnection.has(worldRef) || established.has(worldRef) || inflight.has(worldRef) ||
+    if (!boundConnection.has(worldRef) || established.has(worldRef) || paired.has(worldRef) || inflight.has(worldRef) ||
         recovering.has(worldRef) || building.has(worldRef) || opening.has(worldRef) ||
         closing.has(worldRef) || !owned || owned.hasUnsettledRecords) return;
     await closeWorld(worldRef);
@@ -155,6 +156,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         return { ok: false, code: CLOSE_FAILED };
       }
       open.delete(worldRef);
+      paired.delete(worldRef);
       boundConnection.delete(worldRef);
       closePending.delete(worldRef);
       return { ok: true };
@@ -273,7 +275,9 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
         fault('CONNECTION_UNAUTHORIZED');
       const transport = open.get(world.worldRef);
       await transport.handshake();
-      return read(transport);
+      const result = await read(transport);
+      if (!await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+      return result;
     }
     // A binding already in flight owns the port. Refuse an ambiguous read;
     // binding waits for any earlier temporary proof read before opening it.
@@ -281,7 +285,12 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       fault('ADAPTER_UNAVAILABLE');
     const pending = (async () => {
       const transport = await LocalEngineTransport.open(world.worldPath, { serviceName });
-      try { await transport.handshake(); return await read(transport); }
+      try {
+        await transport.handshake();
+        const result = await read(transport);
+        if (!await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+        return result;
+      }
       finally { await transport.close(); }
     })();
     evidenceBusy.set(world.worldRef, pending);
@@ -612,7 +621,23 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     ApplyCompiledTransaction(request) { return backend(request).scoped.apply(request); },
     QueryPreparedTransaction(request) { return backend(request).scoped.queryPrepared(request); },
   };
-  return { operations, scopedOperations, open, currentAccess, grantEvidence, nativeFacts, close: async () => {
+  return { operations, scopedOperations, open, currentAccess, grantEvidence, nativeFacts,
+    setLocalRoots(paths) { rootPaths = paths.map(path => resolve(path)); },
+    async pairLocal(world) {
+      if (closed || !world.worldRef || !await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+      if (evidenceBusy.has(world.worldRef)) await evidenceBusy.get(world.worldRef);
+      reserveWorld(world.worldRef, world.connectionRef);
+      let error;
+      try {
+        const { transport } = await transportFor(world.worldRef, () =>
+          LocalEngineTransport.open(world.worldPath, { serviceName, onAction }));
+        const loaded = await transport.handshake();
+        if (!await verifyLocalOperator(world)) fault('CONNECTION_UNAUTHORIZED');
+        paired.add(world.worldRef);
+        return loaded;
+      } catch (cause) { error = cause; throw cause; }
+      finally { await releaseWorld(world.worldRef, world.connectionRef, error); }
+    }, close: async () => {
     closed = true;
     await Promise.allSettled([...evidenceBusy.values()]);
     // Every transport gets a close attempt; one that is rejected stays in
@@ -628,7 +653,7 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     // A world whose transport did not close stays owned and close-pending.
     for (const worldRef of [...boundConnection.keys()])
       if (!open.has(worldRef)) boundConnection.delete(worldRef);
-    ownedBackends.clear(); inflight.clear(); established.clear(); recovering.clear();
+    ownedBackends.clear(); inflight.clear(); established.clear(); paired.clear(); recovering.clear();
     if (failed.length) {
       const text = `${CLOSE_FAILED}: transport close failed for ${failed.length} world(s): ${failed.join(', ')}`;
       if (typeof log === 'function') log('error', text); else console.error(text);

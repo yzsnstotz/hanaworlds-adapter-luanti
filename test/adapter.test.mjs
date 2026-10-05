@@ -32,7 +32,7 @@ test('payload provisioning writes a stable world identity and a versioned digest
   const second = await provisionLocalPayload(world, { operatorAuthority });
   assert.equal(first.worldRef, second.worldRef);
   assert.match(first.payloadDigest, /^[0-9a-f]{64}$/);
-  assert.equal(first.payloadVersion, '0.2.4');
+  assert.equal(first.payloadVersion, '0.2.5');
   const saved = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'payload.json'), 'utf8'));
   assert.equal(saved.worldRef, first.worldRef);
   assert.match(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'engine.lua'), 'utf8'), /verifyPrepared/);
@@ -59,7 +59,7 @@ async function installOldPayload(world, version, worldRef, transport) {
   const hash = createHash('sha256');
   const files = ['mod.conf', 'init.lua', 'engine.lua', 'transport.lua'];
   if (version === '0.2.0') files.push('region.lua');
-  if (version === '0.2.3') files.push('region.lua', 'grant.lua', 'facts.lua');
+  if (version === '0.2.3' || version === '0.2.4') files.push('region.lua', 'grant.lua', 'facts.lua');
   for (const name of files) {
     const content = `-- ${version} ${name}\n`;
     await writeFile(join(mod, name), content);
@@ -85,7 +85,7 @@ test('verified stopped-world 0.2.0 upgrade keeps pairing and identity', async ()
   const upgraded = await provisionLocalPayload(world, { operatorAuthority });
   const mod = join(world, 'worldmods', 'hanaworlds_adapter');
   assert.equal(upgraded.worldRef, old.worldRef);
-  assert.equal(upgraded.payloadVersion, '0.2.4');
+  assert.equal(upgraded.payloadVersion, '0.2.5');
   assert.deepEqual(JSON.parse(await readFile(join(mod, 'transport.json'), 'utf8')), pairing);
   assert.ok((await readdir(join(world, 'worldmods'))).includes(
     `.hanaworlds-adapter-backup-0.2.0-${old.payloadDigest}`));
@@ -102,7 +102,23 @@ test('0.2.3 to automatic-mode payload upgrade keeps native world identity and pa
   const old = await installOldPayload(world, '0.2.3', pairing.worldRef, pairing);
   const upgraded = await provisionLocalPayload(world, { operatorAuthority });
   assert.equal(upgraded.worldRef, old.worldRef);
-  assert.equal(upgraded.payloadVersion, '0.2.4');
+  assert.equal(upgraded.payloadVersion, '0.2.5');
+  const mod = join(world, 'worldmods', 'hanaworlds_adapter');
+  assert.deepEqual(JSON.parse(await readFile(join(mod, 'transport.json'), 'utf8')), pairing);
+  assert.match(await readFile(join(mod, 'grant.lua'), 'utf8'), /hanaworlds_auto/);
+});
+
+test('0.2.4 automatic-mode to public provisioning payload upgrade keeps native world identity and pairing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'hw-adapter-upgrade-024-'));
+  const world = join(root, 'one');
+  await mkdir(world);
+  await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
+  const operatorAuthority = { verify: async input => ({ current: true, ...input, worldStopped: true }) };
+  const pairing = { worldRef: 'luanti:cccccccc-2222-3333-4444-555555555555', port: 30114, token: 'e'.repeat(64) };
+  const old = await installOldPayload(world, '0.2.4', pairing.worldRef, pairing);
+  const upgraded = await provisionLocalPayload(world, { operatorAuthority });
+  assert.equal(upgraded.worldRef, old.worldRef);
+  assert.equal(upgraded.payloadVersion, '0.2.5');
   const mod = join(world, 'worldmods', 'hanaworlds_adapter');
   assert.deepEqual(JSON.parse(await readFile(join(mod, 'transport.json'), 'utf8')), pairing);
   assert.match(await readFile(join(mod, 'grant.lua'), 'utf8'), /hanaworlds_auto/);
@@ -124,7 +140,7 @@ test('provisioning refuses a running world and preserves the stable world identi
   const upgraded = await provisionLocalPayload(world, { operatorAuthority,
     transportPort: 32123 });
   assert.equal(upgraded.worldRef, old.worldRef);
-  assert.equal(upgraded.payloadVersion, '0.2.4');
+  assert.equal(upgraded.payloadVersion, '0.2.5');
   assert.ok((await readdir(join(world, 'worldmods'))).includes(
     `.hanaworlds-adapter-backup-0.1.0-${old.payloadDigest}`));
 });
@@ -143,7 +159,7 @@ test('0.1.1 upgrade keeps identity and pairing, then stopped-world rollback rest
   const mod = join(world, 'worldmods', 'hanaworlds_adapter');
   const oldInit = await readFile(join(mod, 'init.lua'));
   const upgraded = await provisionLocalPayload(world, { operatorAuthority });
-  assert.equal(upgraded.payloadVersion, '0.2.4');
+  assert.equal(upgraded.payloadVersion, '0.2.5');
   assert.equal(upgraded.payloadDigest, await payloadDigest());
   assert.deepEqual(JSON.parse(await readFile(join(mod, 'transport.json'), 'utf8')), pairing);
   worldStopped = false;
@@ -161,7 +177,7 @@ test('0.1.1 upgrade keeps identity and pairing, then stopped-world rollback rest
   // Re-upgrade after rollback is the same verified path, with the same identity.
   const again = await provisionLocalPayload(world, { operatorAuthority });
   assert.equal(again.worldRef, old.worldRef);
-  assert.equal(again.payloadVersion, '0.2.4');
+  assert.equal(again.payloadVersion, '0.2.5');
 });
 
 
@@ -182,7 +198,7 @@ test('crash between swap renames never mints a new identity; explicit restore or
   const mod = join(mods, 'hanaworlds_adapter');
   const upgraded = await provisionLocalPayload(world, { operatorAuthority });
   // Rollback crashed after its first rename: current payload moved aside, backup not yet moved in.
-  const retained = `.hanaworlds-adapter-retained-0.2.4-${upgraded.payloadDigest}-crash`;
+  const retained = `.hanaworlds-adapter-retained-0.2.5-${upgraded.payloadDigest}-crash`;
   await rename(mod, join(mods, retained));
   const backup = `.hanaworlds-adapter-backup-0.1.1-${old.payloadDigest}`;
   await assert.rejects(() => rollbackLocalPayload(world, { operatorAuthority, toVersion: '0.1.1' }),
@@ -205,7 +221,7 @@ test('crash between swap renames never mints a new identity; explicit restore or
   // Upgrade crashed after its first rename: same refusal; a fresh identity needs the explicit flag.
   await provisionLocalPayload(world, { operatorAuthority });
   await rm(join(mods, retained), { recursive: true });
-  await rename(mod, join(mods, `.hanaworlds-adapter-retained-0.2.4-${upgraded.payloadDigest}-again`));
+  await rename(mod, join(mods, `.hanaworlds-adapter-retained-0.2.5-${upgraded.payloadDigest}-again`));
   await assert.rejects(() => provisionLocalPayload(world, { operatorAuthority }), /RECOVERY_PENDING/);
   const fresh = await provisionLocalPayload(world, { operatorAuthority, freshIdentity: true });
   assert.notEqual(fresh.worldRef, old.worldRef);
@@ -221,7 +237,7 @@ test('unreadable saved payload manifests still stop provisioning and cannot be r
       payloadDigest: 'a'.repeat(64) })]]) {
     const root = await mkdtemp(join(tmpdir(), `hw-adapter-unreadable-${label}-`));
     const world = join(root, 'one');
-    const saved = `.hanaworlds-adapter-retained-0.2.4-${label}`;
+    const saved = `.hanaworlds-adapter-retained-0.2.5-${label}`;
     await mkdir(join(world, 'worldmods', saved), { recursive: true });
     await writeFile(join(world, 'world.mt'), 'gameid = minimal\n');
     if (manifest !== null) await writeFile(join(world, 'worldmods', saved, 'payload.json'), manifest);

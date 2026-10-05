@@ -104,7 +104,8 @@ export async function discoverLocalWorlds(configuredRoots) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const world = join(root, entry.name);
       const worldMt = join(world, 'world.mt');
-      if (!(await lstat(worldMt).catch(() => null))?.isFile()) continue;
+      const info = await lstat(worldMt).catch(() => null);
+      if (!info?.isFile() || info.isSymbolicLink()) continue;
       const raw = await readFile(worldMt, 'utf8').catch(() => null);
       if (raw === null) continue;
       const identity = await readIdentity(world);

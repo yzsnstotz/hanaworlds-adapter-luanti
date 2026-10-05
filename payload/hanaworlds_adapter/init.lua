@@ -1,4 +1,4 @@
--- HanaWorlds Adapter payload 0.2.4. World mutation is unavailable until a
+-- HanaWorlds Adapter payload 0.2.5. World mutation is unavailable until a
 -- verified Canvas binding and the recoverable transport are installed.
 local frames = {}
 local pending_picks = {}
@@ -55,7 +55,7 @@ function adapter.capabilities()
     and type(editing.set) == 'function'
     and type(editing.set_param2) == 'function'
   return {
-    payloadVersion = '0.2.4',
+    payloadVersion = '0.2.5',
     worldeditAvailable = available,
     worldeditVersion = available and editing.version_string or nil,
     recoverableTransportAvailable = transport_ready,
@@ -345,7 +345,7 @@ if identity_verified then
   if action_transport then adapter.invoke_action = action_transport.invoke_action end
 end
 local capability = adapter.capabilities()
-minetest.log('action', 'HanaWorlds Adapter payload 0.2.4 loaded; WorldEdit API ' ..
+minetest.log('action', 'HanaWorlds Adapter payload 0.2.5 loaded; WorldEdit API ' ..
   (capability.worldeditAvailable and ('available ' .. capability.worldeditVersion) or 'missing') ..
   '; payload identity ' .. (capability.payloadMatches and 'matched' or 'unverified') ..
   '; engine state ' .. (capability.engineStateReadable and 'readable' or 'UNREADABLE') ..
