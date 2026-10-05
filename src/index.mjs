@@ -173,7 +173,7 @@ export function apply(ctx, config = {}) {
     onAction: workshopRelay(() => optionalHostService(ctx, 'hanaworldsWorkshop'), log),
     log,
   });
-  localWorlds = createLocalWorldPort({ roots: config.localWorldRoots ?? [], runtime,
+  localWorlds = createLocalWorldPort({ roots: config.localWorldRoots ?? [], runtime, log,
     resolveControl: () => optionalHostService(ctx, 'hanaworldsNativeEngineControl') });
   const worldAdapter = new WorldAdapterV4({
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),

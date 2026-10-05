@@ -8,23 +8,25 @@
 
 ## 1. Public lifecycle
 
-- [ ] Add failing registration/discovery and finite-install tests in `test/local-world-port.test.mjs`.
-- [ ] Add `src/local-world-port.mjs`: strict snapshots, managed roots, action-bound opaque leases; acquire/inspect/provision/pair/current game reads/close; exact public Host provenance and provider withdrawal checks.
-- [ ] Register service in `src/index.mjs`; maintain the original external operator path for worlds not claimed through the new lifecycle.
-- [ ] Verify missing/forged/wrong scope/withdrawn/dead/expired/duplicate callback paths write nothing.
+- [x] Add failing registration/discovery and finite-install tests in `test/local-world-port.test.mjs`.
+- [x] Add `src/local-world-port.mjs`: strict snapshots, managed roots, action-bound opaque leases; acquire/inspect/provision/pair/current game reads/close; exact public Host provenance and provider withdrawal checks.
+- [x] Register service in `src/index.mjs`; maintain the original external operator path for worlds not claimed through the new lifecycle.
+- [x] Verify missing/forged/wrong scope/withdrawn/dead/expired/duplicate callback paths write nothing.
 
 ## 2. Shared courier
 
-- [ ] Add runtime root configuration and local pairing that shares its existing courier and connection reservation without creating a Canvas binding or transaction backend.
-- [ ] Recheck operator after asynchronous grant reads; keep existing recovery transport ownership and external Host compatibility.
-- [ ] Test loaded byte mismatch, cross-world input, current game grant read and revocation.
+- [x] Add runtime root configuration and local pairing that shares its existing courier and connection reservation without creating a Canvas binding or transaction backend.
+- [x] Recheck operator after asynchronous grant reads; keep existing recovery transport ownership and external Host compatibility.
+- [x] Test loaded byte mismatch, cross-world input, current game grant read and revocation.
 
 ## 3. Candidate and runtime self-test
 
-- [ ] Version 0.2.5; admit verified 0.2.4 payload upgrade preserving identity/pairing/grants; keep native auto logic unchanged.
-- [ ] Run full Node/Lua/build/offline pin checks; document public method shapes and fixture/runtime boundaries.
+- [x] Version 0.2.5; admit verified 0.2.4 payload upgrade preserving identity/pairing/grants; keep native auto logic unchanged.
+- [x] Run full Node/Lua/build/offline pin checks; document public method shapes and fixture/runtime boundaries.
 - [ ] Pack one candidate and install its exact bytes in a fresh public DSH profile alongside the delivered HTTP Host; use public registry ports only. Fixture setup creates test native accounts/game/selection; real native permission, stop, payload/courier and game authorization remain actual.
 - [ ] Record missing→acquire→stopped install→running pair→current facts and negatives with a repeatable script, without signing an independent gate.
 - [ ] Commit/push each completed source node. Remove only own used fixtures/build caches; retain one latest package and all `_evidence`; write REPORT, locally commit only that root file, notify current PM.
 
 The CARD already authorizes this design and real native test preparation. Independent App verification follows REPORT; no subagents, formal installation/UI/clean-machine gate or owner acceptance here.
+
+Runtime continuation: public DSH installation, MISSING discovery, native admin acquisition, stopped installation and exact running handshake observed. First current-grant read rejected twice; stop per CONTRACT, retain precise BLOCKED. Later automatic enable/disable and privilege-loss runtime assertions remain NOT_RUN. SOURCE/FIXTURE final 201 Node tests, 8 Lua suites, build and contracts pin checks completed.

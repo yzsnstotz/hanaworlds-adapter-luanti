@@ -22,7 +22,7 @@ async function freePort() {
 
 /** Trusted in-process Host port. Never accepts operator JSON. Native SRP and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
-export function createLocalWorldPort({ roots = [], resolveControl, runtime }) {
+export function createLocalWorldPort({ roots = [], resolveControl, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
   const leases = new Map(), running = new Map(), managed = new Set(), pending = new Set();
   function track(run) {
@@ -63,14 +63,18 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime }) {
     if (running.get(row.world.worldPath) === row) running.delete(row.world.worldPath);
   }
   async function inspectRow(row) {
+    let phase = 'PROVIDER';
     try {
       const host = provider(row);
+      phase = 'WORLD_IDENTITY';
       if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
+      phase = 'NATIVE_INSPECT';
       const facts = await host.inspect({ ...row.nativeQuery });
+      phase = 'NATIVE_FACTS';
       provider(row);
       if (!factsMatch(row, facts, 'CURRENT') || !sameWorld(row.world, await world(row.world.connectionRef))) deny();
       return facts;
-    } catch { forget(row); deny(); } // no provider error text or credentials escape
+    } catch { log('warn', `LOCAL_LEASE_${phase}_REJECTED`); forget(row); deny(); } // no provider error text or credentials escape
   }
   function query(input, extra = []) {
     const q = fields(input, ['leaseRef', 'requesterRef', 'connectionRef', ...extra],
@@ -146,14 +150,18 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime }) {
           (q.freshIdentity !== undefined && typeof q.freshIdentity !== 'boolean')) return Promise.reject(new Error('SCHEMA_INVALID'));
       leases.delete(row.leaseRef); // synchronous one-shot reservation before any await
       return track(async () => {
-        await inspectRow(row);
-        const host = provider(row);
+        let phase = 'CURRENT';
         let callbackUsed = false, callbackActive = true;
         try {
+          await inspectRow(row);
+          const host = provider(row); phase = 'STOP';
           return await host.withStoppedWorld({ ...row.nativeQuery }, async facts => {
+            phase = 'STOPPED_FACTS';
             if (!callbackActive || callbackUsed || !factsMatch(row, facts, 'STOPPED')) deny();
             callbackUsed = true; provider(row);
+            phase = 'WORLD_IDENTITY';
             if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
+            phase = 'INSTALL';
             const transportPort = q.transportPort ?? (row.world.worldRef ? null : await freePort());
             let verified = false;
             // Private one-shot bridge into existing installer. Never returned or persisted.
@@ -167,6 +175,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime }) {
               freshIdentity: q.freshIdentity === true });
           });
         } catch (error) {
+          log('warn', `LOCAL_PROVISION_${phase}_REJECTED`);
           if (callbackUsed && ['RECOVERY_PENDING', 'PAYLOAD_VERSION_MISMATCH', 'WORLD_NOT_FOUND'].includes(error?.message)) throw error;
           deny();
         } finally { callbackActive = false; forget(row); }
@@ -192,7 +201,10 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime }) {
       return track(async () => {
         if (!row.paired || running.get(row.world.worldPath) !== row) deny();
         await inspectRow(row);
-        const grants = (await runtime.grantEvidence.listCurrentLocalGrants())
+        let received;
+        try { received = await runtime.grantEvidence.listCurrentLocalGrants(); }
+        catch { log('warn', 'LOCAL_GAME_GRANTS_READ_REJECTED'); deny(); }
+        const grants = received
           .filter(proof => proof.connectionRef === row.world.connectionRef && proof.worldRef === row.world.worldRef);
         await inspectRow(row);
         return { worldRef: row.world.worldRef, connectionRef: row.world.connectionRef, grants };
