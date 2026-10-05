@@ -2,6 +2,7 @@
 export const name = 'adapter-local-world-component-consumer';
 export const inject = ['webServer'];
 export function apply(ctx) {
+  let stopObserverArmed=false;
   // Cordis buffers structured logs by default; stdout alone is not the log sink.
   // Export only fixed origin diagnostic codes, never arbitrary provider messages.
   ctx.logger.exporter({levels:{'hanaworlds-adapter-luanti':2},export(message) {
@@ -15,6 +16,35 @@ export function apply(ctx) {
       let raw='';for await(const part of req){raw+=part;if(raw.length>16000)throw Error('FIXTURE_INPUT_TOO_LARGE');}
       try {
         const {method,input}=JSON.parse(raw), service=ctx.get('hanaworldsLuantiLocalWorlds');
+        if(method==='observeNativeStopBoundary') {
+          if(stopObserverArmed)throw Error('PUBLIC_PORT_REJECTED');
+          stopObserverArmed=true;
+          const native=ctx.get('hanaworldsNativeEngineControl');
+          const inspect=native.inspect,stop=native.withStoppedWorld;
+          let lastInspect;
+          native.inspect=async function(query) {
+            const facts=await inspect.call(this,query);
+            lastInspect={query:{...query},facts};return facts;
+          };
+          native.withStoppedWorld=async function(query,consume) {
+            const started=Date.now(),entry={publicBoundary:'hanaworldsNativeEngineControl.withStoppedWorld',
+              worldPath:query.worldPath,callbackEntered:false,
+              sameAsLastInspect:lastInspect!==undefined&&['controlRef','requesterRef','operationRef','worldPath'].every(k=>query[k]===lastInspect.query[k]),
+              lastInspectState:lastInspect?.facts.state,processId:lastInspect?.facts.processId};
+            try {
+              const result=await stop.call(this,query,async facts=>{
+                entry.callbackEntered=true;entry.callbackState=facts.state;
+                entry.callbackSameProcess=facts.processId===entry.processId;
+                return consume(facts);
+              });
+              entry.ok=true;return result;
+            }catch(error){
+              const codes=new Set(['CONTROL_MISMATCH','CONTROL_CLOSED','NATIVE_CHANNEL_CLOSED','NATIVE_REPLY_TIMEOUT','NATIVE_CHAT_RATE_LIMITED','NATIVE_PERMISSION_DENIED','CHANNEL_CLOSED','CHANNEL_UNAVAILABLE','CURRENT_PERMISSION_UNPROVEN','NATIVE_PERMISSION_UNPROVEN','ENGINE_EXIT_UNPROVEN','STOPPED_WORLD_UNPROVEN','WORLD_OCCUPANCY_UNPROVEN','HELPER_EXIT_UNPROVEN']);
+              entry.ok=false;entry.code=codes.has(error?.message)?error.message:'PUBLIC_NATIVE_STOP_OTHER';throw error;
+            }finally{entry.elapsedMs=Date.now()-started;console.error(JSON.stringify(entry));}
+          };
+          res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:{observerArmed:true,delegation:'same receiver, arguments, callback facts, return and thrown error'}}));return;
+        }
         if(method==='nativeInspectSequence') {
           // Isolated ownership diagnostic through public Host API, no Adapter lease
           // or courier. Existing native-account setup remains an explicit fixture.
