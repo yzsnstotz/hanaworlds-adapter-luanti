@@ -16,7 +16,7 @@ async function freePort() {
 }
 
 test('host grant evidence lists only native current local grants and rejects old refs', async () => {
-  const cache = join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-DESKTOP-AUTH-01');
+  const cache = join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-AUTO-01');
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(join(cache, 'evidence-fixture-'));
   const world = join(root, 'world');
@@ -36,6 +36,9 @@ test('host grant evidence lists only native current local grants and rejects old
   const facts = provided.get('hanaworldsLuantiNativeFacts');
   assert.equal(typeof evidence.listCurrentLocalGrants, 'function');
   assert.equal(typeof evidence.verifyCurrentLocalGrant, 'function');
+  assert.equal(typeof evidence.readCurrentLocalAuthorizationMode, 'function');
+  let mode = { worldRef: manifest.worldRef, enabled: true, enabledBy: 'admin',
+    modeRef: 'mode:one', scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION' };
   let grantRef = 'native:one';
   let running = true;
   let permitted = true;
@@ -73,7 +76,7 @@ test('host grant evidence lists only native current local grants and rejects old
       commands.push(command.operation);
       let result;
       let error = null;
-      if (command.operation === 'handshake') result = { payloadVersion: '0.2.3',
+      if (command.operation === 'handshake') result = { payloadVersion: '0.2.4',
         worldRef: manifest.worldRef, loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       else if (command.operation === 'list_grants') result = { grants: permitted && grantRef ? [
@@ -83,6 +86,7 @@ test('host grant evidence lists only native current local grants and rejects old
         worldRef: manifest.worldRef, engineActorName: command.actorName,
         scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION', grantRef,
         worldeditAvailable: true };
+      else if (command.operation === 'authorization_mode') result = mode;
       else if (command.operation === 'fact_profile') result = {
         profileVersion: 'state-profile/v2', nodeFields: ['nodeName', 'param1', 'param2'],
         metadataMode: 'exact', inventoryMode: 'exact', timerMode: 'exact',
@@ -116,6 +120,18 @@ test('host grant evidence lists only native current local grants and rejects old
     }
   })();
   try {
+    const readMode = () => evidence.readCurrentLocalAuthorizationMode({ worldRef: manifest.worldRef });
+    assert.deepEqual(await readMode(), mode, 'mode fact comes from paired payload');
+    mode = { ...mode, worldRef: 'other:world' };
+    await assert.rejects(readMode(), /CONNECTION_UNAUTHORIZED/);
+    mode = { worldRef: manifest.worldRef, enabled: 'true', scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION' };
+    await assert.rejects(readMode(), /CONNECTION_UNAUTHORIZED/);
+    mode = { worldRef: manifest.worldRef, enabled: true, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION' };
+    await assert.rejects(readMode(), /CONNECTION_UNAUTHORIZED/, 'enabled mode requires native principal and epoch');
+    mode = { worldRef: manifest.worldRef, enabled: false, scope: 'WORLD_BUILD_WITH_ENGINE_PROTECTION' };
+    assert.deepEqual(await readMode(), mode);
+    await assert.rejects(evidence.readCurrentLocalAuthorizationMode({ worldRef: 'unknown:world' }), /WORLD_NOT_BOUND/);
+    await assert.rejects(evidence.readCurrentLocalAuthorizationMode({}), /CONNECTION_UNAUTHORIZED/);
     const listed = await evidence.listCurrentLocalGrants({ engineActorName: 'mallory' });
     assert.deepEqual(listed.map(({ connectionRef, ...row }) => row), [{ current: true,
       worldRef: manifest.worldRef, engineActorName: 'alice',

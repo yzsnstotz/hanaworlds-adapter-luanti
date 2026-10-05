@@ -242,6 +242,18 @@ export class LocalEngineTransport {
     });
   }
 
+  async readAuthorizationMode() {
+    const mode = await this.#dispatch('authorization_mode', {});
+    if (mode?.worldRef !== this.#worldRef || typeof mode.enabled !== 'boolean' ||
+        mode.scope !== 'WORLD_BUILD_WITH_ENGINE_PROTECTION' ||
+        (mode.enabled && (typeof mode.enabledBy !== 'string' || !mode.enabledBy ||
+          typeof mode.modeRef !== 'string' || !mode.modeRef)) ||
+        (!mode.enabled && (mode.enabledBy !== undefined || mode.modeRef !== undefined)))
+      throw fault('CONNECTION_UNAUTHORIZED');
+    return { worldRef: this.#worldRef, enabled: mode.enabled, scope: mode.scope,
+      ...(mode.enabled ? { enabledBy: mode.enabledBy, modeRef: mode.modeRef } : {}) };
+  }
+
   readStateProfile(binding) {
     return this.#dispatch('fact_profile', this.#actor(binding));
   }

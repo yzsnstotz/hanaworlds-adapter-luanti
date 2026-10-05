@@ -89,3 +89,8 @@ The MIT decision covers the source offered in this origin at 0.1.1 and 0.2.0 und
 direct user owner-code instruction and the file-level provenance above. It
 does not assert that a Git author line alone proves copyright ownership, or
 that the separately installed WorldEdit is MIT.
+
+
+## S1-AD-AUTO-01 provenance
+
+The 0.2.4 grant/mode implementation and fixtures are new MIT origin code. No Luanti engine source was copied or bundled and no dependency was added. Native administrator/owner semantics were checked against the [Luanti privileges documentation](https://docs.luanti.org/for-players/privileges/) and [builtin privileges](https://github.com/luanti-org/luanti/blob/master/builtin/game/privileges.lua) / [native auth handler](https://github.com/luanti-org/luanti/blob/master/builtin/game/auth.lua). Luanti remains an external engine under LGPL-2.1-or-later; the previously recorded WorldEdit and contracts licenses/pins remain unchanged. These references document API use, not an authorization to release.

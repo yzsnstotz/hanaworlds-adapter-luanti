@@ -293,6 +293,14 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
     return (await discoverLocalWorlds(rootPaths)).filter(world => world.worldRef);
   }
   const grantEvidence = {
+    async readCurrentLocalAuthorizationMode({ worldRef } = {}) {
+      if (typeof worldRef !== 'string' || !worldRef) fault('CONNECTION_UNAUTHORIZED');
+      const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
+      if (matches.length !== 1) fault('WORLD_NOT_BOUND');
+      const mode = await withLocalGrantEvidence(matches[0], transport => transport.readAuthorizationMode());
+      if (!mode) fault('CONNECTION_UNAUTHORIZED');
+      return mode;
+    },
     async listCurrentLocalGrants() {
       const results = [];
       const seenWorlds = new Set();

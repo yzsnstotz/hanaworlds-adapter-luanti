@@ -109,4 +109,13 @@ assert(without_grants)
 table.remove(queued, #queued)()
 assert(posted[12]:find('"CAPABILITY_UNAVAILABLE"', 1, true),
   'missing grant initializer cannot appear as zero candidates')
+commands[#commands + 1] = {id = 'mode-read', worldRef = 'luanti:test', operation = 'authorization_mode'}
+grants.mode = function() return {worldRef = 'luanti:test', enabled = true,
+  enabledBy = 'admin', modeRef = 'epoch:one', scope = 'WORLD_BUILD_WITH_ENGINE_PROTECTION'} end
+table.remove(queued, 1)()
+assert(posted[13]:find('"enabled":true', 1, true), 'paired courier can read native world mode')
+commands[#commands + 1] = {id = 'mode-write', worldRef = 'luanti:test',
+  operation = 'enable_automatic', actorName = 'admin'}
+table.remove(queued, #queued)()
+assert(posted[14]:find('"UNKNOWN_ACTION"', 1, true), 'courier cannot change automatic mode')
 print('transport grant fixture PASS')

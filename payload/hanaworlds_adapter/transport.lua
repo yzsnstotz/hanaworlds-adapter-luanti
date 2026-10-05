@@ -107,6 +107,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         if type(current) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
         else result = {grants = current} end
       end
+    elseif command.operation == 'authorization_mode' then
+      if type(grants) ~= 'table' or type(grants.mode) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result = grants:mode() end
     elseif command.operation == 'fact_profile' then
       if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
