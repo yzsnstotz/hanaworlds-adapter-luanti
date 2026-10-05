@@ -3,6 +3,7 @@
 package main
 
 import (
+ "encoding/base64"
  "encoding/json"
  "fmt"
  "net"
@@ -13,11 +14,15 @@ import (
  "github.com/HimbeerserverDE/srp"
 )
 
-type Input struct { Port int; Username, Password, Command, Button string }
+type Input struct { Port int; Username, Password, Command, Button string; Fixture bool }
 func fail() { fmt.Fprintln(os.Stderr, "NATIVE_TEST_FAILED"); os.Exit(2) }
 func main() {
  var in Input
  if json.NewDecoder(os.Stdin).Decode(&in)!=nil { fail() }
+ if in.Fixture {
+  salt,verifier,e:=srp.NewClient([]byte(strings.ToLower(in.Username)),[]byte(in.Password));if e!=nil{fail()}
+  fmt.Print("#1#"+base64.RawStdEncoding.EncodeToString(salt)+"#"+base64.RawStdEncoding.EncodeToString(verifier));return
+ }
  timer:=time.AfterFunc(15*time.Second, fail); defer timer.Stop()
  c,e:=net.Dial("udp",fmt.Sprintf("127.0.0.1:%d",in.Port)); if e!=nil {fail()}
  p:=mt.Connect(c); defer p.Close()

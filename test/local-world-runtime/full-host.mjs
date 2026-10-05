@@ -26,7 +26,7 @@ try {
  const [missing]=await good('discover');assert.equal(missing.worldPath,input.worldPath);assert.equal(missing.payloadStatus,'MISSING');assert.equal(missing.worldRef,null);receipt.steps.push({missing});
  const request={connectionRef:missing.connectionRef,requesterRef:'fixture-trusted-host-selection',userPath:input.userPath,username:'NativeAdmin',password:input.passwords.NativeAdmin,action:'PROVISION_PAYLOAD'};
  const leaseQuery=lease=>({leaseRef:lease.leaseRef,requesterRef:request.requesterRef,connectionRef:request.connectionRef});
- receipt.steps.push({unknown:await denied('acquire',{...request,connectionRef:'local:unknown'}),unpaired:await denied('acquire',{...request,action:'BIND_RUNNING_WORLD'}),nonAdmin:await denied('acquire',{...request,username:'NativeUser',password:input.passwords.NativeUser})});
+ receipt.steps.push({unknown:await denied('acquire',{...request,connectionRef:'local:unknown'}),unpaired:await denied('acquire',{...request,action:'BIND_RUNNING_WORLD'}),wrongPassword:await denied('acquire',{...request,password:'fixture-intentionally-invalid-password'}),nonAdmin:await denied('acquire',{...request,username:'NativeUser',password:input.passwords.NativeUser})});
  const provisionLease=await good('acquire',request);assert.equal(provisionLease.action,'PROVISION_PAYLOAD');
  receipt.steps.push({provisionLease,wrongRequester:await denied('provision',{...leaseQuery(provisionLease),requesterRef:'wrong'}),wrongWorld:await denied('provision',{...leaseQuery(provisionLease),connectionRef:'local:wrong'}),forged:await denied('provision',{...leaseQuery(provisionLease),leaseRef:'forged'})});
  const installed=await good('provision',leaseQuery(provisionLease));
@@ -57,6 +57,7 @@ try {
  const native=(Command,Button='')=>JSON.parse(execFileSync(process.env.HW_NATIVE_CLIENT,[],{input:JSON.stringify({Port:port,Username:'NativeRevoker',Password:input.passwords.NativeRevoker,Command,Button}),encoding:'utf8',timeout:18000}));
  receipt.steps.push({enable:native('/hanaworlds_auto','hw_auto_enable')});
  const automatic=await good('readCurrentGrants',query);assert.ok(automatic.grants.length>0);assert.ok(automatic.grants.every(g=>g.worldRef===world.worldRef&&g.scope==='WORLD_BUILD_WITH_ENGINE_PROTECTION'));
+ assert.ok(automatic.grants.every(g=>g.engineActorName==='NativeAdmin')); // Revoker's native client has disconnected.
  receipt.steps.push({automatic});
  receipt.steps.push({disable:native('/hanaworlds_auto','hw_auto_disable')});
  const afterDisable=await good('readCurrentGrants',query);assert.deepEqual(afterDisable.grants,[]);receipt.steps.push({afterDisable});
