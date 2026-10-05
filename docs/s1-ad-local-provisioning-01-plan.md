@@ -1,5 +1,9 @@
 # Local world provisioning implementation plan
 
+> Current execution basis: CONTRACT 4.0.0 §§0–2 and the updated CARD/PLAN at root commit 54b10dc05 (2026-10-06). Only a fresh world, fresh profile and current payload are acceptance inputs. Old-version upgrades, same-version identity retention, old pairing/data/version compatibility criteria and their tests are withdrawn. Current automatic authorization, scope protection and recovery remain Stage 1 functions. The implementation records below are historical facts, not future compatibility requirements.
+>
+> This turn is readback only. Independent STOP GATE_FAIL1624fb645 remains unresolved. The new Desktop stop-handoff observation input is not adopted or executed here; it contains observations without a stop-decision fix or PASS. After the coordinator binds the successor PM, that PM must route the narrow failure-sequence diagnostic and select fixed public inputs. Original worker/config/probe continue. Future handoff reads STATUS for the current PM; do not message retiring PM01a10cb2.
+
 **Goal:** Register `hanaworldsLuantiLocalWorlds` for trusted in-process Host consumers, including missing worlds, native operator acquisition, finite stopped installation and paired current game facts.
 
 **Architecture:** Adapter owns roots, opaque action leases, payload bytes and courier. The public Host `hanaworldsNativeEngineControl` owns existing-account SRP, live server permission and exact child lifecycle. Adapter generates each native operation reference and never accepts operator JSON or persists stopped facts. Existing Canvas authorization, transactions and recovery stay behind their existing ports.
