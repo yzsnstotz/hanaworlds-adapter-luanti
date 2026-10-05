@@ -9,9 +9,16 @@ assert evidence.is_relative_to(run / '_evidence')
 root = run / 'self-test-environment'
 assert root.is_dir() and not root.is_symlink() and root.resolve() == root
 before = root.stat()
-observed = json.loads((evidence / ('public-runtime-observation.json' if (evidence / 'public-runtime-observation.json').exists() else 'public-runtime-progress.json')).read_text())
-stages = json.loads((evidence / 'finite-stage-receipt.json').read_text())
-pids = sorted({observed['hostPid'], *[row['processId'] for row in stages['events'] if 'processId' in row]})
+observation = evidence / ('public-runtime-observation.json' if (evidence / 'public-runtime-observation.json').exists() else 'public-runtime-progress.json')
+if observation.exists():
+    observed = json.loads(observation.read_text())
+    stages = json.loads((evidence / 'finite-stage-receipt.json').read_text())
+    pids = sorted({observed['hostPid'], *[row['processId'] for row in stages['events'] if 'processId' in row]})
+else:
+    # Explicit setup failure, before the Host subprocess is launched.
+    setup = json.loads((evidence / 'setup-failure.json').read_text())
+    assert setup['hostLaunched'] is False and setup['failedStage'] == 'public-dsh-install'
+    pids = []
 for pid in pids:
     assert isinstance(pid, int) and pid > 0
     checked = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'pid='], capture_output=True, text=True)
@@ -23,7 +30,7 @@ with tarfile.open(evidence / 'public-fixture-inputs.tar.gz', 'w:gz') as archive:
                      'native-profile/games/localfixture/game.conf',
                      'host-home/profiles/localcomponent/package.json',
                      'host-home/profiles/localcomponent/cordis.patch.yml']:
-        archive.add(root / relative, arcname=relative)
+        if (root / relative).is_file(): archive.add(root / relative, arcname=relative)
 scripts = pathlib.Path(__file__).resolve().parent
 shutil.copytree(scripts, evidence / 'scripts', dirs_exist_ok=True,
                 ignore=shutil.ignore_patterns('__pycache__'))

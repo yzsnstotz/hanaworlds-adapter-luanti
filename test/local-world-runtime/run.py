@@ -33,7 +33,7 @@ r=subprocess.run([str(engine),'--world',str(world),'--config',str(config),'--mig
 home=root/'host-home';hostprofile=home/'profiles/localcomponent';hostprofile.mkdir(parents=True)
 (hostprofile/'package.json').write_text(json.dumps({'name':'adapter-local-component-fixture','private':True,'dsh':{'profile':{'bundles':['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app']}}}))
 cli=component/'hanaworlds-dsh/node_modules/@deepseek-ai/dsh/lib/bin.js'
-pnpm=shutil.which('pnpm');assert pnpm,'Fixture setup requires pnpm'
+pnpm=pathlib.Path(os.environ['HW_FIXTURE_PNPM']);assert pnpm.is_file(),'Fixture setup requires its own pinned pnpm'
 installenv={'HOME':str(home),'DSH_HOME':str(home),'PATH':str(node.parent)+':'+str(pathlib.Path(pnpm).parent)+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin','npm_config_cache':str(root/'npm-cache'),'PNPM_HOME':str(root/'pnpm-home')}
 package=pathlib.Path(os.environ['HW_ADAPTER_PACKAGE']).resolve();assert package.is_file()
 version=json.loads((repo/'package.json').read_text())['version']
