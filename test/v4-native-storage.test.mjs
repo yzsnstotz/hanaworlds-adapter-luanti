@@ -19,7 +19,7 @@ const image = { worldRef: 'luanti:one', worldRevision: 'r1', coveredPositions: [
   records: [{ position: [0, 0, 0], nodeName: 'air', param1: 0, param2: 0, metadata: {},
     inventory: {}, timer: null }], stateProfile: { profileVersion: 'state-profile/v2' } };
 
-test('stable per-world journal under DSH_HOME/data survives restart and plugin reinstall', async () => {
+test('stable per-world journal under DSH_HOME/data survives a current Adapter restart', async () => {
   const home = await freshHome();
   const env = { DSH_HOME: home };
   const first = await nativeJournalDirectory(homeOf(home), 'luanti:one', env);
@@ -29,7 +29,7 @@ test('stable per-world journal under DSH_HOME/data survives restart and plugin r
   await journal.prepare({ transactionId: 'tx-1', operationDigest: 'a'.repeat(64),
     transactionPayloadDigest: 'b'.repeat(64), beforeImageDigest: 'c'.repeat(64), beforeImage: image,
     beforeStateReadbackDigest: 'd'.repeat(64) });
-  // Restart / remove-reinstall of the plugin package: DSH_HOME/data is untouched,
+  // Restart of the current Adapter: DSH_HOME/data is untouched,
   // the same world resolves to the same directory and its records.
   const again = await nativeJournalDirectory(homeOf(home), 'luanti:one', env);
   assert.equal(again, first);

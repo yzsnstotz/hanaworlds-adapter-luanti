@@ -14,14 +14,12 @@ import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const installed = process.env.HW_INSTALLED_PLUGIN_DIR;
-const previous = process.env.HW_PREVIOUS_PLUGIN_DIR; // admitted 0.1.1 package
 const runtimeRoot = process.env.HW_RUNTIME_ROOT;
 const worldEditDirectory = process.env.HW_WORLDEDIT_DIR;
 const withClient = process.env.HW_REAL_CLIENT === '1';
-if (!installed || !previous || !runtimeRoot || !worldEditDirectory)
-  throw new Error('HW_INSTALLED_PLUGIN_DIR, HW_PREVIOUS_PLUGIN_DIR, HW_RUNTIME_ROOT, HW_WORLDEDIT_DIR required');
+if (!installed || !runtimeRoot || !worldEditDirectory)
+  throw new Error('HW_INSTALLED_PLUGIN_DIR, HW_RUNTIME_ROOT, HW_WORLDEDIT_DIR required');
 const v2 = await import(pathToFileURL(join(installed, 'src/index.mjs')).href);
-const v1 = await import(pathToFileURL(join(previous, 'src/index.mjs')).href);
 // The installed package's own contracts dependency (npm nests it; pnpm hoists it beside the package).
 const contractsDir = [join(installed, 'vendor/hanaworlds-contracts'),
   join(installed, 'node_modules/hanaworlds-contracts'),
@@ -174,7 +172,7 @@ async function adapterFor(courier, worldRef, journalDir) {
     },
     verifyService: async () => true, capacity: { check: async () => ({ allowed: true }) },
     catalogue: { read: async () => catalogue },
-    executionRevision: `hanaworlds-adapter-luanti@0.2.5+payload.${await v2.payloadDigest()}` });
+    executionRevision: `hanaworlds-adapter-luanti@0.2.6+payload.${await v2.payloadDigest()}` });
   return new v2.WorldAdapterV4({ authority: {
     verify: async request => ({ current: true, sessionRef: request.sessionRef,
       authorizationRef: request.authorizationRef, worldRef, domainOwner: 'hanaworlds-canvas' }),
@@ -219,22 +217,9 @@ const publicOnly = value => {
 
 let courier, preparedDigest;
 try {
-  // 1. Admitted 0.1.1 payload, provisioned and loaded by the 0.1.1 package.
-  const old = await v1.apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority })
-    .provisionLocal(world, transportPort);
-  courier = await v1.LocalEngineTransport.open(world, { serviceName: 'operator' });
-  await start('v011', 'HanaWorlds region probe ready; payload=true; region=false');
-  const oldLoaded = await courier.handshake();
-  assert.equal(oldLoaded.payloadDigest, old.payloadDigest);
-  note('v011-loaded', { worldRef: old.worldRef, payloadVersion: oldLoaded.payloadVersion,
-    loadedDigest: oldLoaded.payloadDigest, manifestDigest: old.payloadDigest });
-  await stopAll(); await courier.close();
-
-  // 2. Upgrade to 0.2.5 with the same world identity and pairing.
+  // Fresh current payload; current transactions and restart use this identity.
   const service = v2.apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
-  const up = await service.provisionLocal(world, null);
-  assert.equal(up.worldRef, old.worldRef);
-  assert.equal(up.payloadVersion, '0.2.5');
+  const up = await service.provisionLocal(world, transportPort);
   courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
   const upLog = await start('v020', 'HanaWorlds region probe ready; payload=true; region=true');
   await waitFor(upLog, 'HanaWorlds local courier paired on loopback', server);
@@ -328,45 +313,6 @@ try {
   }
   await stopAll(); await courier.close(); courier = null;
 
-  // 7. Rollback to the admitted 0.1.1 payload, then re-upgrade.
-  const rolled = await service.rollbackLocal(world, '0.1.1');
-  assert.equal(rolled.payloadDigest, old.payloadDigest);
-  courier = await v1.LocalEngineTransport.open(world, { serviceName: 'operator' });
-  await start('rolled-back', 'HanaWorlds region probe ready; payload=true; region=false');
-  const rolledLoaded = await courier.handshake();
-  assert.equal(rolledLoaded.payloadDigest, old.payloadDigest);
-  assert.equal(rolledLoaded.worldRef, old.worldRef);
-  note('rollback-0.1.1', { loadedDigest: rolledLoaded.payloadDigest, worldRef: rolledLoaded.worldRef,
-    retainedPayload: rolled.retainedPayload, engineStateRetained: (await stat(stateFile)).size > 0 });
-  await stopAll(); await courier.close();
-  const reup = await service.provisionLocal(world, null);
-  assert.equal(reup.worldRef, old.worldRef);
-  courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
-  await start('re-upgraded', 'HanaWorlds region probe ready; payload=true; region=true');
-  assert.equal((await courier.handshake()).payloadDigest, installedDigest);
-  note('re-upgrade-0.2.5', { worldRef: reup.worldRef });
-  await stopAll(); await courier.close(); courier = null;
-
-  // 8. Uninstall and reinstall the payload.
-  const before = (await readdir(join(world, 'worldmods'))).sort();
-  await rm(worldmod, { recursive: true });
-  await start('uninstalled', 'HanaWorlds region probe ready; payload=false');
-  await stopAll();
-  // Saved payloads (0.1.1 backup, retained 0.2.5) still carry the old identity:
-  // reinstall refuses until the operator chooses restore or a fresh identity.
-  const refused = await service.provisionLocal(world, transportPort).then(() => null, e => e);
-  assert.equal(refused?.message, 'RECOVERY_PENDING');
-  assert.ok(refused.directories.length >= 1);
-  const fresh = await service.provisionLocal(world, transportPort, { freshIdentity: true });
-  courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
-  await start('reinstalled', 'HanaWorlds region probe ready; payload=true; region=true');
-  const reinstalled = await courier.handshake();
-  assert.equal(reinstalled.payloadDigest, installedDigest);
-  note('uninstall-reinstall', { worldmodsBefore: before, refusedWithoutChoice: refused.message,
-    refusedDirectories: refused.directories, newWorldRef: fresh.worldRef,
-    loadedDigest: reinstalled.payloadDigest, engineStateRetained: (await stat(stateFile)).size > 0,
-    journalRetained: (await readdir(journalDir)).length });
-  await stopAll();
   await service.close();
   console.log(JSON.stringify({ scenario: 'real-region-lifecycle', realLuanti: '5.17.0',
     realConnectedPlayer: withClient, diagnosticAuthority: true, diagnosticPickRecord: true,

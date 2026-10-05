@@ -27,3 +27,9 @@ original history returns `UNKNOWN`; a replaced or mismatched original returns
 return `REVOKED`. Only an exact live match returns `CURRENT`. The consuming
 Host must recheck its Session binding before a write. The Adapter never
 decides a Canvas transaction.
+
+## Fresh local provisioning (0.2.6)
+
+The public `hanaworldsLuantiLocalWorlds` service discovers missing worlds, obtains native administrator proof through the public Host, and installs the current payload only inside its finite stopped-world callback. Installation creates a new world identity and courier pairing. Existing payload locations are rejected; upgrade, backup/restore, rollback and identity-preserving reinstall implementations and their version-specific tests have been removed under CONTRACT 4.0.0. Current running identity, authorization/revocation, automatic mode, protection and transaction recovery remain available.
+
+The component self-test uses only ENGINE-CURRENT `stop-fixed-component` (99a8973) and a fresh world/profile. See `test/local-world-runtime/README.md` for the public loader/registry/native chain and cleanup procedure. Old diagnostic and failure inputs remain protected evidence; an implementation observation never signs the independent Adapter gate or product acceptance.

@@ -147,10 +147,9 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       return track(async () => observations(row, await inspectRow(row)));
     },
     async provision(input) {
-      const { row, q } = query(input, ['transportPort', 'freshIdentity']);
+      const { row, q } = query(input, ['transportPort']);
       if (row.action !== 'PROVISION_PAYLOAD' || row.paired) return Promise.reject(new Error('CONNECTION_UNAUTHORIZED'));
-      if ((q.transportPort !== undefined && (!Number.isSafeInteger(q.transportPort) || q.transportPort < 1 || q.transportPort > 65535)) ||
-          (q.freshIdentity !== undefined && typeof q.freshIdentity !== 'boolean')) return Promise.reject(new Error('SCHEMA_INVALID'));
+      if (q.transportPort !== undefined && (!Number.isSafeInteger(q.transportPort) || q.transportPort < 1 || q.transportPort > 65535)) return Promise.reject(new Error('SCHEMA_INVALID'));
       leases.delete(row.leaseRef); // synchronous one-shot reservation before any await
       return track(async () => {
         let phase = 'CURRENT';
@@ -165,7 +164,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
             phase = 'WORLD_IDENTITY';
             if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
             phase = 'INSTALL';
-            const transportPort = q.transportPort ?? (row.world.worldRef ? null : await freePort());
+            const transportPort = q.transportPort ?? await freePort();
             let verified = false;
             // Private one-shot bridge into existing installer. Never returned or persisted.
             const operatorAuthority = { verify: async request => {
@@ -174,12 +173,11 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
               verified = true;
               return { current: true, worldStopped: true, worldPath: row.world.worldPath, action: row.action };
             } };
-            return provisionLocalPayload(row.world.worldPath, { operatorAuthority, transportPort,
-              freshIdentity: q.freshIdentity === true });
+            return provisionLocalPayload(row.world.worldPath, { operatorAuthority, transportPort });
           });
         } catch (error) {
           log('warn', `LOCAL_PROVISION_${phase}_REJECTED`);
-          if (callbackUsed && ['RECOVERY_PENDING', 'PAYLOAD_VERSION_MISMATCH', 'WORLD_NOT_FOUND'].includes(error?.message)) throw error;
+          if (callbackUsed && ['PAYLOAD_VERSION_MISMATCH', 'WORLD_NOT_FOUND'].includes(error?.message)) throw error;
           deny();
         } finally { callbackActive = false; forget(row); }
       });

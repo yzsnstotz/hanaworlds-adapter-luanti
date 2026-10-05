@@ -76,7 +76,7 @@ test('host grant evidence lists only native current local grants and rejects old
       commands.push(command.operation);
       let result;
       let error = null;
-      if (command.operation === 'handshake') result = { payloadVersion: '0.2.5',
+      if (command.operation === 'handshake') result = { payloadVersion: '0.2.6',
         worldRef: manifest.worldRef, loadedSourceDigest: digest, manifestDigest: digest,
         payloadMatches: true, worldeditAvailable: true };
       else if (command.operation === 'list_grants') result = { grants: permitted && grantRef ? [

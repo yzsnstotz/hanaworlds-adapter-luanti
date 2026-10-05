@@ -35,17 +35,18 @@ home=root/'host-home';hostprofile=home/'profiles/localcomponent';hostprofile.mkd
 cli=component/'hanaworlds-dsh/node_modules/@deepseek-ai/dsh/lib/bin.js'
 pnpm=shutil.which('pnpm');assert pnpm,'Fixture setup requires pnpm'
 installenv={'HOME':str(home),'DSH_HOME':str(home),'PATH':str(node.parent)+':'+str(pathlib.Path(pnpm).parent)+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin','npm_config_cache':str(root/'npm-cache'),'PNPM_HOME':str(root/'pnpm-home')}
-package=run/'hanaworlds-adapter-luanti-0.2.5.tgz'
+package=pathlib.Path(os.environ['HW_ADAPTER_PACKAGE']).resolve();assert package.is_file()
+version=json.loads((repo/'package.json').read_text())['version']
 r=subprocess.run([str(node),str(cli),'plugin','--profile','localcomponent','add',str(package),'--store-dir',str(root/'pnpm-store')],env=installenv,text=True,capture_output=True,timeout=120)
 (evidence/'public-dsh-install.log').write_text(r.stdout+r.stderr);assert r.returncode==0,'Public DSH package install failed'
 installed=json.loads((hostprofile/'package.json').read_text());assert 'hanaworlds-adapter-luanti' in installed['dependencies']
 # Normal public profile overlay; base/web bundles resolve from installation anchor.
 (hostprofile/'cordis.patch.yml').write_text('- id: hanaworlds-luanti-adapter\n  config:\n    serviceName: hanaworlds-host\n- insert:\n    - id: local-component-consumer\n      name: '+json.dumps(str(repo/'test/local-world-runtime/consumer.mjs'))+'\n')
 s=socket.socket();s.bind(('127.0.0.1',0));hostport=s.getsockname()[1];s.close()
-runtimeenv={'HW_COMPONENT_ROOT':str(component),'HW_LOCAL_RUN':str(run),'HW_LOCAL_EVIDENCE':str(evidence),'HW_NATIVE_CLIENT':os.environ.get('HW_NATIVE_CLIENT',str(run/'_evidence/native-game-client'))}
+runtimeenv={'HW_COMPONENT_ROOT':str(component),'HW_LOCAL_RUN':str(run),'HW_LOCAL_EVIDENCE':str(evidence),'HW_ADAPTER_PACKAGE':str(package),'HW_NATIVE_CLIENT':os.environ.get('HW_NATIVE_CLIENT',str(run/'_evidence/native-game-client'))}
 mode=os.environ.get('HW_LOCAL_DIAGNOSTIC','')
-hostscript=repo/'test/local-world-runtime'/('handoff-stop-boundary.mjs' if mode=='handoff-stop-boundary' else 'stop-boundary.mjs' if mode in ['stop-boundary','native-stop-boundary'] else 'full-host.mjs')
-r=subprocess.run([str(node),str(hostscript)],env=runtimeenv,input=json.dumps({'worldPath':str(world),'worldsRoot':str(worlds),'userPath':str(profile),'home':str(home),'profile':str(hostprofile),'hostPort':hostport,'passwords':passwords,'diagnostic':os.environ.get('HW_LOCAL_DIAGNOSTIC','')}),capture_output=True,text=True,timeout=150)
+hostscript=repo/'test/local-world-runtime'/('handoff-stop-boundary.mjs' if mode=='handoff-stop-boundary' else 'full-host.mjs')
+r=subprocess.run([str(node),str(hostscript)],env=runtimeenv,input=json.dumps({'worldPath':str(world),'worldsRoot':str(worlds),'userPath':str(profile),'home':str(home),'profile':str(hostprofile),'hostPort':hostport,'passwords':passwords,'packageVersion':version,'diagnostic':os.environ.get('HW_LOCAL_DIAGNOSTIC','')}),capture_output=True,text=True,timeout=150)
 (evidence/'self-test-stdout.log').write_text(r.stdout);(evidence/'self-test-stderr.log').write_text(r.stderr)
 print(r.stdout,end='');print(r.stderr,end='',file=__import__('sys').stderr)
 assert r.returncode==0,'Packed public local-world self-test failed'

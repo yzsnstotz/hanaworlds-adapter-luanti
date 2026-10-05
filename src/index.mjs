@@ -1,5 +1,4 @@
-export { discoverLocalWorlds, payloadDigest, provisionLocalPayload, restoreLocalPayload,
-  rollbackLocalPayload }
+export { discoverLocalWorlds, payloadDigest, provisionLocalPayload }
   from './local-worlds.mjs';
 export { DurableJournal } from './journal.mjs';
 export { EngineBridge } from './bridge.mjs';
@@ -20,7 +19,7 @@ export { nativeJournalDirectory } from './native-storage.mjs';
 import { placementInvariants } from '#contracts/v4';
 import { createLuantiOperations } from './v2-operations.mjs';
 import { WorldAdapterV4, WorldAdapterV5 } from './v4-port.mjs';
-import { payloadDigest, provisionLocalPayload, restoreLocalPayload, rollbackLocalPayload }
+import { payloadDigest, provisionLocalPayload }
   from './local-worlds.mjs';
 import { DurableJournal } from './journal.mjs';
 import { V4TransactionBackend } from './v4-transactions.mjs';
@@ -190,18 +189,9 @@ export function apply(ctx, config = {}) {
   const service = {
     worldAdapter,
     worldAdapterV5,
-    async provisionLocal(worldPath, transportPort, { freshIdentity = false } = {}) {
+    async provisionLocal(worldPath, transportPort) {
       return provisionLocalPayload(worldPath, {
-        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort,
-        freshIdentity });
-    },
-    async restoreLocal(worldPath, directory) {
-      return restoreLocalPayload(worldPath, {
-        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), directory });
-    },
-    async rollbackLocal(worldPath, toVersion) {
-      return rollbackLocalPayload(worldPath, {
-        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), toVersion });
+        operatorAuthority: optionalHostService(ctx, 'hanaworldsOperatorAuthority'), transportPort });
     },
     async presentFrame({ worldRef, engineActorName, frame, authorizationRef }) {
       // Resolved now, not at start; called as a method of the current facade.

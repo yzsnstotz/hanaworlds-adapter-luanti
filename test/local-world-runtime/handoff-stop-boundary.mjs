@@ -33,7 +33,7 @@ try {
  receipt.outcome=provision.ok?'STOP_ACCEPTED_THIS_OBSERVATION':'PUBLIC_PROVISION_REJECTED';
  if(provision.ok){assert.throws(()=>execFileSync('/bin/ps',['-p',String(installingProcessId),'-o','pid='],{encoding:'utf8'}));record({after:await good('discover'),installingChildAbsent:true});}
  receipt.notRun=['pairing','current game grants','automatic enable/disable','offline/revocation chain','same-version reinstall','old-version upgrade','formal App/UI/clean machine'];
- receipt.packageSha256=createHash('sha256').update(readFileSync(join(run,'hanaworlds-adapter-luanti-0.2.5.tgz'))).digest('hex');
+ receipt.packageSha256=createHash('sha256').update(readFileSync(process.env.HW_ADAPTER_PACKAGE)).digest('hex');
  writeFileSync(join(evidence,'public-runtime-observation.json'),JSON.stringify(receipt,null,2));
  console.log(JSON.stringify({outcome:receipt.outcome,hostPid:child.pid,installingProcessId,packageSha256:receipt.packageSha256}));
 } finally {

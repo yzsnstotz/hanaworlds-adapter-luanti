@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { chmod, cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -21,7 +21,6 @@ const profile = join(root, 'profile');
 const world = join(profile, 'worlds', 'world');
 const game = join(profile, 'games', 'hw_minimal');
 const worldmod = join(world, 'worldmods', 'hanaworlds_adapter');
-const savedWorldmod = join(root, 'prior-worldmod-snapshot');
 const journalDir = join(root, 'journal');
 const luanti = '/Applications/luanti.app/Contents/MacOS/luanti';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -195,39 +194,10 @@ try {
 
   const originalJournalDigest = await journalDigest();
   const originalManifestDigest = await shaFile(join(worldmod, 'payload.json'));
-  await cp(worldmod, savedWorldmod, { recursive: true });
   const restartLog = await start('restart', true);
   assert.equal((await courier.handshake()).worldRef, first.worldRef);
-  await stop();
   assert.match(await readFile(restartLog, 'utf8'), /payload identity matched/);
 
-  await courier.close();
-  courier = null;
-  await rm(worldmod, { recursive: true });
-  const absentLog = await start('absent', false);
-  await stop();
-  assert.match(await readFile(absentLog, 'utf8'), /lifecycle probe ready; payload=false/);
-  assert.equal(await journalDigest(), originalJournalDigest);
-
-  const second = await service.provisionLocal(world, transportPort);
-  assert.notEqual(second.worldRef, first.worldRef);
-  assert.equal(second.payloadDigest, sourcePayloadDigest);
-  courier = await LocalEngineTransport.open(world, { serviceName: 'operator' });
-  const reinstalledLog = await start('reinstalled', true);
-  assert.equal((await courier.handshake()).worldRef, second.worldRef);
-  await stop();
-  assert.match(await readFile(reinstalledLog, 'utf8'), /payload identity matched/);
-  await courier.close();
-  courier = null;
-
-  await rm(worldmod, { recursive: true });
-  await rename(savedWorldmod, worldmod);
-  await chmod(join(worldmod, 'transport.json'), 0o600);
-  courier = await LocalEngineTransport.open(world, { serviceName: 'operator' });
-  const rollbackLog = await start('prior-snapshot-restored', true);
-  const restoredLoaded = await courier.handshake();
-  assert.equal(restoredLoaded.worldRef, first.worldRef);
-  assert.equal(restoredLoaded.payloadDigest, sourcePayloadDigest);
   const reopened = await DurableJournal.open(journalDir);
   assert.equal(reopened.query(request.transactionId).status, 'ROLLED_BACK');
   assert.equal(await journalDigest(), originalJournalDigest);
@@ -238,12 +208,11 @@ try {
   assert.deepEqual(retained.records[0].inventory.main,
     ['hw_lifecycle_probe:stone']);
   assert.equal(retained.records[0].timer.timeout, 120);
+
   await stop();
-  assert.match(await readFile(rollbackLog, 'utf8'), /payload identity matched/);
   console.log(JSON.stringify({ scenario: 'installed-payload-lifecycle', realLuanti: true,
     diagnosticAuthority: true, currentPlayerBinding: false, sourcePayloadDigest,
-    firstWorldRef: first.worldRef, reinstalledWorldRef: second.worldRef,
-    restoredWorldRef: restoredLoaded.worldRef, originalJournalDigest,
+    worldRef: first.worldRef, originalJournalDigest,
     journalStatus: reopened.query(request.transactionId).status,
     historyJournalStatus: reopened.query(historyId).status,
     retainedObjectNode: retained.records[0].nodeName,

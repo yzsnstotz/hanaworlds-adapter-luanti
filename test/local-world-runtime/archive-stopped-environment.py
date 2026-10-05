@@ -9,7 +9,7 @@ assert evidence.is_relative_to(run / '_evidence')
 root = run / 'self-test-environment'
 assert root.is_dir() and not root.is_symlink() and root.resolve() == root
 before = root.stat()
-observed = json.loads((evidence / 'public-runtime-observation.json').read_text())
+observed = json.loads((evidence / ('public-runtime-observation.json' if (evidence / 'public-runtime-observation.json').exists() else 'public-runtime-progress.json')).read_text())
 stages = json.loads((evidence / 'finite-stage-receipt.json').read_text())
 pids = sorted({observed['hostPid'], *[row['processId'] for row in stages['events'] if 'processId' in row]})
 for pid in pids:

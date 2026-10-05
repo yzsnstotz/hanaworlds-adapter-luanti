@@ -9,73 +9,68 @@ const evidence=process.env.HW_LOCAL_EVIDENCE||join(run,'_evidence'),runtime=join
 const child=spawn(join(root,'runtime/hanaworlds-runtime/node/bin/node'),['--expose-internals',join(runtime,'node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js'),runtime,input.profile],{cwd:input.profile,env:{HOME:input.home,DSH_HOME:input.home,PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HANAWORLDS_HOST_PORT:String(input.hostPort),DSH_TELEMETRY_MODE:'DISABLED',DSH_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe','ipc']});
 let output='';const capture=b=>{output+=String(b).replace(/([?&]token=)[^\s"<>]+/g,'$1[REDACTED]');};child.stdout.on('data',capture);child.stderr.on('data',capture);
 const receipt={level:'REAL_RUNTIME packed Adapter/public DSH registry/native Host/Luanti; account/game/profile/selection/native protocol client FIXTURE',hostPid:child.pid,steps:[]};
+// One fresh-world replay of VERIFY1624fb645's public pre-install sequence.
+// The new Host emits its own finite diagnostics; no method observer or mock here.
+let installingProcessId;
 try {
  const ready=await new Promise((yes,no)=>{const t=setTimeout(()=>no(Error('HOST_READY_TIMEOUT')),25000);child.on('message',m=>{if(m.type==='ready'){clearTimeout(t);yes(m);}else if(m.type==='fatal'){clearTimeout(t);no(Error('HOST_FATAL'));}});child.once('exit',()=>{clearTimeout(t);no(Error('HOST_EARLY_EXIT'));});});
  const login=await fetch(ready.url,{redirect:'manual'}),cookie=login.headers.get('set-cookie').split(';')[0];
  const call=async(method,input)=>{const response=await fetch(new URL('/component-local-world',ready.url),{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({method,input})});assert.equal(response.status,200);return response.json();};
  const good=async(method,input)=>{const result=await call(method,input);assert.equal(result.ok,true,`${method}: ${result.code}`);return result.result;};
- const denied=async(method,input)=>{const result=await call(method,input);assert.equal(result.ok,false,`${method} must deny`);return result.code;};
- if(input.diagnostic==='native-direct') {
-   receipt.level='REAL_RUNTIME delivered public native Host and official Luanti; account/game/profile/selection consumer FIXTURE; Adapter loaded but no Adapter or game-grant operation';
-   const observed=await good('nativeInspectSequence',{worldPath:input.worldPath,userPath:input.userPath,
-     requesterRef:'fixture-direct-host-requester',operationRef:'fixture-direct-current-sequence',
-     username:'NativeAdmin',password:input.passwords.NativeAdmin});
-   receipt.steps.push({directPublicNative:observed});
- } else {
+ const denied=async(method,input,code='CONNECTION_UNAUTHORIZED')=>{const result=await call(method,input);assert.equal(result.ok,false);assert.equal(result.code,code);return result.code;};
+ const record=step=>{receipt.steps.push(step);writeFileSync(join(evidence,'public-runtime-progress.json'),JSON.stringify(receipt,null,2));};
+ receipt.level='REAL_RUNTIME packed current Adapter/public Host/Luanti/SRP/stop/install/pair/grants; account/game/profile/selection/native client FIXTURE; no independent gate or product UI';
+ receipt.originalSequence='VERIFY1624fb645 final first-install public sequence; same-version/old-data neighbors WITHDRAWN';
  await good('setRoots',{roots:[input.worldsRoot]});
- const [missing]=await good('discover');assert.equal(missing.worldPath,input.worldPath);assert.equal(missing.payloadStatus,'MISSING');assert.equal(missing.worldRef,null);receipt.steps.push({missing});
- const request={connectionRef:missing.connectionRef,requesterRef:'fixture-trusted-host-selection',userPath:input.userPath,username:'NativeAdmin',password:input.passwords.NativeAdmin,action:'PROVISION_PAYLOAD'};
- const leaseQuery=lease=>({leaseRef:lease.leaseRef,requesterRef:request.requesterRef,connectionRef:request.connectionRef});
- receipt.steps.push({unknown:await denied('acquire',{...request,connectionRef:'local:unknown'}),unpaired:await denied('acquire',{...request,action:'BIND_RUNNING_WORLD'}),wrongPassword:await denied('acquire',{...request,password:'fixture-intentionally-invalid-password'}),nonAdmin:await denied('acquire',{...request,username:'NativeUser',password:input.passwords.NativeUser})});
- const provisionLease=await good('acquire',request);assert.equal(provisionLease.action,'PROVISION_PAYLOAD');
- receipt.steps.push({provisionLease,wrongRequester:await denied('provision',{...leaseQuery(provisionLease),requesterRef:'wrong'}),wrongWorld:await denied('provision',{...leaseQuery(provisionLease),connectionRef:'local:wrong'}),forged:await denied('provision',{...leaseQuery(provisionLease),leaseRef:'forged'})});
- const installed=await good('provision',leaseQuery(provisionLease));
- assert.throws(()=>execFileSync('/bin/ps',['-p',String(provisionLease.nativeProcessId),'-o','pid='],{encoding:'utf8'}));
- const expired=await denied('provision',leaseQuery(provisionLease));
- const [world]=await good('discover');assert.ok(world.worldRef);assert.equal(world.payloadVersion,'0.2.5');assert.notEqual(world.payloadStatus,'MISSING');receipt.steps.push({installed,world,installingEngineExited:true,expired});
- const binding=await good('acquire',{...request,action:'BIND_RUNNING_WORLD'}),query=leaseQuery(binding);
- const paired=await good('pair',query);assert.equal(paired.paired,true);assert.equal(paired.worldRef,world.worldRef);
- if(input.diagnostic==='operator-current') {
-   receipt.diagnostic='paired native-current inspect only; readCurrentGrants NOT_RUN';
-   // Different boundary diagnostic: inspect only, never readCurrentGrants.
-   // Stop at the first failed native-current observation; no replay of a failed read.
-   const observations=[];
-   for(let check=1;check<=8;check++) {
-     const observed=await call('inspect',query);
-     observations.push({check,...observed});
-     if(!observed.ok)break;
-   }
-   receipt.steps.push({paired,operatorCurrentOnly:observations,gameGrantReadAttempted:false});
- } else {
- receipt.steps.push({paired,wrongRead:await denied('readCurrentGrants',{...query,connectionRef:'local:other'})});
- const initial=await good('readCurrentGrants',query);assert.deepEqual(initial.grants,[]);receipt.steps.push({nativeAdminDoesNotGrantBuild:initial});
+ const rows=await good('discover');assert.equal(rows.length,1);
+ const missing=rows[0];assert.equal(missing.worldPath,input.worldPath);assert.equal(missing.payloadStatus,'MISSING');assert.equal(missing.worldRef,null);record({missing});
+ const req={connectionRef:missing.connectionRef,requesterRef:'independent-host-selected-requester',userPath:input.userPath,username:'NativeAdmin',password:input.passwords.NativeAdmin,action:'PROVISION_PAYLOAD'};
+ const query=lease=>({leaseRef:lease.leaseRef,requesterRef:req.requesterRef,connectionRef:req.connectionRef});
+ record({denialsBeforeInstall:{unknown:await denied('acquire',{...req,connectionRef:'local:unknown'},'CONNECTION_NOT_FOUND'),unpaired:await denied('acquire',{...req,action:'BIND_RUNNING_WORLD'},'WORLD_NOT_BOUND'),wrongPassword:await denied('acquire',{...req,password:'intentional-invalid-test-password'}),ordinaryPlayer:await denied('acquire',{...req,username:'NativeUser',password:input.passwords.NativeUser}),unsupportedAction:await denied('acquire',{...req,action:'WRITE_WORLD'},'SCHEMA_INVALID'),selfReported:await denied('acquire',{...req,current:true},'SCHEMA_INVALID'),noProof:await denied('provision',query({leaseRef:'not-issued'}))}});
+ const install=await good('acquire',req);assert.equal(install.action,'PROVISION_PAYLOAD');assert.equal(install.worldRef,null);installingProcessId=install.nativeProcessId;
+ record({installLease:install,denials:{wrongRequester:await denied('provision',{...query(install),requesterRef:'other-requester'}),wrongConnection:await denied('provision',{...query(install),connectionRef:'local:other'}),wrongOperation:await denied('pair',query(install)),suppliedStopped:await denied('provision',{...query(install),operator:{current:true,worldStopped:true}},'SCHEMA_INVALID')}});
+ const installed=await good('provision',query(install));
+ assert.throws(()=>execFileSync('/bin/ps',['-p',String(installingProcessId),'-o','pid='],{encoding:'utf8'}));
+ const [world]=await good('discover');assert.ok(world.worldRef);assert.equal(world.payloadVersion,input.packageVersion);
+ assert.equal(installed.worldRef,world.worldRef);assert.equal(installed.payloadDigest,world.payloadDigest);
+ record({installed,world,installingChildAbsent:true,consumedLease:await denied('provision',query(install))});
+ const binding=await good('acquire',{...req,action:'BIND_RUNNING_WORLD'}),runningQuery=query(binding);
+ const paired=await good('pair',runningQuery);assert.equal(paired.paired,true);assert.equal(paired.worldRef,world.worldRef);
+ assert.equal(paired.payloadDigest,world.payloadDigest);
+ record({runningLease:binding,paired,duplicatePair:await denied('pair',runningQuery),wrongRead:await denied('readCurrentGrants',{...runningQuery,connectionRef:'local:other'})});
+ const initial=await good('readCurrentGrants',runningQuery);assert.deepEqual(initial.grants,[]);
+ record({nativeAdminDoesNotGrantBuild:initial});
  const command=execFileSync('/bin/ps',['-p',String(binding.nativeProcessId),'-o','command='],{encoding:'utf8'}).trim();
  const configPath=command.match(/--config (.*?) --logfile/)[1],config=readFileSync(configPath,'utf8');
  assert.match(config,/secure.http_mods = hanaworlds_adapter/);assert.match(config,/secure.enable_security = true/);assert.match(config,/secure.trusted_mods =\s*\n/);assert.match(config,/name =\s*\n/);
  const sockets=execFileSync('/usr/sbin/lsof',['-nP','-a','-p',String(binding.nativeProcessId),'-iUDP','-Fpn'],{encoding:'utf8'}),port=Number(sockets.match(/n127\.0\.0\.1:(\d+)/)[1]);
  writeFileSync(join(evidence,'actual-engine-config.json'),JSON.stringify({engineCommand:command,config,port,world:input.worldPath},null,2));
  const native=(Command,Button='')=>JSON.parse(execFileSync(process.env.HW_NATIVE_CLIENT,[],{input:JSON.stringify({Port:port,Username:'NativeRevoker',Password:input.passwords.NativeRevoker,Command,Button}),encoding:'utf8',timeout:18000}));
- receipt.steps.push({enable:native('/hanaworlds_auto','hw_auto_enable')});
- const automatic=await good('readCurrentGrants',query);assert.ok(automatic.grants.length>0);assert.ok(automatic.grants.every(g=>g.worldRef===world.worldRef&&g.scope==='WORLD_BUILD_WITH_ENGINE_PROTECTION'));
- assert.ok(automatic.grants.every(g=>g.engineActorName==='NativeAdmin')); // Revoker's native client has disconnected.
- receipt.steps.push({automatic});
- receipt.steps.push({disable:native('/hanaworlds_auto','hw_auto_disable')});
- const afterDisable=await good('readCurrentGrants',query);assert.deepEqual(afterDisable.grants,[]);receipt.steps.push({afterDisable});
- receipt.steps.push({enableAgain:native('/hanaworlds_auto','hw_auto_enable')});
- const enabledAgain=await good('readCurrentGrants',query);assert.ok(enabledAgain.grants.length>0);
- receipt.steps.push({revokeBuild:native('/revoke NativeAdmin worldedit')});
- const revokedBuild=await good('readCurrentGrants',query);assert.deepEqual(revokedBuild.grants,[]);receipt.steps.push({revokedBuild});
- receipt.steps.push({revokeOperator:native('/revoke NativeAdmin server')});
- receipt.steps.push({operatorRevoked:await denied('inspect',query),currentReadDenied:await denied('readCurrentGrants',query),oldPairDenied:await denied('pair',query)});
- }
- }
- receipt.packageSha256=createHash('sha256').update(readFileSync(join(run,'hanaworlds-adapter-luanti-0.2.5.tgz'))).digest('hex');
- writeFileSync(join(evidence,'public-runtime-observation.json'),JSON.stringify(receipt,null,2)+'\n');console.log(JSON.stringify(receipt,null,2));
+ record({enable:native('/hanaworlds_auto','hw_auto_enable')});
+ const automatic=await good('readCurrentGrants',runningQuery);
+ assert.ok(automatic.grants.length>0);assert.ok(automatic.grants.every(g=>g.worldRef===world.worldRef&&g.scope==='WORLD_BUILD_WITH_ENGINE_PROTECTION'&&g.engineActorName==='NativeAdmin'));
+ record({automatic,offlineRevokerExcluded:true});
+ record({disable:native('/hanaworlds_auto','hw_auto_disable')});
+ const afterDisable=await good('readCurrentGrants',runningQuery);assert.deepEqual(afterDisable.grants,[]);record({afterDisable});
+ record({enableAgain:native('/hanaworlds_auto','hw_auto_enable')});
+ const enabledAgain=await good('readCurrentGrants',runningQuery);assert.ok(enabledAgain.grants.length>0);record({enabledAgain});
+ record({revokeBuild:native('/revoke NativeAdmin worldedit')});
+ const revokedBuild=await good('readCurrentGrants',runningQuery);assert.deepEqual(revokedBuild.grants,[]);record({revokedBuild});
+ record({revokeOperator:native('/revoke NativeAdmin server')});
+ record({operatorRevoked:await denied('inspect',runningQuery),currentReadDenied:await denied('readCurrentGrants',runningQuery),oldPairDenied:await denied('pair',runningQuery)});
+ receipt.outcome='CURRENT_PUBLIC_COMPONENT_CHAIN_COMPLETED';
+ receipt.notRun=['formal App/UI/clean machine','Canvas build/Undo product flow','independent Adapter gate','TO_TEST/ACCEPTED'];
+ receipt.packageSha256=createHash('sha256').update(readFileSync(process.env.HW_ADAPTER_PACKAGE)).digest('hex');
+ writeFileSync(join(evidence,'public-runtime-observation.json'),JSON.stringify(receipt,null,2));
+ console.log(JSON.stringify({outcome:receipt.outcome,hostPid:child.pid,installingProcessId,runningProcessId:binding.nativeProcessId,packageSha256:receipt.packageSha256}));
 } finally {
  writeFileSync(join(evidence,'public-runtime-progress.json'),JSON.stringify(receipt,null,2)+'\n');
  if(child.connected)child.send({type:'shutdown'},()=>{});
  if(child.exitCode===null&&child.signalCode===null){const t=setTimeout(()=>child.kill('SIGTERM'),10000);await once(child,'exit');clearTimeout(t);}
  writeFileSync(join(evidence,'public-host-output.log'),output);
+ const events=output.split('\n').filter(line=>line.startsWith('HANAWORLDS_NATIVE_CONTROL ')).map(line=>JSON.parse(line.slice('HANAWORLDS_NATIVE_CONTROL '.length)));
+ const installEvents=events.filter(event=>event.processId===installingProcessId);
+ writeFileSync(join(evidence,'finite-stage-receipt.json'),JSON.stringify({installingProcessId,expectedWorldKey:createHash('sha256').update(input.worldPath).digest('hex'),events,installEvents,stopRejections:installEvents.filter(event=>event.stage==='stop-rejected'),interpretation:'raw emitted facts only; no unobserved failure layer inferred'},null,2));
  writeFileSync(join(evidence,'host-shutdown.json'),JSON.stringify({pid:child.pid,exitCode:child.exitCode,signal:child.signalCode},null,2));
  assert.equal(child.signalCode,null);assert.equal(child.exitCode,0);
 }

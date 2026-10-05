@@ -84,7 +84,7 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
     hanaworldsRemoteTunnelFactory: { open: async () => ({
       async request(command) {
         if (command.operation === 'handshake') return { worldRef: profile.worldRef,
-          payloadVersion: '0.2.5', loadedSourceDigest: digest, manifestDigest: digest,
+          payloadVersion: '0.2.6', loadedSourceDigest: digest, manifestDigest: digest,
           payloadMatches: true, worldeditAvailable: true };
         if (command.operation === 'authorize') return { worldRef: profile.worldRef,
           current: true, engineActorName: command.actorName, worldeditAvailable: true,
