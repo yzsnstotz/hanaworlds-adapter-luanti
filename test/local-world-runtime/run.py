@@ -43,7 +43,7 @@ installed=json.loads((hostprofile/'package.json').read_text());assert 'hanaworld
 (hostprofile/'cordis.patch.yml').write_text('- id: hanaworlds-luanti-adapter\n  config:\n    serviceName: hanaworlds-host\n- insert:\n    - id: local-component-consumer\n      name: '+json.dumps(str(repo/'test/local-world-runtime/consumer.mjs'))+'\n')
 s=socket.socket();s.bind(('127.0.0.1',0));hostport=s.getsockname()[1];s.close()
 runtimeenv={'HW_COMPONENT_ROOT':str(component),'HW_LOCAL_RUN':str(run),'HW_LOCAL_EVIDENCE':str(evidence),'HW_NATIVE_CLIENT':os.environ.get('HW_NATIVE_CLIENT',str(run/'_evidence/native-game-client'))}
-hostscript=repo/'test/local-world-runtime'/('stop-boundary.mjs' if os.environ.get('HW_LOCAL_DIAGNOSTIC')=='stop-boundary' else 'full-host.mjs')
+hostscript=repo/'test/local-world-runtime'/('stop-boundary.mjs' if os.environ.get('HW_LOCAL_DIAGNOSTIC') in ['stop-boundary','native-stop-boundary'] else 'full-host.mjs')
 r=subprocess.run([str(node),str(hostscript)],env=runtimeenv,input=json.dumps({'worldPath':str(world),'worldsRoot':str(worlds),'userPath':str(profile),'home':str(home),'profile':str(hostprofile),'hostPort':hostport,'passwords':passwords,'diagnostic':os.environ.get('HW_LOCAL_DIAGNOSTIC','')}),capture_output=True,text=True,timeout=150)
 (evidence/'self-test-stdout.log').write_text(r.stdout);(evidence/'self-test-stderr.log').write_text(r.stderr)
 print(r.stdout,end='');print(r.stderr,end='',file=__import__('sys').stderr)

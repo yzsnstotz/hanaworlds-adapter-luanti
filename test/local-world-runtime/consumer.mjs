@@ -60,6 +60,21 @@ export function apply(ctx) {
           res.setHeader('content-type','application/json');
           res.end(JSON.stringify({ok:true,result:{checks,adapterOrGameReadAttempted:false}}));return;
         }
+        if(method==='nativeStopOnce') {
+          const native=ctx.get('hanaworldsNativeEngineControl'),lease=await native.acquire(input);
+          const query={controlRef:lease.controlRef,worldPath:lease.worldPath,requesterRef:input.requesterRef,operationRef:input.operationRef};
+          const before=[];
+          for(let check=1;check<=2;check++)before.push(await native.inspect({...query}));
+          let callbackEntered=false;
+          try {
+            const stopped=await native.withStoppedWorld({...query},async facts=>{callbackEntered=true;return {state:facts.state,processId:facts.processId,worldPath:facts.worldPath};});
+            res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:{before,callbackEntered,stopped,adapterInstallAttempted:false}}));
+          }catch(error){
+            // The transparent observer records only its finite public-code list.
+            res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:{before,callbackEntered,stopRejected:true,adapterInstallAttempted:false}}));
+          }
+          return;
+        }
         if(!['setRoots','discover','acquire','inspect','provision','pair','readCurrentGrants'].includes(method)||!service)throw Error('PUBLIC_SERVICE_MISSING');
         res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:await service[method](input)}));
       }catch(e){res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:false,code:['CONNECTION_UNAUTHORIZED','CONNECTION_NOT_FOUND','WORLD_NOT_BOUND','SCHEMA_INVALID'].includes(e?.message)?e.message:'PUBLIC_PORT_REJECTED'}));}

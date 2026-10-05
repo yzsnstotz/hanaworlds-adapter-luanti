@@ -23,7 +23,12 @@ try {
  const req={connectionRef:missing.connectionRef,requesterRef:'stop-boundary-selected-requester',userPath:input.userPath,username:'NativeAdmin',password:input.passwords.NativeAdmin,action:'PROVISION_PAYLOAD'};
  const query=lease=>({leaseRef:lease.leaseRef,requesterRef:req.requesterRef,connectionRef:req.connectionRef});
  record({before:{unknown:await denied('acquire',{...req,connectionRef:'local:unknown'}),unpaired:await denied('acquire',{...req,action:'BIND_RUNNING_WORLD'}),wrongPassword:await denied('acquire',{...req,password:'intentional-invalid-test-password'}),ordinaryPlayer:await denied('acquire',{...req,username:'NativeUser',password:input.passwords.NativeUser}),unsupportedAction:await denied('acquire',{...req,action:'WRITE_WORLD'}),selfReported:await denied('acquire',{...req,current:true}),noProof:await denied('provision',query({leaseRef:'not-issued'}))}});
- for(let attempt=1;attempt<=2;attempt++) {
+ if(input.diagnostic==='native-stop-boundary') {
+   for(let attempt=1;attempt<=2;attempt++) {
+     const direct=await good('nativeStopOnce',{requesterRef:req.requesterRef,operationRef:`direct-public-stop-${attempt}`,worldPath:input.worldPath,userPath:input.userPath,username:req.username,password:req.password});
+     record({directAttempt:attempt,direct});if(direct.stopRejected)break;
+   }
+ } else for(let attempt=1;attempt<=2;attempt++) {
    const lease=await good('acquire',req);record({attempt,lease});
    record({attempt,beforeStop:{wrongRequester:await denied('provision',{...query(lease),requesterRef:'other'}),wrongConnection:await denied('provision',{...query(lease),connectionRef:'local:other'}),wrongOperation:await denied('pair',query(lease)),suppliedStopped:await denied('provision',{...query(lease),operator:{current:true,worldStopped:true}})}});
    const provision=await call('provision',query(lease));record({attempt,provision});
