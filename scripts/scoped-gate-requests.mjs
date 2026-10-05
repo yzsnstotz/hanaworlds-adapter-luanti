@@ -136,5 +136,13 @@ export function gateRequests(run, port) {
     if (!response.ok) throw new Error(`GATE_STATUS_${response.status}`);
     return response.json();
   }
-  return { discover, read, prepare, buildPrepare, submitPrepare, apply, query, status };
+  async function issueFixtureOriginal(worldRef) {
+    return (await invoke('auth', 'IssueFixtureOriginal', { worldRef })).result;
+  }
+  async function verifyCurrentGrant(binding) {
+    return invoke('auth', 'VerifyCurrentGrant', {
+      contractVersion: 'session-authorization/v1', requestId: randomUUID(), binding });
+  }
+  return { discover, read, prepare, buildPrepare, submitPrepare, apply, query, status,
+    issueFixtureOriginal, verifyCurrentGrant };
 }

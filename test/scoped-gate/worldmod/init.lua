@@ -87,6 +87,14 @@ local function process()
         local ok, error = pcall(grant_action, player, action)
         respond(sequence, action, ok and 'OK' or 'ERROR')
         if not ok then minetest.log('error', 'Gate admin callback: ' .. tostring(error)) end
+      elseif action == 'drop_worldedit' or action == 'restore_worldedit' then
+        local privs = minetest.get_player_privs(actor)
+        privs.worldedit = action == 'restore_worldedit' or nil
+        minetest.set_player_privs(actor, privs)
+        respond(sequence, action, 'OK')
+      elseif action == 'kick' then
+        minetest.kick_player(actor, 'isolated gate offline check')
+        respond(sequence, action, 'OK')
       elseif action == 'outside' or action == 'inside' then
         local x = action == 'outside' and 9 or 5
         local before = minetest.get_node({x = x, y = 1, z = 0}).name

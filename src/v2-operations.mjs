@@ -306,22 +306,28 @@ export function createLuantiOperations({ roots = [], remoteProfiles = [], operat
       }
       return results;
     },
-    async verifyCurrentLocalGrant({ worldRef, engineActorName, expectedGrantRef } = {}) {
+    async inspectCurrentLocalGrant({ worldRef, engineActorName, expectedGrantRef } = {}) {
       if (typeof worldRef !== 'string' || !worldRef ||
           typeof engineActorName !== 'string' || !engineActorName ||
           typeof expectedGrantRef !== 'string' || !expectedGrantRef)
         fault('CONNECTION_UNAUTHORIZED');
       const matches = (await localGrantWorlds()).filter(world => world.worldRef === worldRef);
-      if (matches.length !== 1) return { current: false };
+      if (matches.length !== 1) return { status: 'UNKNOWN' };
       let proof;
       try { proof = await withLocalGrantEvidence(matches[0],
         transport => transport.verifyPrincipal(engineActorName)); }
       catch (error) {
-        if (error?.message === 'CONNECTION_UNAUTHORIZED') return { current: false };
+        if (error?.message === 'CONNECTION_UNAUTHORIZED') return { status: 'REVOKED' };
         throw error;
       }
-      return proof?.grantRef === expectedGrantRef
-        ? { connectionRef: matches[0].connectionRef, ...proof } : { current: false };
+      if (!proof) return { status: 'UNKNOWN' };
+      return proof.grantRef === expectedGrantRef
+        ? { status: 'CURRENT', proof: { connectionRef: matches[0].connectionRef, ...proof } }
+        : { status: 'REVOKED' };
+    },
+    async verifyCurrentLocalGrant(input = {}) {
+      const inspected = await grantEvidence.inspectCurrentLocalGrant(input);
+      return inspected.status === 'CURRENT' ? inspected.proof : { current: false };
     },
   };
 

@@ -1,6 +1,10 @@
 // Isolated DSH component fixture. This is not a Canvas or product identity.
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFileSync, writeFileSync } from 'node:fs';
 const worldPath = process.env.HW_GATE_WORLD_PATH;
 if (!worldPath) throw new Error('HW_GATE_WORLD_PATH_REQUIRED');
+const authRecordPath = process.env.HW_GATE_AUTH_RECORD;
+const trustedCall = new AsyncLocalStorage();
 const actor = 'hw_gate_tester';
 const profile = { profileVersion: 'state-profile/v2',
   nodeFields: ['nodeName', 'param1', 'param2'], metadataMode: 'exact',
@@ -9,6 +13,20 @@ const profile = { profileVersion: 'state-profile/v2',
 export const inject = ['webServer'];
 export function apply(ctx) {
   const get = name => ctx.get(name);
+  if (authRecordPath) ctx.provide('hanaworldsSessionAuthorizationHostV1', {
+    authenticateAdapterCaller: async () => trustedCall.getStore() === true,
+    call: async (operation, request) => {
+      if (operation !== 'ReadOriginalBinding' || trustedCall.getStore() !== true)
+        throw new Error('PERMISSION_DENIED');
+      let original = null;
+      try { original = JSON.parse(readFileSync(authRecordPath, 'utf8')); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      return { contractVersion: 'session-authorization/v1', requestId: request.requestId,
+        result: original?.sessionRef === request.sessionRef
+          ? { status: 'CURRENT', sessionRef: request.sessionRef, binding: original }
+          : { status: 'UNKNOWN', sessionRef: request.sessionRef } };
+    },
+  });
   const current = async worldRef => {
     const grants = await get('hanaworldsLuantiGrantEvidence').listCurrentLocalGrants();
     const matches = grants.filter(row => row.worldRef === worldRef &&
@@ -95,6 +113,28 @@ export function apply(ctx) {
           if (body.length > 1048576) throw new Error('BODY_TOO_LARGE');
         }
         const { version, operation, request } = JSON.parse(body);
+        if (version === 'auth' && authRecordPath) {
+          if (operation === 'IssueFixtureOriginal') {
+            const grant = await current(request.worldRef);
+            const binding = { sessionRef: 'fixture:session',
+              sessionIncarnationRef: 'fixture:incarnation', hostIssuerRef: 'fixture:host',
+              worldRef: grant.worldRef, engineActorName: actor,
+              expectedGrantRef: grant.grantRef, authorizationRef: 'fixture:authorization',
+              actorRef: 'fixture:actor', bindingRef: 'fixture:binding',
+              grantEpoch: grant.grantRef, allowedActions: ['APPLY_RECOVERABLE', 'READ'] };
+            writeFileSync(authRecordPath, JSON.stringify(binding));
+            res.end(JSON.stringify({ result: binding }));
+            return;
+          }
+          if (operation === 'VerifyCurrentGrant') {
+            const service = get('hanaworldsSessionAuthorizationV1');
+            if (!service) throw new Error('SESSION_AUTHORIZATION_UNAVAILABLE');
+            const result = await trustedCall.run(true, () => service.call(operation, request));
+            res.end(JSON.stringify(result));
+            return;
+          }
+          throw new Error('AUTH_OPERATION_UNKNOWN');
+        }
         if (version === 'native') {
           const grant = await current(request.worldRef);
           const input = { worldRef: request.worldRef, engineActorName: actor,

@@ -98,6 +98,10 @@ export function validateDomain(visits) {
     const schema = schemaBundle.definitions[name];
     if (Array.isArray(v) && schema.type === 'array' && !Array.isArray(schema.items)) validateArrayOrder(name, v, parent);
     if (name === 'Box' || name === 'SetBox') assertBox(v);
+    else if (name === 'OriginalSessionBinding')
+      requireFact(v.allowedActions.length > 0, 'SCHEMA_INVALID', 'INVALID_SHAPE');
+    else if ((name === 'OriginalBindingResult' || name === 'CurrentGrantResult') && v.status === 'CURRENT')
+      requireFact(v.binding.sessionRef === v.sessionRef, 'SCHEMA_INVALID', 'INVALID_SHAPE');
     else if (name === 'Axes') geometry(new Set(v.map(x => x[1])).size === 3);
     else if (name === 'CollisionBox') geometry(v.slice(0, 3).every((x, a) => x <= v[a + 3]));
     else if (name === 'NodeCapability') {
@@ -150,6 +154,15 @@ export function validateDomain(visits) {
       shape(v.beforeHead.headTransactionId !== null &&
         v.beforeHead.historyRevision !== v.afterHead.historyRevision &&
         v.beforeHead.headTransactionId !== v.afterHead.headTransactionId);
+    } else if (name === 'UndoRecoveryResult') {
+      shape((v.status === 'VERIFIED') === (v.receipt !== null));
+      if (v.receipt !== null) shape(v.receipt.status === 'VERIFIED');
+    } else if (name === 'BuildEntryChoiceRequired' ||
+      (name === 'BuildEntryOutcome' && v.outcome === 'CHOICE_REQUIRED')) {
+      shape(v.frame.sessionRef === v.sessionRef && v.frame.turnRevision === v.turnRevision);
+    } else if (name === 'BuildEntryVerified' ||
+      (name === 'BuildEntryOutcome' && v.outcome === 'VERIFIED')) {
+      shape(v.receipt.status === 'VERIFIED');
     } else if (name === 'CreateBuildPlanRequest') {
       // Payload-decidable painter/v3 rules in the approved order; digest coherence is in validateBoundRequest.
       if (v.targetFacts.source === 'REGION_INSPECTED') {

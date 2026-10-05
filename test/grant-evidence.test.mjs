@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:net';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { apply } from '../src/index.mjs';
@@ -16,7 +16,7 @@ async function freePort() {
 }
 
 test('host grant evidence lists only native current local grants and rejects old refs', async () => {
-  const cache = join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-GRANT-01');
+  const cache = join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-DESKTOP-AUTH-01');
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(join(cache, 'evidence-fixture-'));
   const world = join(root, 'world');
@@ -32,12 +32,33 @@ test('host grant evidence lists only native current local grants and rejects old
   const adapter = apply({ webServer: { register() {} }, provide: (name, value) => provided.set(name, value),
     get: name => services[name] }, { localWorldRoots: [root], serviceName: 'operator' });
   const evidence = provided.get('hanaworldsLuantiGrantEvidence');
+  const sessionAuthorization = provided.get('hanaworldsSessionAuthorizationV1');
   const facts = provided.get('hanaworldsLuantiNativeFacts');
   assert.equal(typeof evidence.listCurrentLocalGrants, 'function');
   assert.equal(typeof evidence.verifyCurrentLocalGrant, 'function');
   let grantRef = 'native:one';
   let running = true;
   let permitted = true;
+  let trustedCall = true;
+  const originalBinding = { sessionRef: 'session:one',
+    sessionIncarnationRef: 'incarnation:one', hostIssuerRef: 'host:one',
+    worldRef: manifest.worldRef, engineActorName: 'alice', expectedGrantRef: grantRef,
+    authorizationRef: 'authorization:one', actorRef: 'actor:alice',
+    bindingRef: 'binding:one', grantEpoch: grantRef,
+    allowedActions: ['APPLY_RECOVERABLE', 'READ'] };
+  let originalStatus = 'CURRENT';
+  services.hanaworldsSessionAuthorizationHostV1 = {
+    authenticateAdapterCaller: async () => trustedCall,
+    call: async (operation, request) => {
+      assert.equal(operation, 'ReadOriginalBinding');
+      return { contractVersion: 'session-authorization/v1', requestId: request.requestId,
+        result: { status: originalStatus, sessionRef: request.sessionRef,
+          ...(originalStatus === 'CURRENT' ? { binding: originalBinding } : {}) } };
+    },
+  };
+  const verifyCurrent = (binding = originalBinding) =>
+    sessionAuthorization.call('VerifyCurrentGrant', {
+      contractVersion: 'session-authorization/v1', requestId: 'request:one', binding });
   const cells = new Map([['0,0,0', 'air'], ['1,0,0', 'default:stone'],
     ['9,9,9', 'default:dirt']]);
   const commands = [];
@@ -102,6 +123,14 @@ test('host grant evidence lists only native current local grants and rejects old
     const query = expectedGrantRef => evidence.verifyCurrentLocalGrant({ worldRef: manifest.worldRef,
       engineActorName: 'alice', expectedGrantRef });
     assert.equal((await query('native:one')).current, true);
+    assert.equal((await verifyCurrent()).result.status, 'CURRENT');
+    assert.equal((await verifyCurrent({ ...originalBinding, actorRef: 'forged' })).result.status,
+      'MISMATCH');
+    assert.equal((await verifyCurrent({ ...originalBinding, grantEpoch: 'epoch:forged' })).result.status,
+      'MISMATCH');
+    trustedCall = false;
+    await assert.rejects(verifyCurrent(), /PERMISSION_DENIED/);
+    trustedCall = true;
     const native = { worldRef: manifest.worldRef, engineActorName: 'alice',
       expectedGrantRef: 'native:one' };
     assert.equal((await facts.readStateProfile(native)).profileVersion, 'state-profile/v2');
@@ -140,17 +169,23 @@ test('host grant evidence lists only native current local grants and rejects old
     assert.deepEqual(await query('native:wrong'), { current: false });
     grantRef = null;
     assert.deepEqual(await query('native:one'), { current: false }, 'revoked grant fails');
+    assert.equal((await verifyCurrent()).result.status, 'REVOKED');
     grantRef = 'native:two';
     assert.deepEqual(await query('native:one'), { current: false }, 'new grant never revives old ref');
+    assert.equal((await verifyCurrent()).result.status, 'REVOKED');
     await assert.rejects(facts.readStateProfile(native), /AUTHORIZATION_REVOKED/);
     await assert.rejects(facts.readScopedState(scope), /AUTHORIZATION_REVOKED/);
     assert.equal((await query('native:two')).current, true);
     permitted = false;
     assert.deepEqual(await query('native:two'), { current: false }, 'privilege loss fails');
+    assert.equal((await verifyCurrent()).result.status, 'REVOKED');
+    originalStatus = 'UNKNOWN';
+    assert.equal((await verifyCurrent()).result.status, 'UNKNOWN');
     assert.ok(commands.includes('list_grants') && commands.includes('authorize'));
   } finally {
     running = false;
     await loop;
     await adapter.close();
+    await rm(root, { recursive: true });
   }
 });

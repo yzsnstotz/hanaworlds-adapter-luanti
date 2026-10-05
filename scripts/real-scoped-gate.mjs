@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile, open } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile, open } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,7 +17,9 @@ const origin = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const project = resolve(origin, '../..');
 assert.equal(resolve(process.cwd()), project, 'Run from the hana-world-mvp project root');
 assert.match(process.version, /^v24\./, 'Node 24 is required');
-const base = join(process.env.HOME, '.cache', 'hanaworlds-runs', 'S1-AD-SCOPED-COMMIT-01');
+const authGate = process.env.HW_SESSION_AUTH_GATE === '1';
+const base = join(process.env.HOME, '.cache', 'hanaworlds-runs', authGate
+  ? 'S1-AD-DESKTOP-AUTH-01' : 'S1-AD-SCOPED-COMMIT-01');
 const worldedit = process.env.HW_WORLDEDIT_DIR ||
   join(base, 'real/profile/worlds/Native Facts World/worldmods/worldedit');
 const dshEntry = process.env.HW_DSH_ENTRY ||
@@ -74,6 +76,26 @@ async function record(run, name, value) {
 }
 async function main() {
   await mkdir(base, { recursive: true });
+  if (authGate) {
+    const evidence = join(base, '_evidence');
+    await mkdir(evidence, { recursive: true });
+    for (const name of await readdir(base)) {
+      if (!name.startsWith('run-')) continue;
+      const old = join(base, name);
+      const processes = await exec('/bin/ps', ['-axo', 'pid=,command=']);
+      if (processes.stdout.split('\n').some(line => line.includes(old) &&
+          (line.includes('/luanti ') || line.includes('/dsh/') ||
+            line.includes('/usr/bin/open -n -W'))))
+        throw new Error(`ACTIVE_PRIOR_RUN:${name}`);
+      const archive = join(evidence, `archive-${name}`);
+      await mkdir(archive, { recursive: true });
+      for (const file of ['summary.json', 'host.log', 'server.log', 'client.log'])
+        await cp(join(old, file), join(archive, file)).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+        });
+      await rm(old, { recursive: true });
+    }
+  }
   const probePath = join(base, `permission-probe-${process.pid}-${Date.now()}`);
   const probeValue = `scoped-gate-${process.pid}`;
   await writeFile(probePath, probeValue, { flag: 'wx', mode: 0o600 });
@@ -162,6 +184,7 @@ async function main() {
     const dshEnv = { DSH_HOME: dshHome, XDG_CACHE_HOME: join(run, 'xdg-cache'),
       XDG_CONFIG_HOME: join(run, 'xdg-config'), HOME: join(run, 'shell-home'),
       DSH_TELEMETRY_MODE: 'DISABLED', HW_GATE_WORLD_PATH: world,
+      ...(authGate ? { HW_GATE_AUTH_RECORD: join(run, 'original-binding.json') } : {}),
       npm_config_cache: join(run, 'npm-cache'),
       PNPM_HOME: join(run, 'pnpm-home') };
     await command('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'],
@@ -213,6 +236,52 @@ async function main() {
     const worldRef = await gate.discover();
     assert.equal(worldRef, identity.worldRef);
     metadata.granted = true;
+
+    if (authGate) {
+      const original = { sessionRef: 'fixture:session',
+        sessionIncarnationRef: 'fixture:incarnation', hostIssuerRef: 'fixture:host',
+        worldRef, engineActorName: 'hw_gate_tester', expectedGrantRef: 'missing:grant',
+        authorizationRef: 'fixture:authorization', actorRef: 'fixture:actor',
+        bindingRef: 'fixture:binding', grantEpoch: 'missing:grant',
+        allowedActions: ['APPLY_RECOVERABLE', 'READ'] };
+      const status = async binding => (await gate.verifyCurrentGrant(binding)).result.status;
+      assert.equal(await status(original), 'UNKNOWN');
+      const first = await gate.issueFixtureOriginal(worldRef);
+      assert.equal(await status(first), 'CURRENT');
+      assert.equal(await status({ ...first, worldRef: 'other:world' }), 'MISMATCH');
+      assert.equal(await status({ ...first, engineActorName: 'other-player' }), 'MISMATCH');
+      assert.equal(await status({ ...first, bindingRef: 'other:binding' }), 'MISMATCH');
+      assert.equal(await status({ ...first, grantEpoch: 'other:epoch' }), 'MISMATCH');
+      assert.equal(await status({ ...first, allowedActions: ['READ'] }), 'MISMATCH');
+      await stop(host);
+      host = await start(process.execPath, [dshEntry, 'scoped-gate', '--host', '127.0.0.1',
+        '--port', String(hostPort), '--no-open'], project, join(run, 'host-restart.log'), dshEnv);
+      await waitUntil('DSH host restart', host, async () =>
+        (await gate.status().catch(() => null))?.adapterMounted === true);
+      assert.equal(await status(first), 'CURRENT');
+      await admin('revoke');
+      assert.equal(await status(first), 'REVOKED');
+      await admin('grant');
+      assert.equal(await status(first), 'REVOKED', 'new game grant cannot revive the old record');
+      const second = await gate.issueFixtureOriginal(worldRef);
+      assert.notEqual(first.expectedGrantRef, second.expectedGrantRef);
+      assert.equal(await status(second), 'CURRENT');
+      await admin('drop_worldedit');
+      assert.equal(await status(second), 'REVOKED');
+      await admin('restore_worldedit');
+      await admin('grant');
+      const third = await gate.issueFixtureOriginal(worldRef);
+      assert.equal(await status(third), 'CURRENT');
+      await admin('kick');
+      assert.equal(await status(third), 'REVOKED');
+      metadata.cases.auth = { missingOriginal: 'UNKNOWN', live: 'CURRENT',
+        mismatchedOriginal: 'MISMATCH', restart: 'CURRENT', revoked: 'REVOKED',
+        regrantOld: 'REVOKED', regrantNew: 'CURRENT', permissionLost: 'REVOKED',
+        playerOffline: 'REVOKED', fixtureHost: true, pairedGame: true };
+      await record(run, 'auth', metadata.cases.auth);
+      metadata.status = 'PASS';
+      return;
+    }
 
     const outsideBefore = await gate.read(worldRef, [[9, 1, 0]]);
     const targetBefore = await gate.read(worldRef, [[4, 1, 0]]);
@@ -299,7 +368,7 @@ async function main() {
     metadata.failure = { message: error?.message, stack: error?.stack };
     throw error;
   } finally {
-    if (server && metadata.granted && metadata.cases.revoke === undefined) {
+    if (!authGate && server && metadata.granted && metadata.cases.revoke === undefined) {
       // Best effort only on failure; no other world/profile is ever targeted.
       const id = String(Date.now());
       await writeFile(join(control, 'command'), `${id} revoke\n`).catch(() => {});

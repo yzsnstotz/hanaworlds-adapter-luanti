@@ -27,6 +27,7 @@ import { V4TransactionBackend } from './v4-transactions.mjs';
 import { V5TransactionBackend } from './v5-transactions.mjs';
 import { workshopRelay } from './workshop-relay.mjs';
 import { nativeJournalDirectory } from './native-storage.mjs';
+import { createSessionAuthorizationPort } from './session-authorization.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 export const name = ADAPTER_ID;
@@ -173,6 +174,10 @@ export function apply(ctx, config = {}) {
     resolveAuthority: () => optionalHostService(ctx, 'hanaworldsAuthority'),
     currentAccess: runtime.currentAccess,
     operations: runtime.scopedOperations });
+  const sessionAuthorization = createSessionAuthorizationPort({
+    grantEvidence: runtime.grantEvidence,
+    resolveHost: () => optionalHostService(ctx, 'hanaworldsSessionAuthorizationHostV1'),
+  });
   const service = {
     worldAdapter,
     worldAdapterV5,
@@ -236,6 +241,8 @@ export function apply(ctx, config = {}) {
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV5', worldAdapterV5);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiGrantEvidence', runtime.grantEvidence);
+  if (typeof ctx.provide === 'function')
+    ctx.provide('hanaworldsSessionAuthorizationV1', sessionAuthorization);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiNativeFacts', runtime.nativeFacts);
   if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
