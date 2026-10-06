@@ -95,7 +95,7 @@ export class WorldAdapterV4 {
     this.#allowed = new Map(operationContracts[version].map(entry =>
       [entry.operation, new Set(entry.failureCodes)]));
   }
-  /** ContractHandshake advertised before any request (contracts@0.3.0 set). */
+  /** Exact bundled ContractHandshake advertised before any request. */
   get contractHandshake() { return snapshotJSON(contractHandshake); }
   async call(operation, raw) {
     // A rejected wire has no legal requestId. Preserve the Contracts typed

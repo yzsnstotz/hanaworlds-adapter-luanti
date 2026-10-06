@@ -5,7 +5,7 @@ Stage 1 source is proposed by pull request. No release is available from this ba
 ## Trusted Host current-grant check
 
 The DSH Host service `hanaworldsSessionAuthorizationV1` advertises the bundled
-`hanaworlds-contracts@0.3.6` handshake and accepts
+`hanaworlds-contracts@0.3.9` handshake and accepts
 `call('VerifyCurrentGrant', request)` using `session-authorization/v1`. The
 request must contain the **original** `OriginalSessionBinding` already issued
 and durably held by a trusted Host. This Adapter does not create a Session
@@ -43,3 +43,7 @@ A native administrator or authenticated singleplayer world owner receives the ex
 Each Adapter instance retains the disposer returned by the public Host route registration. Normal unload removes its status route before asynchronous resource cleanup. Repeated or concurrent closes cannot unregister a later instance at the same path; rejected resource cleanup remains retryable. Cordis owns publication and withdrawal of its services, including rollback of failed activation. The Host duplicate-route and required-management guards remain intact.
 
 This change only affects Host lifecycle. All game payload bytes, native authority, grant, automatic mode, transaction and protection rules are unchanged from 0.2.7. See `test/host-lifecycle/README.md` for the isolated public Host reproduction and evidence limits.
+
+## Current contract input (Adapter 0.2.9)
+
+The generated vendor subset now uses the exact admitted contracts0.3.9 artifact. Current world and original-grant provider advertisements match its capability helpers, which refuse older package advertisements. This pin update retains the 0.2.8 lifecycle implementation and unchanged 0.2.7 payload. Public Add over fixed75b5's already loaded seed0.2.6 still runs the old factory and remains a separate Desktop replacement blocker; see `test/host-lifecycle/add-replacement.mjs`. No new authorization issuer or transaction decision is introduced.

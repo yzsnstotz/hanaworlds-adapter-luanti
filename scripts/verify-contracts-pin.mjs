@@ -1,5 +1,5 @@
 // Verifies the bundled hanaworlds-contracts subset against the admitted
-// contracts@0.3.6 artifact. Offline (default): the manifest
+// contracts@0.3.9 artifact. Offline (default): the manifest
 // names the admitted digest and all package entries; every bundled file must be a
 // manifest entry with identical bytes, nothing else may be bundled, and the
 // static import closure of the #contracts entries must be bundled.

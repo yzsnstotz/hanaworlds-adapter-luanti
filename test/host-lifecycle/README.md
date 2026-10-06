@@ -1,8 +1,8 @@
 # Isolated public Host lifecycle check
 
-This harness uses the CARD-fixed INSTALL75b5 App only as a read-only Host/Node input. It never opens the App, launches Electron/Luanti, runs pnpm/Add, uses credentials, or alters a formal profile. Seed copy, tar extraction and initial disabled-bundle selection are explicit SOURCE/FIXTURE setup. Real public RPC/HTTP calls within this setup prove only isolated Host lifecycle.
+`runtime.mjs` uses the CARD-fixed INSTALL75b5 App only as a read-only Host/Node input. It never opens the App, launches Electron/Luanti, runs pnpm/Add, uses credentials, or alters a formal profile. Seed copy, tar extraction and initial disabled-bundle selection are explicit SOURCE/FIXTURE setup. Real public RPC/HTTP calls within this setup prove only isolated Host lifecycle.
 
-Run with engineering inputs (APP = fixed INSTALL75b5 candidate, TAR = this card's final0.2.8 tgz, E = fresh directory immediately inside R/_evidence):
+Run with engineering inputs (APP = fixed INSTALL75b5 candidate, TAR = an exact current Adapter tgz, E = fresh directory immediately inside R/_evidence):
 
 ```sh
 "$APP/Contents/Resources/runtime/hanaworlds-runtime/node/bin/node" test/host-lifecycle/runtime.mjs "$APP" "$TAR" "$E"
@@ -14,3 +14,13 @@ The public runtime harness creates its own disposable profile immediately under 
 The focused fixture uses real fixed Cordis Context/provider effects with a labelled route table implementing the documented Host disposer behavior. It verifies all six provider ports disappear on unload, replacement registration, repeated old close ownership, failed duplicate-route service rollback, and an existing foreign service preserved after failed publication. No test implementation is a new product dependency.
 
 After receipts are saved and Host exit/open-file checks are complete, remove only the exact own profile roots in result.json, own source node_modules and own npm cache. Keep the source, latest tar, all E (including RED) and every other card's fixed input. Do not use old profiles/version compatibility or a Host restart to mask the defect. Formal Enable now/REAL_UI and product cards remain separate independent gates.
+
+## Actual public Add replacement difference
+
+`add-replacement.mjs` is the narrow attribution harness. It copies the fixed75b5 seed unchanged, starts one Host, calls public `installBundle` with `enabled:false` exactly as product Add, then enable/disable/re-enable. It records seed and installed package versions, live status version, all raw RPC responses (including `restart-required`), fiber states and full failure stacks. It neither extracts a replacement before Host startup nor retries/restarts after failure. Only the management-required refusal and normal IPC shutdown follow the first failed toggle. A lifecycle failure produces exit1; `completed:true` means observations finished, not a pass.
+
+```sh
+"$APP/Contents/Resources/runtime/hanaworlds-runtime/node/bin/node" test/host-lifecycle/add-replacement.mjs "$APP" "$TAR" "$E"
+```
+
+For the fixed75b5 seed0.2.6→tar0.2.8 run, disk is0.2.8 after Add while live HTTP reports0.2.6 throughout. Disable removes the plugin entry but leaves the old route; re-enable's factory registration is the 0.2.6 source line249. Preserve the failure and hand the public replacement/seed seam to Desktop through PM. This script does not certify GUI behavior or recommend a restart workaround.

@@ -1,9 +1,9 @@
 // The admitted hanaworlds-contracts artifact and the exact subset of its
 // package entries the Adapter bundles under vendor/hanaworlds-contracts.
-export const PINNED = Object.freeze({ name: 'hanaworlds-contracts', version: '0.3.6',
-  revision: '077d8fad08afcdbfe740655670424c85b81f0948',
-  sha256: '14377924f919b5eb2db3e6669d38f60586529cc83da24df3a9e1fce1a2b22753', entryCount: 991,
-  source: 'https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/077d8fad08afcdbfe740655670424c85b81f0948' });
+export const PINNED = Object.freeze({ name: 'hanaworlds-contracts', version: '0.3.9',
+  revision: 'a4675a4edd7b4a8a7aa4861a7949713a218d8b31',
+  sha256: '324ef459c78a4eb249939f4828128b87ff897d134b48d9cf8cbe6e69a6f4bbdc', entryCount: 1021,
+  source: 'https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/a4675a4edd7b4a8a7aa4861a7949713a218d8b31' });
 // Package metadata and notices (kept byte-identical).
 export const METADATA = ['package.json', 'LICENSE', 'NOTICE', 'README.md',
   'licenses/canonicalize-Apache-2.0.txt'];

@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.2.8 component candidate
+# HanaWorlds Luanti Adapter 0.2.9 component candidate
 
 Status: `PARTIAL`. The provider and payload are a component candidate. This is not a release or Stage 1 product proof; only the user can mark `ACCEPTED`.
 
@@ -8,7 +8,7 @@ This repository owns `world-adapter/v4` and `world-adapter/v5`, its Luanti paylo
 
 ## Contract input
 
-`hanaworlds-contracts@0.3.6` (public git revision `077d8fad08afcdbfe740655670424c85b81f0948`) remains the byte-identical admitted input under `vendor/hanaworlds-contracts`. The Adapter imports its runtime closure through `#contracts/v3` and `#contracts/v4`; no sibling implementation is imported. `npm run verify:contracts` checks all 38 bundled files against the 991-entry manifest (package SHA-256 `14377924f919b5eb2db3e6669d38f60586529cc83da24df3a9e1fce1a2b22753`). S1-AD-AUTO-01 does not alter this pin or the public wire contracts.
+`hanaworlds-contracts@0.3.9` (public git revision `a4675a4edd7b4a8a7aa4861a7949713a218d8b31`) is the byte-identical admitted input under `vendor/hanaworlds-contracts`. The Adapter imports its generated runtime closure through `#contracts/v3` and `#contracts/v4`; no sibling implementation is imported. `npm run verify:contracts` checks all 39 bundled files against the actual 1021-file package manifest (package SHA-256 `324ef459c78a4eb249939f4828128b87ff897d134b48d9cf8cbe6e69a6f4bbdc`). Both world provider handshakes and the original-grant service advertise this exact current package. Current capability helpers reject older advertisements; no peer allowlist is added. Authority and transaction wire semantics are unchanged.
 
 ## Scoped writer (world-adapter/v5)
 
@@ -78,4 +78,8 @@ The delivered HTTP Host component and official Luanti 5.17 are component inputs.
 
 Normal Host disable disposes the Adapter's own status-prefix route and its resources. The exact returned route handle is consumed once before asynchronous cleanup; an old close cannot remove a replacement instance's route. Concurrent closes share the in-flight cleanup, and a rejected cleanup can be attempted again. Cordis owns all provided service effects and withdraws them on unload or failed activation; the Adapter does not delete another fiber's service. The public Host's duplicate-route and management-required protections are unchanged.
 
-The candidate package is 0.2.8 while its payload version and every payload file remain 0.2.7. No game authority, automatic mode, scope, protection, courier or transaction logic changes. The isolated test uses the fixed INSTALL75b5 Host and bundled Node, with fresh seed/profile preparation labelled SOURCE/FIXTURE and public pluginManager/HTTP actions labelled REAL_RUNTIME only for this component. It does not prove formal product immediate enablement, native game UI, INSTALL/AUTO/SLICE completion or user acceptance.
+The candidate package is 0.2.9 while its payload version and every payload file remain 0.2.7. No game authority, automatic mode, scope, protection, courier or transaction logic changes. The isolated test uses the fixed INSTALL75b5 Host and bundled Node, with fresh seed/profile preparation labelled SOURCE/FIXTURE and public pluginManager/HTTP actions labelled REAL_RUNTIME only for this component. It does not prove formal product immediate enablement, native game UI, INSTALL/AUTO/SLICE completion or user acceptance.
+
+## Public Add replacement attribution
+
+`test/host-lifecycle/add-replacement.mjs` copies the fixed seed without changing its initial composition, uses the same public `installBundle(..., {enabled:false})` as product Add, then records public toggles, live HTTP version, on-disk version and fiber state in one Host. With fixed75b5 seed0.2.6 and tar0.2.8, Add returns `restart-required`: disk0.2.8 while the live route/factory remain0.2.6. Disable leaves that old route; re-enable fails at the old registration line. The 0.2.8 effect-based lifecycle is not entered by this replacement path. The Desktop-owned replacement/seed seam remains blocked; this candidate does not change Host, loader, Add, or its restart behavior. The fixture checks cover this package's lifecycle, not formal product replacement.

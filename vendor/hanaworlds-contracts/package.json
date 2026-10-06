@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-contracts",
-  "version": "0.3.6",
+  "version": "0.3.9",
   "description": "Independent non-runtime HanaWorlds public contracts: the v2/v3 lanes plus the approved rc.8 v4 lane (interaction-surface/v3, world-adapter/v4, canvas/v4, painter/v3, target-facts/v3, ContractHandshake), strict raw JSON, explicit digests and pure FIXTURE conformance models.",
   "type": "module",
   "private": true,
@@ -142,7 +142,14 @@
     "./operations/v2": {
       "types": "./bindings/operations-v2.d.ts",
       "import": "./dist/bindings/operations-v2.mjs"
-    }
+    },
+    "./v4/session-operation-authorization/v1": {
+      "types": "./bindings/v4/session-operation-authorization-v1.d.ts",
+      "import": "./dist/v4/bindings/session-operation-authorization-v1.mjs"
+    },
+    "./v4/profile/SESSION_OPERATION_AUTH_EXTENSION": "./schemas/v4/profile/SESSION_OPERATION_AUTH_EXTENSION.json",
+    "./v4/profile/WORLD_CONTEXT_EXTENSION": "./schemas/v4/profile/WORLD_CONTEXT_EXTENSION.json",
+    "./v4/profile/CURRENT_BUILD_AUTHORIZATION_EXTENSION": "./schemas/v4/profile/CURRENT_BUILD_AUTHORIZATION_EXTENSION.json"
   },
   "files": [
     "dist/",
@@ -158,8 +165,8 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "test:v3": "node test/v3.mjs",
-    "test:v4": "node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/undo-recovery-v4.mjs && node test/build-entry-v4.mjs && node test/session-auth-v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
-    "test": "node test/conformance.mjs && node test/v3.mjs && node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/undo-recovery-v4.mjs && node test/build-entry-v4.mjs && node test/session-auth-v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs",
+    "test:v4": "node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/undo-recovery-v4.mjs && node test/build-entry-v4.mjs && node test/session-auth-v4.mjs && node test/session-operations-auth-v4.mjs && node test/world-context-v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs && node test/build-entry-authorization-v4.mjs",
+    "test": "node test/conformance.mjs && node test/v3.mjs && node test/v4.mjs && node test/session-readback-v4.mjs && node test/session-undo-v4.mjs && node test/scoped-world-v5.mjs && node test/undo-recovery-v4.mjs && node test/build-entry-v4.mjs && node test/session-auth-v4.mjs && node test/session-operations-auth-v4.mjs && node test/world-context-v4.mjs && node test/v4-approved-checks.mjs && node test/v4-chains.mjs && node test/build-entry-authorization-v4.mjs",
     "test:legacy": "node test/conformance.mjs",
     "test:source-fixture": "node --experimental-loader ./test/source-fixture-loader.mjs test/conformance.mjs",
     "test:strict": "node test/strict.mjs",
@@ -168,7 +175,8 @@
     "typecheck": "tsc --project consumer/tsconfig.json",
     "compat": "node tools/compat.mjs",
     "verify:source": "node tools/verify-source.mjs",
-    "pack:artifact": "npm pack --ignore-scripts --pack-destination artifacts --json"
+    "pack:artifact": "npm pack --ignore-scripts --pack-destination artifacts --json",
+    "test:build-authorization": "node test/build-entry-authorization-v4.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0"

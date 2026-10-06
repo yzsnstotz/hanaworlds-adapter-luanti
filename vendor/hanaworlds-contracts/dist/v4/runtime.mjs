@@ -323,7 +323,7 @@ export function checkContractHandshake(advertisedInput, requiredInput) {
  * operation. Reject an older package peer before issuing this operation. */
 export function checkSessionReadbackHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput, { wires: ['session/v2'], factProfiles: [] });
-  requireFact(['hanaworlds-contracts@0.3.1', 'hanaworlds-contracts@0.3.2', 'hanaworlds-contracts@0.3.3', 'hanaworlds-contracts@0.3.4', 'hanaworlds-contracts@0.3.5', 'hanaworlds-contracts@0.3.6'].includes(advertised.contracts) &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     operationContracts['session/v2'].some(op => op.operation === 'ReadSessionTurnDetails'),
     'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
   return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
@@ -332,7 +332,7 @@ export function checkSessionReadbackHandshake(advertisedInput) {
  * canvas/v4 and session/v2 majors do not advertise these added operations. */
 export function checkSessionUndoHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput, { wires: ['canvas/v4', 'session/v2'], factProfiles: [] });
-  requireFact(['hanaworlds-contracts@0.3.2', 'hanaworlds-contracts@0.3.3', 'hanaworlds-contracts@0.3.4', 'hanaworlds-contracts@0.3.5', 'hanaworlds-contracts@0.3.6'].includes(advertised.contracts) &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     ['ReadCurrentUndoStatus', 'UndoCurrentBuild'].every(name =>
       operationContracts['session/v2'].some(op => op.operation === name)),
     'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
@@ -340,7 +340,7 @@ export function checkSessionUndoHandshake(advertisedInput) {
 }
 export function checkScopedWorldHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput, { wires: ['world-adapter/v5'], factProfiles: [] });
-  requireFact(['hanaworlds-contracts@0.3.3', 'hanaworlds-contracts@0.3.4', 'hanaworlds-contracts@0.3.5', 'hanaworlds-contracts@0.3.6'].includes(advertised.contracts) &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     ['PrepareRecoverableTransaction', 'ApplyCompiledTransaction', 'QueryPreparedTransaction'].every(name =>
       operationContracts['world-adapter/v5'].some(op => op.operation === name)),
     'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
@@ -351,7 +351,7 @@ export function checkScopedWorldHandshake(advertisedInput) {
 export function checkUndoRecoveryHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput,
     { wires: ['canvas/v4', 'session/v2'], factProfiles: [] });
-  requireFact(['hanaworlds-contracts@0.3.4', 'hanaworlds-contracts@0.3.5', 'hanaworlds-contracts@0.3.6'].includes(advertised.contracts) &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     operationContracts['session/v2'].some(op => op.operation === 'RecoverPendingUndo') &&
     ['RecoverPendingUndo', 'ReadPendingUndoResult'].every(name =>
       operationContracts['canvas/v4'].some(op => op.operation === name)),
@@ -362,7 +362,7 @@ export function checkUndoRecoveryHandshake(advertisedInput) {
 export function checkBuildEntryHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput,
     { wires: ['session/v2'], factProfiles: [] });
-  requireFact(['hanaworlds-contracts@0.3.5', 'hanaworlds-contracts@0.3.6'].includes(advertised.contracts) &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     operationContracts['session/v2'].some(op => op.operation === 'AdvanceCurrentBuild'),
     'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
   return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
@@ -371,7 +371,7 @@ export function checkBuildEntryHandshake(advertisedInput) {
 export function checkSessionAuthorizationHandshake(advertisedInput) {
   const { advertised } = checkContractHandshake(advertisedInput,
     { wires: ['session-authorization/v1'], factProfiles: [] });
-  requireFact(advertised.contracts === 'hanaworlds-contracts@0.3.6' &&
+  requireFact(advertised.contracts === contractHandshake.contracts &&
     ['ReadOriginalBinding', 'VerifyCurrentGrant'].every(name =>
       operationContracts['session-authorization/v1'].some(op => op.operation === name)),
     'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
@@ -493,4 +493,211 @@ export function admitPlacementSettings(storedInput, settingsRevision) {
     throw error;
   }
   return validateType('PlacementSettings', { ...values, settingsRevision });
+}
+
+/** Separate Host-issued Session rights. These helpers never authenticate JSON. */
+export function checkSessionOperationAuthorizationHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput,
+    { wires: ['session-operation-authorization/v1'], factProfiles: [] });
+  requireFact(advertised.contracts === contractHandshake.contracts,
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
+}
+export function validateOriginalSessionAuthorityResponse(requestInput, responseInput) {
+  const wire = 'session-operation-authorization/v1';
+  const request = validateRequest(wire, 'ReadOriginalSessionAuthority', requestInput);
+  const response = validateResponse(wire, 'ReadOriginalSessionAuthority', responseInput);
+  requireFact(response.requestId === request.requestId && response.result.sessionRef === request.sessionRef,
+    'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+  return response;
+}
+/** Providers must authenticate both inputs and recheck live Host issuance after
+ * Adapter verification. This pure projection proves neither source nor freshness. */
+export function projectSessionAuthorityProof(hostRequest, hostResponse, grantRequest, grantResponse) {
+  const host = validateOriginalSessionAuthorityResponse(hostRequest, hostResponse).result;
+  const game = validateCurrentGrantResponse(grantRequest, grantResponse).result;
+  requireFact(host.status === 'CURRENT' && game.status === 'CURRENT',
+    'AUTHORIZATION_REVOKED', 'GRANT_REVOKED', 'authorize');
+  const { binding, sessionActions } = host.authority;
+  requireFact(Object.keys(binding).every(field =>
+    JSON.stringify(binding[field]) === JSON.stringify(game.binding[field])),
+    'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+  return validateType('SessionAuthorityProof', { current: true,
+    sessionRef: binding.sessionRef, actorRef: binding.actorRef,
+    authorizationRef: binding.authorizationRef, worldRef: binding.worldRef,
+    allowedActions: [...binding.allowedActions, ...sessionActions].sort(compareUTF16) });
+}
+
+/** Matching wire majors alone do not promise current facts or new honest failures. */
+export function checkWorldContextHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput,
+    { wires: ['canvas/v4', 'session/v2'], factProfiles: [] });
+  requireFact(advertised.contracts === contractHandshake.contracts,
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
+}
+export function validateWorldSelectionContextResponse(requestInput, responseInput) {
+  const request = validateRequest('canvas/v4', 'ReadWorldSelectionContext', requestInput);
+  const response = validateResponse('canvas/v4', 'ReadWorldSelectionContext', responseInput);
+  requireFact(response.requestId === request.requestId,
+    'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+  if (response.result) for (const key of ['actorRef', 'sessionRef', 'authorizationRef', 'worldRef'])
+    requireFact(response.result[key] === request[key],
+      'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+  return response;
+}
+/** Fixture coherence only. The owning providers must obtain these facts through
+ * authenticated live calls and recheck before dispatch/release. No grant is issued. */
+export function validateWorldContextDelegation(parentInput, operationName, childInput, factsInput) {
+  const parent = validateRequest('session/v2', 'SwitchWorldContext', parentInput);
+  const child = validateType('WorldContextChild', { operation: operationName, request: childInput }).request;
+  const facts = validateType('WorldContextDelegationFacts', factsInput);
+  const identity = ok => requireFact(ok, 'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+  identity(facts.invocationStatus === 'ACTIVE');
+  requireFact(facts.grantStatus === 'CURRENT', 'AUTHORIZATION_REVOKED', 'GRANT_REVOKED', 'authorize');
+  identity(sameJSON(facts.parentRequest, parent) && facts.child.operation === operationName &&
+    sameJSON(facts.child.request, child));
+  const binding = facts.originalBinding;
+  identity(sameJSON(binding, facts.currentBinding) &&
+    binding.sessionIncarnationRef === facts.liveSessionIncarnationRef &&
+    binding.allowedActions.includes('SELECT'));
+  for (const key of ['actorRef', 'sessionRef', 'authorizationRef'])
+    identity(parent[key] === child[key] && parent[key] === binding[key]);
+  identity(binding.worldRef === parent.worldRef);
+  if (operationName !== 'SwitchWorldConnection') identity(child.worldRef === parent.worldRef);
+  if (operationName === 'ReadWorldSelectionContext') return child;
+  const context = facts.context;
+  requireFact(context !== null, 'CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN');
+  for (const key of ['actorRef', 'sessionRef', 'authorizationRef', 'worldRef']) identity(context[key] === parent[key]);
+  if (operationName === 'ListWorldConnections')
+    requireFact(child.expectedCapabilityRevision === context.inventory.capabilityRevision,
+      'STALE_REVISION', 'REVISION_CHANGED');
+  if (operationName === 'ListObjects') {
+    requireFact(context.selection.status === 'BOUND' &&
+      context.selection.context.activeWorldRef === parent.worldRef,
+      'WORLD_NOT_BOUND', 'SCOPE_DENIED');
+  }
+  if (operationName === 'SelectWorldConnection' || operationName === 'SwitchWorldConnection') {
+    const selection = context.selection;
+    const revision = selection.status === 'BOUND' ? selection.context.sessionRevision : selection.sessionRevision;
+    requireFact(child.expectedRevision === revision, 'STALE_REVISION', 'REVISION_CHANGED');
+    const connectionRef = operationName === 'SelectWorldConnection' ? child.connectionRef : child.toConnectionRef;
+    const candidate = context.inventory.connections.find(row => row.connectionRef === connectionRef && row.worldRef === parent.worldRef);
+    requireFact(Boolean(candidate), 'CONNECTION_NOT_FOUND', 'SCOPE_DENIED');
+    requireFact(candidate.readiness === 'READY', candidate.readiness, 'POLICY_UNAVAILABLE');
+    if (operationName === 'SelectWorldConnection')
+      requireFact(selection.status === 'UNBOUND' || selection.context.activeWorldRef === parent.worldRef,
+        'TRANSACTION_CONFLICT', 'SCOPE_DENIED');
+    else {
+      requireFact(selection.status === 'BOUND', 'WORLD_NOT_BOUND', 'SCOPE_DENIED');
+      identity(child.worldRef === selection.context.activeWorldRef &&
+        child.fromWorldRef === selection.context.activeWorldRef && child.toWorldRef === parent.worldRef);
+    }
+  }
+  return child;
+}
+
+/** Current package only. These helpers authenticate no JSON and issue no grants. */
+export function checkCurrentBuildAuthorizationHandshake(advertisedInput) {
+  const { advertised } = checkContractHandshake(advertisedInput,
+    { wires: ['session/v2', 'canvas/v4', 'session-authorization/v1'], factProfiles: [] });
+  requireFact(advertised.contracts === contractHandshake.contracts &&
+    digestProfile.projectionTypes['current-build-action'] === 'CurrentBuildActionProjection',
+    'UNSUPPORTED_VERSION', 'VERSION_UNSUPPORTED', 'decode');
+  return deepFreeze({ result: 'HANDSHAKE_OPERATION_MATCH', advertised });
+}
+const buildIdentity = ok => requireFact(ok, 'PERMISSION_DENIED', 'IDENTITY_UNVERIFIED', 'authorize');
+/** Workshop-owned coherent snapshot. Provenance/currentness is checked by providers. */
+export function validateCurrentBuildAuthorizationFacts(input) {
+  const facts = validateType('CurrentBuildAuthorizationFacts', input);
+  const { parentRequest: parent, apply, analysis, intent } = facts;
+  for (const field of ['actorRef', 'sessionRef', 'authorizationRef', 'worldRef'])
+    buildIdentity(parent[field] === apply[field]);
+  buildIdentity(apply.requestId === parent.requestId + ':apply');
+  requireFact(intent.confirmedIntent.confirmedTurnRevision === parent.expectedTurnRevision,
+    'TURN_REVISION_MISMATCH', 'REVISION_CHANGED');
+  buildIdentity(parent.worldRef === intent.intendedWorldRef &&
+    parent.worldRef === analysis.worldRef && parent.worldRef === apply.operations.worldRef);
+  validateDigestBinding('operations', apply.operations, apply.operationDigest);
+  validateDigestBinding('affected-analysis', analysis, apply.analysisDigest);
+  buildIdentity(analysis.operationDigest === apply.operationDigest);
+  requireFact(analysis.worldRevision === apply.expectedWorldRevision,
+    'STALE_REVISION', 'REVISION_CHANGED');
+  requireFact(analysis.affectedObjectRefs.length === 0 &&
+    Object.keys(apply.expectedObjectRevisions).length === 0,
+    'OTHER_OBJECTS_AFFECTED', 'SCOPE_DENIED');
+  // Affected-object/conflict decisions remain their existing Canvas/frame path.
+  return facts;
+}
+/** Pure candidate derivation. Host authenticates sources, serializes reservation,
+ * and rechecks live facts at use; digest possession never confers authority. */
+export function deriveCurrentBuildAuthorization(factsInput, contextInput) {
+  const facts = validateCurrentBuildAuthorizationFacts(factsInput);
+  const context = validateType('CurrentBuildAuthorityContext', contextInput);
+  const { parentRequest: parent, apply, analysis } = facts;
+  const binding = context.originalBinding, verified = context.verifiedBinding;
+  buildIdentity(context.invocationStatus === 'ACTIVE');
+  requireFact(context.grantStatus !== 'UNKNOWN', 'CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'authorize');
+  requireFact(context.grantStatus === 'CURRENT', 'AUTHORIZATION_REVOKED', 'GRANT_REVOKED', 'authorize');
+  buildIdentity(sameJSON(parent, context.capturedParent) && sameJSON(apply, context.capturedApply));
+  buildIdentity(context.workshopServiceRef === context.expectedWorkshopServiceRef &&
+    context.canvasServiceRef === context.expectedCanvasServiceRef);
+  buildIdentity(sameJSON(binding, context.currentBinding) &&
+    binding.sessionIncarnationRef === context.liveSessionIncarnationRef &&
+    binding.allowedActions.includes('APPLY_RECOVERABLE'));
+  for (const field of ['actorRef', 'sessionRef', 'authorizationRef', 'worldRef'])
+    buildIdentity(parent[field] === binding[field]);
+  for (const field of ['actorRef', 'bindingRef', 'worldRef', 'grantEpoch', 'allowedActions'])
+    buildIdentity(sameJSON(binding[field], verified[field]));
+  requireFact(context.turnStatus !== 'UNCONFIRMED', 'INTENT_UNCONFIRMED', 'REQUIRED_FACT_UNKNOWN');
+  requireFact(context.turnStatus === 'CURRENT_CONFIRMED' &&
+    facts.turnRef === context.currentTurnRef &&
+    parent.expectedTurnRevision === context.currentTurnRevision &&
+    facts.confirmationInputId === context.currentConfirmationInputId,
+    'TURN_REVISION_MISMATCH', 'REVISION_CHANGED');
+  requireFact(context.currentStage === 'APPLY', 'TRANSACTION_CONFLICT', 'POLICY_UNAVAILABLE');
+  const intentDigest = digestValue('intent', facts.intent).sha256;
+  requireFact(intentDigest === context.currentIntentDigest &&
+    apply.operationDigest === context.currentOperationDigest &&
+    apply.analysisDigest === context.currentAnalysisDigest,
+    'STALE_REVISION', 'REVISION_CHANGED');
+  const action = validateType('CurrentBuildActionProjection', {
+    contractVersion: 'current-build-authorization/v1', operation: 'AdvanceCurrentBuild',
+    childOperation: 'ApplyRecoverableCommit', facts, originalBinding: binding,
+    verifiedBinding: verified, workshopServiceRef: context.workshopServiceRef,
+    canvasServiceRef: context.canvasServiceRef,
+  });
+  const authorizationBinding = validateType('AuthProjection', {
+    contractVersion: 'world-adapter/v2', authorizerRef: verified.authorizerRef,
+    actorRef: binding.actorRef, grantEpoch: binding.grantEpoch, bindingRef: binding.bindingRef,
+    worldRef: binding.worldRef, sessionRef: binding.sessionRef,
+    turnRevision: parent.expectedTurnRevision, intentDigest,
+    surfaceActionDigest: digestValue('current-build-action', action).sha256,
+    allowedAction: 'APPLY_RECOVERABLE', transactionId: apply.transactionId,
+    operationDigest: apply.operationDigest, worldRevision: analysis.worldRevision,
+    selectionRevision: analysis.selectionRevision, analysisDigest: apply.analysisDigest,
+    decisionRevision: null,
+  });
+  const candidate = validateType('CurrentBuildAuthorization', { action, authorizationBinding,
+    authorizationBindingDigest: digestValue('authorization-binding', authorizationBinding).sha256 });
+  // Also enforce the existing region/build/frame/target-facts coherence before issuance.
+  validateBoundRequest('canvas/v4', 'ApplyRecoverableCommit', { ...apply,
+    authorizationBinding, authorizationBindingDigest: candidate.authorizationBindingDigest });
+  requireFact(context.replay !== 'CONFLICT' &&
+    (context.replay === 'NEW' ? context.priorAuthorization === null :
+      context.priorAuthorization !== null && sameJSON(candidate, context.priorAuthorization)),
+    'REPLAY_MISMATCH', 'PAYLOAD_CHANGED');
+  return candidate;
+}
+/** Provider calls with its stored issued record and a newly authenticated context,
+ * immediately before dispatch, including retries. No async/cache/side effects. */
+export function validateCurrentBuildAuthorizedApply(requestInput, issuedInput, factsInput, contextInput) {
+  const request = validateBoundRequest('canvas/v4', 'ApplyRecoverableCommit', requestInput);
+  const issued = validateType('CurrentBuildAuthorization', issuedInput);
+  const current = deriveCurrentBuildAuthorization(factsInput, contextInput);
+  buildIdentity(sameJSON(current, issued));
+  buildIdentity(sameJSON(request, { ...current.action.facts.apply,
+    authorizationBinding: current.authorizationBinding,
+    authorizationBindingDigest: current.authorizationBindingDigest }));
+  return request;
 }
