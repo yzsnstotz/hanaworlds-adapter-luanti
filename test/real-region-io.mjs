@@ -82,6 +82,8 @@ local function answer()
     local out={}
     for i,p in ipairs(q) do
       local pos={x=p[1],y=p[2],z=p[3]}
+      -- No player keeps blocks loaded; load (never generate) before observing.
+      if p[4]~='noload' then minetest.load_area(pos) end
       local n=minetest.get_node_or_nil(pos)
       out[i]={pos=p,name=n and n.name or 'UNLOADED',param2=n and n.param2 or -1,
         light=minetest.get_node_light(pos,0.5) or -1,param1=n and n.param1 or -1,
@@ -299,7 +301,7 @@ try {
 
   // 5. Never-generated region: loaded by emerge, then KNOWN; second read ALREADY_LOADED.
   const far = { min: [1000, 0, 1000], max: [1040, 20, 1040] };
-  const farBefore = await engineRead([[1000, 0, 1000]]);
+  const farBefore = await engineRead([[1000, 0, 1000, 'noload']]); // observe without loading
   const g1 = await readR(far, 'INSPECT'); C.requireKnownRegion(g1);
   assert.ok(g1.chunks.every(c => c.loadMethod === 'LOADED_BY_EMERGE'));
   const g1Facts = port.lastFacts();
