@@ -66,13 +66,13 @@ export async function discoverLocalWorlds(configuredRoots) {
   return worlds.sort((a, b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0);
 }
 
-export async function provisionLocalPayload(world, { operatorAuthority, transportPort = null } = {}) {
-  if (typeof operatorAuthority?.verify !== 'function') throw fault('CONNECTION_UNAUTHORIZED');
-  const operator = await operatorAuthority.verify({ worldPath: resolve(world),
-    action: 'PROVISION_PAYLOAD' });
-  if (!operator?.current || operator.worldPath !== resolve(world) ||
-      operator.action !== 'PROVISION_PAYLOAD' || operator.worldStopped !== true)
-    throw fault('CONNECTION_UNAUTHORIZED');
+export async function provisionLocalPayload(world, { stoppedWorld, transportPort = null } = {}) {
+  if (typeof stoppedWorld !== 'function') throw fault('CURRENT_WORLD_MISMATCH');
+  const stopped = await stoppedWorld();
+  if (stopped?.state !== 'STOPPED' || stopped.worldPath !== resolve(world) ||
+      !Number.isSafeInteger(stopped.processId) || stopped.processId <= 0 ||
+      typeof stopped.operationRef !== 'string' || !stopped.operationRef)
+    throw fault('CURRENT_WORLD_MISMATCH');
   if (transportPort !== null && (!Number.isSafeInteger(transportPort) || transportPort < 1 || transportPort > 65535))
     throw fault('SCHEMA_INVALID');
   await realDirectory(world, 'WORLD_NOT_FOUND');
@@ -80,7 +80,7 @@ export async function provisionLocalPayload(world, { operatorAuthority, transpor
   if (!worldMt?.isFile() || worldMt.isSymbolicLink()) throw fault('WORLD_NOT_FOUND');
   const mods = join(world, 'worldmods');
   const modsStat = await lstat(mods).catch(() => null);
-  if (modsStat) await realDirectory(mods, 'CONNECTION_UNAUTHORIZED');
+  if (modsStat) await realDirectory(mods, 'CURRENT_WORLD_MISMATCH');
   else { await mkdir(mods, { mode: 0o700 }); await syncDirectory(world); }
   const target = join(mods, 'hanaworlds_adapter');
   const targetStat = await lstat(target).catch(() => null);

@@ -1,6 +1,5 @@
 /** Errors never contain an input value, user key, path, stack or provider exception. */
 const retryFor = (phase, code) => phase === 'decode' || phase === 'replay' ? 'NEVER'
-  : phase === 'authorize' ? 'AFTER_NEW_AUTH'
   : phase === 'restore' ? 'AFTER_MANUAL_RECOVERY'
   : code === 'RECOVERY_PENDING' ? 'SAME_TRANSACTION_QUERY' : 'AFTER_NEW_FACTS';
 export class ContractError extends Error {

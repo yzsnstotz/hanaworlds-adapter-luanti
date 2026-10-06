@@ -8,7 +8,7 @@ const shape = ok => requireFact(ok, 'SCHEMA_INVALID', 'INVALID_SHAPE');
 const positionKey = p => JSON.stringify(p);
 // rc.6/rc.7 rules whose approved oracle names a decode-phase shape rejection.
 const decodeShape = ok => requireFact(ok, 'SCHEMA_INVALID', 'INVALID_SHAPE', 'decode');
-const PLACEMENT_OPTION_ORDER = ['NAME_PLAYER', 'PICK_WORLD_POINT'];
+const PLACEMENT_OPTION_ORDER = ['PICK_WORLD_POINT'];
 function arrayCompare(name, order) {
   if (order === 'numeric ascending') return (a, b) => a - b;
   if (order === 'UTF16 ascending') return compareUTF16;
@@ -44,7 +44,7 @@ function targetFacts(v) {
   const actual = ['worldRef', 'objectRef', 'worldRevision', 'objectRevision'];
   const planned = ['buildDigest', 'planRevision'];
   // rc.7: target-facts/v3 iff REGION_INSPECTED; INSPECTED and PLANNED keep target-facts/v2.
-  decodeShape((v.source === 'REGION_INSPECTED') === (v.profileVersion === 'target-facts/v3'));
+  decodeShape(v.profileVersion === 'target-facts/v4');
   if (v.source === 'REGION_INSPECTED') {
     decodeShape(v.worldRef !== null && v.worldRevision !== null);
     decodeShape(['objectRef', 'objectRevision', ...planned].every(k => v[k] === null));
@@ -85,10 +85,7 @@ function scopedRequest(v) {
   const covered = new Set(scope.cells.map(cell => positionKey(cell.position)));
   requireFact(v.operations.effects.every(effect => covered.has(positionKey(effect.position))),
     'TARGET_FACTS_INCOMPLETE', 'REQUIRED_FACT_UNKNOWN');
-  shape(v.authorizationBinding.worldRef === v.worldRef &&
-    v.authorizationBinding.transactionId === v.transactionId &&
-    v.authorizationBinding.operationDigest === v.operationDigest &&
-    v.authorizationBinding.sessionRef === v.sessionRef);
+
 }
 /** Local, declarative domain invariants only. Authenticity, durable storage,
  * actual world occupancy and event emission always require the owning provider. */
@@ -98,18 +95,13 @@ export function validateDomain(visits) {
     const schema = schemaBundle.definitions[name];
     if (Array.isArray(v) && schema.type === 'array' && !Array.isArray(schema.items)) validateArrayOrder(name, v, parent);
     if (name === 'Box' || name === 'SetBox') assertBox(v);
-    else if (name === 'OriginalSessionBinding')
-      requireFact(v.allowedActions.length > 0, 'SCHEMA_INVALID', 'INVALID_SHAPE');
-    else if ((name === 'OriginalBindingResult' || name === 'CurrentGrantResult') && v.status === 'CURRENT')
-      requireFact(v.binding.sessionRef === v.sessionRef, 'SCHEMA_INVALID', 'INVALID_SHAPE');
-    else if (name === 'OriginalSessionAuthorityResult' && v.status === 'CURRENT')
-      requireFact(v.authority.binding.sessionRef === v.sessionRef, 'SCHEMA_INVALID', 'INVALID_SHAPE');
     else if (name === 'CanvasWorldSelection' && v.status === 'BOUND')
       shape(v.context.activeWorldRef !== null);
     else if (name === 'WorldSelectionContext') {
       shape(v.inventory.connections.every(row => row.worldRef === v.worldRef));
       shape((v.selection.status === 'BOUND' ? v.selection.context.currentSession : v.selection.sessionRef) === v.sessionRef);
     }
+    else if (name === 'CurrentContext') shape(v.activeWorldRef === (v.localContext?.worldRef ?? null));
     else if (name === 'Axes') geometry(new Set(v.map(x => x[1])).size === 3);
     else if (name === 'CollisionBox') geometry(v.slice(0, 3).every((x, a) => x <= v[a + 3]));
     else if (name === 'NodeCapability') {
@@ -125,7 +117,7 @@ export function validateDomain(visits) {
       const usable = new Set(v.usablePositions.map(positionKey));
       geometry(v.path.every(p => usable.has(positionKey(p))));
       for (let j = 1; j < v.path.length; j++) geometry(v.path[j].reduce((n, x, a) => n + Math.abs(x - v.path[j - 1][a]), 0) === 1);
-    } else if (name === 'ProtectionWitness' || name === 'BodyWitness') {
+    } else if (name === 'BodyWitness') {
       shape(v.evidence.worldRef !== null && v.evidence.worldRevision !== null);
     } else if (name === 'BuildProjection') {
       shape(same(unionBounds(v.operations), v.declaredBounds));
@@ -140,15 +132,11 @@ export function validateDomain(visits) {
       shape(v.beforeImageDigest === v.payload.beforeImageDigest && v.scopeDigest === v.payload.scopeDigest &&
         v.guarantee === 'RECOVERABLE_VERIFIED');
     else if (name === 'ActionDescriptor') decodeShape((v.choices !== null) === v.inputKinds.includes('SELECT_CHOICE'));
-    else if (name === 'PlacementChoiceRequired') {
-      shape((v.candidatePlayerNames !== null) === v.reasons.includes('MULTIPLE_ONLINE_PLAYERS'));
-      // rc.9 (Q2 user decision): NAME_PLAYER only for MULTIPLE_ONLINE_PLAYERS; every other reason offers PICK_WORLD_POINT only.
-      shape(same(v.options, v.reasons.includes('MULTIPLE_ONLINE_PLAYERS') ? PLACEMENT_OPTION_ORDER : ['PICK_WORLD_POINT']));
-    } else if (name === 'RegionInspection') {
+ else if (name === 'RegionInspection') {
       decodeShape(v.targetFacts.source === 'REGION_INSPECTED');
       shape(v.evidence.worldRef === v.targetFacts.worldRef && v.evidence.worldRevision === v.targetFacts.worldRevision);
       shape(v.evidence.sourceRevision === v.frame.transformRevision);
-      geometry([...v.protectedPositions, ...v.bodyOccupiedPositions].every(p => inside(p, v.targetFacts.sampledBounds)));
+      geometry(v.bodyOccupiedPositions.every(p => inside(p, v.targetFacts.sampledBounds)));
     } else if (name === 'PlacementRegionInspection') {
       shape((v.unavailableSettings !== null) === (v.error !== null && v.error.code === 'CAPABILITY_UNAVAILABLE' && v.error.reason === 'POLICY_UNAVAILABLE'));
     } else if (name === 'SessionTurnDetails') {
@@ -171,6 +159,12 @@ export function validateDomain(visits) {
     } else if (name === 'BuildEntryVerified' ||
       (name === 'BuildEntryOutcome' && v.outcome === 'VERIFIED')) {
       shape(v.receipt.status === 'VERIFIED');
+    } else if (name === 'BuildProposalBox') {
+      assertBox(v); geometry(v.min.every(x => x >= 0));
+    } else if (name === 'BuildProposalContext' || name === 'ValidateBuildProposalRequest') {
+      decodeShape(v.referenceBrief.media.length === 0);
+    } else if (name === 'ValidateBuildProposalResponse' && v.error !== null) {
+      shape(v.error.mutationState === 'NONE' && v.error.transactionRef === null);
     } else if (name === 'CreateBuildPlanRequest') {
       // Payload-decidable painter/v3 rules in the approved order; digest coherence is in validateBoundRequest.
       if (v.targetFacts.source === 'REGION_INSPECTED') {

@@ -1,10 +1,10 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "HanaWorlds Stage 1 Luanti adapter candidate; world-adapter/v5 scoped provider and in-world interaction-surface/v3 renderer",
+  "description": "HanaWorlds local-world world-adapter/v6; current connection and Canvas-only transaction transport",
   "repository": {
     "type": "git",
     "url": "https://github.com/yzsnstotz/hanaworlds-adapter-luanti.git"
@@ -16,10 +16,7 @@
     ".": "./src/index.mjs"
   },
   "imports": {
-    "#contracts/v3": "./vendor/hanaworlds-contracts/dist/v3/index.mjs",
-    "#contracts/v3/fixtures/*": "./vendor/hanaworlds-contracts/fixtures/v3/candidate/*.json",
-    "#contracts/v4": "./vendor/hanaworlds-contracts/dist/v4/index.mjs",
-    "#contracts/v4/fixtures/*": "./vendor/hanaworlds-contracts/fixtures/v4/candidate/*.json"
+    "#contracts": "./vendor/hanaworlds-contracts/dist/local/index.mjs"
   },
   "files": [
     "src",

@@ -1,3 +1,4 @@
+import { validateType } from '#contracts';
 import { randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
@@ -5,7 +6,7 @@ import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
-function deny(code = 'CONNECTION_UNAUTHORIZED') { throw new Error(code); }
+function deny(code = 'CURRENT_WORLD_MISMATCH') { throw new Error(code); }
 function text(value) { return typeof value === 'string' && value.length > 0; }
 function fields(value, allowed, required = allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -20,7 +21,7 @@ async function freePort() {
   return port;
 }
 
-/** Trusted in-process Host port. Never accepts operator JSON. Native SRP and
+/** In-process Host lifecycle port. Never accepts lifecycle facts from request JSON. Native process and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
 export function createLocalWorldPort({ roots = [], resolveControl, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
@@ -50,7 +51,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
   }
   function factsMatch(row, facts, state) {
     return facts?.state === state && facts.worldPath === row.world.worldPath &&
-      facts.operationRef === row.nativeQuery.operationRef && facts.username === row.username &&
+      facts.operationRef === row.nativeQuery.operationRef &&
       Number.isSafeInteger(facts.processId) && facts.processId > 0 &&
       (row.processId === undefined || facts.processId === row.processId);
   }
@@ -90,7 +91,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
   function observations(row, facts) {
     return { current: true, leaseRef: row.leaseRef, connectionRef: row.world.connectionRef,
       worldPath: row.world.worldPath, worldRef: row.world.worldRef, action: row.action,
-      engineActorName: facts.username, nativeProcessId: facts.processId };
+      nativeProcessId: facts.processId };
   }
   async function stopUnused(row) {
     try {
@@ -115,7 +116,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     },
     discover: () => track(discover),
     async acquire(input) {
-      const request = fields(input, ['connectionRef', 'requesterRef', 'userPath', 'username', 'password', 'action']);
+      const request = validateType('LocalWorldAcquireInput', input);
       if (!Object.values(request).every(text) || !ACTIONS.has(request.action) || !isAbsolute(request.userPath))
         return Promise.reject(new Error('SCHEMA_INVALID'));
       return track(async () => {
@@ -128,11 +129,10 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         let row;
         try {
           const lease = await host.acquire({ requesterRef: request.requesterRef, operationRef,
-            worldPath: selected.worldPath, userPath: request.userPath,
-            username: request.username, password: request.password });
+            worldPath: selected.worldPath, userPath: request.userPath });
           if (!text(lease?.controlRef) || lease.worldPath !== selected.worldPath) deny();
           row = { leaseRef: randomUUID(), requesterRef: request.requesterRef, world: selected,
-            action: request.action, username: request.username, host,
+            action: request.action, host,
             nativeQuery: { controlRef: lease.controlRef, requesterRef: request.requesterRef,
               operationRef, worldPath: selected.worldPath } };
           const facts = await inspectRow(row); row.processId = facts.processId;
@@ -148,7 +148,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     },
     async provision(input) {
       const { row, q } = query(input, ['transportPort']);
-      if (row.action !== 'PROVISION_PAYLOAD' || row.paired) return Promise.reject(new Error('CONNECTION_UNAUTHORIZED'));
+      if (row.action !== 'PROVISION_PAYLOAD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
       if (q.transportPort !== undefined && (!Number.isSafeInteger(q.transportPort) || q.transportPort < 1 || q.transportPort > 65535)) return Promise.reject(new Error('SCHEMA_INVALID'));
       leases.delete(row.leaseRef); // synchronous one-shot reservation before any await
       return track(async () => {
@@ -165,15 +165,12 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
             if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
             phase = 'INSTALL';
             const transportPort = q.transportPort ?? await freePort();
-            let verified = false;
-            // Private one-shot bridge into existing installer. Never returned or persisted.
-            const operatorAuthority = { verify: async request => {
-              provider(row);
-              if (!callbackActive || verified || request.worldPath !== row.world.worldPath || request.action !== row.action) deny();
-              verified = true;
-              return { current: true, worldStopped: true, worldPath: row.world.worldPath, action: row.action };
-            } };
-            return provisionLocalPayload(row.world.worldPath, { operatorAuthority, transportPort });
+            return provisionLocalPayload(row.world.worldPath, { transportPort,
+              stoppedWorld: () => {
+                provider(row);
+                if (!callbackActive || !factsMatch(row, facts, 'STOPPED')) deny();
+                return facts;
+              } });
           });
         } catch (error) {
           log('warn', `LOCAL_PROVISION_${phase}_REJECTED`);
@@ -184,7 +181,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     },
     async pair(input) {
       const { row } = query(input);
-      if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CONNECTION_UNAUTHORIZED'));
+      if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
       row.paired = true;
       return track(async () => {
         try {
@@ -197,30 +194,9 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         } catch { await stopUnused(row); deny(); }
       });
     },
-    async readCurrentGrants(input) {
-      const { row } = query(input);
-      return track(async () => {
-        if (!row.paired || running.get(row.world.worldPath) !== row) {
-          log('warn', 'LOCAL_GAME_PAIRED_LEASE_REJECTED'); deny();
-        }
-        await inspectRow(row);
-        let received;
-        try { received = await runtime.grantEvidence.listCurrentLocalGrants(); }
-        catch { log('warn', 'LOCAL_GAME_GRANTS_READ_REJECTED'); deny(); }
-        const grants = received
-          .filter(proof => proof.connectionRef === row.world.connectionRef && proof.worldRef === row.world.worldRef);
-        await inspectRow(row);
-        return { worldRef: row.world.worldRef, connectionRef: row.world.connectionRef, grants };
-      });
-    },
+
   };
   return { port, manages: path => typeof path === 'string' && managed.has(resolve(path)),
-    async verifyOperator(input) {
-      const row = running.get(input.worldPath);
-      if (!row || input.action !== 'BIND_RUNNING_WORLD' || input.worldRef !== row.world.worldRef) return { current: false };
-      try { await inspectRow(row); return { current: true, worldPath: row.world.worldPath,
-        worldRef: row.world.worldRef, action: row.action }; } catch { return { current: false }; }
-    },
     async close() {
       closed = true; await Promise.allSettled([...pending]);
       await Promise.all([...leases.values()].map(stopUnused));
