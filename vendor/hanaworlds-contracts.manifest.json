@@ -1,10 +1,10 @@
 {
  "name": "hanaworlds-contracts",
- "version": "0.4.2",
- "revision": "aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777",
- "sha256": "c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6",
- "entryCount": 21,
- "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777",
+ "version": "0.5.0",
+ "revision": "c006a839a6e6c2c63d57a14b72e4e6b26fa717f1",
+ "sha256": "7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e",
+ "entryCount": 24,
+ "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/c006a839a6e6c2c63d57a14b72e4e6b26fa717f1",
  "note": "Every entry of the admitted package; only `vendored` paths are bundled, byte-identical to their entry.",
  "vendored": [
   "LICENSE",
@@ -17,11 +17,14 @@
   "dist/local/generated/contracts.mjs",
   "dist/local/index.mjs",
   "dist/local/material-sources.mjs",
+  "dist/local/region-domain.mjs",
+  "dist/local/region.mjs",
   "dist/local/runtime.mjs",
   "dist/local/schema-validator.mjs",
   "dist/names.mjs",
   "dist/strict-json.mjs",
   "fixtures/local/main.json",
+  "fixtures/local/region.json",
   "package.json"
  ],
  "entries": [
@@ -37,8 +40,8 @@
   },
   {
    "path": "README.md",
-   "size": 16343,
-   "sha256": "e3a5c39f0a27a2883825af7d2f0df01a4fa4ab1c16fdbb4785ab3ec0fb88ebaf"
+   "size": 25222,
+   "sha256": "17fc91643a90b74659f8119c065e01bacc6db8b046d5fb8a811d25ec7ce91921"
   },
   {
    "path": "dist/errors.mjs",
@@ -57,18 +60,18 @@
   },
   {
    "path": "dist/local/domain.mjs",
-   "size": 13460,
-   "sha256": "8b59f0e0b1c30b50164a60a9b5d64ecf10d38e389bedbb3524d9da9c3688bd30"
+   "size": 13877,
+   "sha256": "dccaf4525726dd183d473d1193b1a16272b12a6c30bb90b93baba58b7cee5992"
   },
   {
    "path": "dist/local/generated/contracts.mjs",
-   "size": 169325,
-   "sha256": "2a80118ffc0b7cc44bc61334a1f9597e79924743cbfac5e1a4811efd78a5b4e4"
+   "size": 200730,
+   "sha256": "3f46f1d28c0b14f0ef2b2b43032183fa740bf212edd4c6db74e1f4c3658bca32"
   },
   {
    "path": "dist/local/index.mjs",
-   "size": 133,
-   "sha256": "db63c45d5939458a11bf13984e4f8873c5fcfcca228b0aefa204a7b5f8cbfee5"
+   "size": 163,
+   "sha256": "cd4e65527145afae2d556260ea07be8ef35169c914ce95749720234b1f73ed4b"
   },
   {
    "path": "dist/local/material-sources.mjs",
@@ -77,8 +80,18 @@
   },
   {
    "path": "dist/local/public.d.ts",
-   "size": 9146,
-   "sha256": "8c01dc0abd6a56a30b89d35336a4ef6b437db1a9ee290f541edba89e6e41c55b"
+   "size": 13045,
+   "sha256": "d14d15bc9584e37545513d48764591413e494958a40f81b454201e3e682f0727"
+  },
+  {
+   "path": "dist/local/region-domain.mjs",
+   "size": 7104,
+   "sha256": "3e1b6d57d9a13a3376f59d0c2365d4502468f95b4fda371e650288ee6ab69134"
+  },
+  {
+   "path": "dist/local/region.mjs",
+   "size": 16836,
+   "sha256": "7c8d127efba332c6c172c42166f6a3bd2e59839e83175a881d7c7ffeceabe93e"
   },
   {
    "path": "dist/local/runtime.mjs",
@@ -106,29 +119,34 @@
    "sha256": "dae8c5f3dc577c29809eb3367ffcca820de18ad3d78bf51d69f1940b47c75216"
   },
   {
+   "path": "fixtures/local/region.json",
+   "size": 72082,
+   "sha256": "dc7258d1efed89abce593e04c50e90038ffc90da1df2bdcfba6134413751fb57"
+  },
+  {
    "path": "package.json",
-   "size": 1506,
-   "sha256": "3fc0fa749d6f21dee8a0334c96225b36516bb3ac33c9a523c48503bf7918922b"
+   "size": 1690,
+   "sha256": "391786730d0aad1cbcdae967ed35f087985c3b4945482f047ca5470f6d2febaf"
   },
   {
    "path": "schemas/local/contracts.schema.json",
-   "size": 244652,
-   "sha256": "4dbb23c20cb8f3ca12b26be8e4cac175e57904343335c274580db0beee4a0fc3"
+   "size": 282159,
+   "sha256": "014909c164af20789412a430c9cc9779ab5933a79fb87076e87c59a7b2a17650"
   },
   {
    "path": "schemas/local/profile.json",
-   "size": 268706,
-   "sha256": "eecb72402f1081fe379f46626aa607885f3283efd5784cfa94c6f379579750f5"
+   "size": 314458,
+   "sha256": "74dff5489b07089f35fde2c0a4caf4eaa1c2261389323220f81c52d1826fe078"
   },
   {
    "path": "types/local/contracts.d.ts",
-   "size": 89448,
-   "sha256": "396a9900b2dc0dac3cf00ea6882669ccbf97385ffed09ec4aa20cede00b7bc6f"
+   "size": 103469,
+   "sha256": "8ce0b9d032b3cb11df497de281dcb3b557d7ccb2d7db84b1207e5eed37a4bab8"
   },
   {
    "path": "types/local/index.d.ts",
-   "size": 9146,
-   "sha256": "8c01dc0abd6a56a30b89d35336a4ef6b437db1a9ee290f541edba89e6e41c55b"
+   "size": 13045,
+   "sha256": "d14d15bc9584e37545513d48764591413e494958a40f81b454201e3e682f0727"
   }
  ]
 }

@@ -75,7 +75,7 @@ export class LocalCourier {
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
   regionLimits() { return this.dispatch('region_limits'); }
   regionEmerge(min, max) { return this.dispatch('region_emerge', { min, max }); }
-  regionRead(min, max) { return this.dispatch('region_read', { min, max }); }
+  regionRead(args) { return this.dispatch('region_read', args); }
   regionWrite(batch) { return this.dispatch('region_write', batch); }
   apply(effects, beforeImage, scopeBeforeImage, operationDigest) {
     return this.dispatch('apply', { effects, beforeImage, scopeBeforeImage, operationDigest,

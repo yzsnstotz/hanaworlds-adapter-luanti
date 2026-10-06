@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
+import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition } from '#contracts';
 import { LocalCourier } from './local-courier.mjs';
 import { LocalRecords } from './local-records.mjs';
@@ -7,8 +7,7 @@ import { LocalTransactions, cellDigest, readbackView } from './local-transaction
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
-import { describeRegionIO, readRegion, writeRegion } from './region-io.mjs';
-import { negotiate } from './region-voxels.mjs';
+import { readRegion, writeRegion, protocolHandshake, RegionFault } from './region-io.mjs';
 const WIRE = 'world-adapter/v6';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
@@ -200,37 +199,49 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},
       bodyOccupiedPositions:raw.body.sort(comparePosition),entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
   }
-  // Region I/O for the Canvas transaction owner: current paired world only,
-  // serialized with every other courier use of this runtime.
-  function region(caller, input, op) {
-    const work = serial.then(async () => {
-      if (closed) fail('ADAPTER_UNAVAILABLE');
-      canvasCaller(caller);
-      if (!input || typeof input !== 'object' || ![input.worldRef, input.connectionRef, input.connectionIncarnationRef]
-        .every(v => typeof v === 'string' && v)) fail('SCHEMA_INVALID');
-      negotiate(input.protocol); // wrong protocol line: rejected before any engine dispatch
-      const row = rows.get(input.connectionRef);
-      if (!row) fail('WORLD_NOT_BOUND');
-      if (row.worldRef !== input.worldRef || row.incarnation !== input.connectionIncarnationRef) fail('CURRENT_WORLD_MISMATCH');
-      await inspectConnection(row.connectionRef);
-      if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
-      const result = await op(row.engine, input);
-      let currentAfter = true;
-      try { await inspectConnection(row.connectionRef); } catch { currentAfter = false; }
-      if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) currentAfter = false;
-      if (op === readRegion && !currentAfter) fail('CURRENT_WORLD_MISMATCH');
-      return { worldRef: row.worldRef, connectionRef: row.connectionRef,
-        connectionIncarnationRef: row.incarnation, currentAfter, ...result };
-    });
-    serial = work.catch(() => {}); return work;
-  }
+  // world-adapter-region/v1 for the Canvas transaction owner: current paired
+  // world/selection only, serialized with every other courier use.
+  const REGION_WIRE = 'world-adapter-region/v1';
+  let regionFacts = null;
   const regionIO = {
     ctx,
     [Symbol.for('cordis.tracker')]: { property: 'ctx' },
-    describe: () => describeRegionIO(),
-    negotiate: required => negotiate(required),
-    readRegion(input) { return region(this.ctx, input, readRegion); },
-    writeRegion(input) { return region(this.ctx, input, writeRegion); },
+    contractVersion: REGION_WIRE,
+    protocolHandshake,
+    /** Engine facts of the last region call (batches, emerge actions); evidence only. */
+    lastFacts: () => regionFacts,
+    call(name, raw) {
+      const caller = this.ctx;
+      // A different wire (e.g. world-adapter-region/v2) is UNSUPPORTED_VERSION
+      // before any engine dispatch.
+      const wire = typeof raw?.contractVersion === 'string' ? raw.contractVersion : REGION_WIRE;
+      const r = validateRequest(wire, name, raw);
+      const work = serial.then(async () => {
+        regionFacts = null;
+        const respond = result => validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE, requestId: r.requestId, result, error: null });
+        try {
+          if (closed) fail('ADAPTER_UNAVAILABLE');
+          canvasCaller(caller);
+          const row = rows.get(r.localContext.connectionRef);
+          if (!row) fail('WORLD_NOT_BOUND');
+          await current(r, row);
+          if (row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
+          const out = name === 'ReadRegion' ? await readRegion(row.engine, r) : await writeRegion(row.engine, r);
+          regionFacts = out.facts;
+          const response = respond(out.result);
+          if (name === 'ReadRegion') { await current(r, row); validateRegionRead(r, response); }
+          else validateRegionWrite(r, response);
+          return response;
+        } catch (error) {
+          const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
+          return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE, requestId: r.requestId, result: null,
+            error: { code, phase: 'validate', retryability: 'AFTER_NEW_FACTS', mutationState: 'NONE',
+              transactionRef: r.transactionId ?? null, causeCode: null,
+              reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN' } });
+        }
+      });
+      serial = work.catch(() => {}); return work;
+    },
   };
   const port = {
     ctx,

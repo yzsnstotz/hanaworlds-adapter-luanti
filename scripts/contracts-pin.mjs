@@ -1,11 +1,11 @@
 // The admitted hanaworlds-contracts artifact and the exact subset of its
 // package entries the Adapter bundles under vendor/hanaworlds-contracts.
-export const PINNED = Object.freeze({ name: 'hanaworlds-contracts', version: '0.4.2',
- revision: 'aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777',
- sha256: 'c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6', entryCount: 21,
- source: 'https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777' });
+export const PINNED = Object.freeze({ name: 'hanaworlds-contracts', version: '0.5.0',
+ revision: 'c006a839a6e6c2c63d57a14b72e4e6b26fa717f1',
+ sha256: '7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e', entryCount: 24,
+ source: 'https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/c006a839a6e6c2c63d57a14b72e4e6b26fa717f1' });
 export const METADATA = ['package.json', 'LICENSE', 'NOTICE', 'README.md'];
 export const RUNTIME_ENTRIES = ['dist/local/index.mjs'];
-export const TEST_FIXTURES = ['fixtures/local/main.json'];
+export const TEST_FIXTURES = ['fixtures/local/main.json', 'fixtures/local/region.json'];
 export const VENDOR_DIR = 'vendor/hanaworlds-contracts';
 export const MANIFEST = 'vendor/hanaworlds-contracts.manifest.json';

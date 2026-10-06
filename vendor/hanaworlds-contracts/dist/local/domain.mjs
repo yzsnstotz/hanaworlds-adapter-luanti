@@ -2,6 +2,7 @@ import { schemaBundle, contractMetadata } from './generated/contracts.mjs';
 import { fail, requireFact } from '../errors.mjs';
 import { compareUTF16, comparePosition, assertBox, inside, unionBounds } from '../geometry.mjs';
 import { validateNameSyntax } from '../names.mjs';
+import { validateRegionDomain, comparePalette } from './region-domain.mjs';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const geometry = ok => requireFact(ok, 'SCHEMA_INVALID', 'INVALID_GEOMETRY');
 const shape = ok => requireFact(ok, 'SCHEMA_INVALID', 'INVALID_SHAPE');
@@ -14,6 +15,9 @@ function arrayCompare(name, order) {
   if (order === 'UTF16 ascending') return compareUTF16;
   if (order === 'numeric x,y,z' || order === 'numeric lexicographic six coordinates') return comparePosition;
   if (order === 'position numeric x,y,z') return (a, b) => comparePosition(a.position, b.position);
+  if (order === 'nodeName UTF16 then param2 numeric') return comparePalette;
+  if (order === 'chunkPos numeric x,y,z') return (a, b) => comparePosition(a.chunkPos, b.chunkPos);
+  if (order === 'protocol UTF16 ascending') return (a, b) => compareUTF16(a.protocol, b.protocol);
   if (order === 'objectRef UTF16 ascending') return (a, b) => compareUTF16(a.objectRef, b.objectRef);
   if (order === 'portalRef UTF16 ascending') return (a, b) => compareUTF16(a.portalRef, b.portalRef);
   if (order === 'witnessId UTF16 ascending') return (a, b) => compareUTF16(a.witnessId, b.witnessId);
@@ -94,6 +98,7 @@ export function validateDomain(visits) {
     const { name, value: v, parent } = visits[i];
     const schema = schemaBundle.definitions[name];
     if (Array.isArray(v) && schema.type === 'array' && !Array.isArray(schema.items)) validateArrayOrder(name, v, parent);
+    validateRegionDomain(name, v); // no-op for non-region types
     if (name === 'Box' || name === 'SetBox') assertBox(v);
     else if (name === 'CanvasWorldSelection' && v.status === 'BOUND')
       shape(v.context.activeWorldRef !== null);

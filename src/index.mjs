@@ -28,7 +28,7 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => () => service.close());
   ctx.provide('hanaworldsWorldAdapterV6', runtime.port);
   ctx.provide('hanaworldsLuantiLocalWorlds', local.port);
-  ctx.provide('hanaworldsLuantiRegionIO', runtime.regionIO);
+  ctx.provide('hanaworldsWorldAdapterRegionV1', runtime.regionIO);
   ctx.provide('hanaworldsLuantiNativeFacts', { readScopedState: runtime.readScopedState, readCatalogue: runtime.readCatalogue,
     readMaterialSources: runtime.readMaterialSources });
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {

@@ -1,147 +1,189 @@
-import { REGION_PROTOCOL, negotiate, checkBox, decodeVoxels, encodeVoxels, subBoxes, batches,
-  blocksPerBatch, regionDigest, absorbRead, sliceForWrite } from './region-voxels.mjs';
+import { validateType, digestValue, encodeRegionBlock, expandRegionBlock, regionBlockBox,
+  regionChunksOfBox, comparePosition } from '#contracts';
+import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns, BLOCK } from './region-batches.mjs';
+import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /*
- * Region I/O transport. Adapter only moves data and reports engine facts:
- * it never decides a transaction. A multi-batch write is NOT atomic; on any
- * failure the reply says exactly which batches were written so the caller
- * (Canvas) can restore its own pre-write region snapshot with writeRegion.
+ * world-adapter-region/v1 transport over the paired Luanti engine. The Adapter
+ * reports per-chunk engine facts only: it never decides or claims a commit.
+ * Canvas compares summaries and restores its own snapshot (purpose RESTORE).
  */
-const fail = code => { throw new Error(code); };
-const key = b => b.join(',');
-const LIGHT_METHOD = 'VoxelManip.write_to_map(light=true)+core.fix_light';
-
-export function describeRegionIO() {
-  return { protocol: REGION_PROTOCOL.name, version: REGION_PROTOCOL.version,
-    capabilities: [...REGION_PROTOCOL.capabilities], mapblockSize: 16,
-    purpose: 'Bulk read/write of a box region of the current Luanti world in mapblock batches '
-      + '(fill, explicit air dig, keep unspecified cells), with load-before-read, light '
-      + 'completion and per-block digests. Typical scale: one or many 16^3 mapblocks per call; '
-      + 'single cells remain on the per-cell transaction path.',
-    preconditions: ['current paired world/connection/incarnation', 'Canvas caller',
-      'region read before write (expected per-block digests)', 'every touched cell loaded and known',
-      'changed cells are static stateless non-liquid nodes', 'no solid target inside a player body'],
-    atomic: false, transactionOwner: 'hanaworlds-canvas', lightMethod: LIGHT_METHOD };
+export const LIGHT_METHOD = 'luanti:VoxelManip.write_to_map(light=true)+core.fix_light';
+const KNOWN_ACTIONS = new Set(['FROM_MEMORY', 'FROM_DISK', 'GENERATED', 'CANCELLED']);
+const LOST = new Set(['RECOVERY_PENDING', 'ENGINE_RESPONSE_UNKNOWN', 'ADAPTER_UNAVAILABLE']);
+const key = p => p.join(',');
+const sha = (kind, v) => digestValue(kind, v).sha256;
+const floorBlock = n => Math.floor(n / BLOCK);
+const blockOf = box => box.min.map(floorBlock);
+export class RegionFault extends Error {
+  constructor(code, reason) { super(code); this.reason = reason; }
 }
 
-async function loadBatch(engine, box) {
-  const emerged = await engine.regionEmerge(box.min, box.max);
-  const actions = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.action]));
-  const read = await engine.regionRead(box.min, box.max);
-  if (!read || !Array.isArray(read.blocks)) fail('CAPABILITY_UNAVAILABLE');
-  const blocks = read.blocks.map(b => {
-    const action = actions.get(key(b.blockPos)) ?? 'NOT_REPORTED';
-    // The engine readback decides: a block is KNOWN only when none of its cells
-    // reads as 'ignore'. CANCELLED is kept as a reported fact (the engine also
-    // cancels a queued block that another queued block's mapchunk generated);
-    // ERRORED or unreported emerges are never known.
-    const known = b.ignoreCells === 0 && typeof b.digest === 'string' &&
-      ['FROM_MEMORY', 'FROM_DISK', 'GENERATED', 'CANCELLED'].includes(action);
-    return { blockPos: b.blockPos, min: b.min, max: b.max, emerge: action,
-      availability: known ? 'KNOWN' : 'UNKNOWN', digest: known ? b.digest : null,
-      ignoreCells: b.ignoreCells };
-  });
-  return { read, blocks };
+export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
+  profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
+  protocols: [{ protocol: 'world-adapter-region', major: 1, minor: 0 }],
+  capabilities: ['world-adapter-region/v1:chunked-read', 'world-adapter-region/v1:chunked-write',
+    'world-adapter-region/v1:lighting-complete', 'world-adapter-region/v1:load-then-know',
+    'world-adapter-region/v1:restore-state'],
+  // Provenance is a record only; an installed package cannot know its own tar digest.
+  provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
+}));
+
+/** RegionState of one box from an expanded engine read (all cells specified). */
+function stateOf(worldRef, read, box) {
+  const size = box.max.map((v, i) => v - box.min[i] + 1);
+  const palette = [], index = new Map();
+  const indices = new Int32Array(size[0] * size[1] * size[2]);
+  let i = 0;
+  for (let z = box.min[2]; z <= box.max[2]; z++)
+    for (let y = box.min[1]; y <= box.max[1]; y++)
+      for (let x = box.min[0]; x <= box.max[0]; x++) {
+        const j = read.at(x, y, z), nodeName = read.names[read.name[j]], param2 = read.param2[j];
+        const k = `${nodeName}\t${param2}`;
+        let p = index.get(k);
+        if (p === undefined) { p = palette.length; palette.push({ nodeName, param2 }); index.set(k, p); }
+        indices[i++] = p;
+      }
+  const inside = p => p.every((v, a) => v >= box.min[a] && v <= box.max[a]);
+  const extras = read.extras.filter(e => inside(e.position))
+    .map(e => ({ position: e.position, metadata: e.fields ?? {}, inventory: e.inventory ?? {}, timer: e.timer ?? null }))
+    .filter(e => Object.keys(e.metadata).length > 0 || Object.keys(e.inventory).length > 0 || e.timer !== null)
+    .sort((a, b) => comparePosition(a.position, b.position));
+  return validateType('RegionState', { profileVersion: 'region-state/v1', worldRef,
+    block: encodeRegionBlock({ origin: box.min, size, palette, indices }), extras, derivedLightMode: 'recompute-with-readback' });
 }
 
-/** Load (emerge) then read a region; any unknown block makes the whole read UNKNOWN. */
-export async function readRegion(engine, input) {
-  const protocol = negotiate(input.protocol);
-  const { min, max } = checkBox(input.min, input.max);
-  const size = max.map((v, i) => v - min[i] + 1);
-  const total = size[0] * size[1] * size[2];
-  if (!Number.isSafeInteger(total)) fail('LIMIT_EXCEEDED');
-  const perBatch = blocksPerBatch(await engine.regionLimits());
-  const state = { palette: [], index: new Map(), cells: new Int32Array(total) };
-  const region = { min, size };
-  const blocks = [], batchFacts = [];
-  let unknown = null, metadataCells = 0;
-  for (const box of batches(min, max, perBatch)) {
-    const { read, blocks: facts } = await loadBatch(engine, box);
-    blocks.push(...facts);
-    batchFacts.push({ min: box.min, max: box.max, blocks: facts.length });
-    metadataCells += Number.isSafeInteger(read.metadataCells) ? read.metadataCells : 0;
-    if (facts.some(b => b.availability !== 'KNOWN')) { unknown ??= { code: 'TARGET_FACTS_INCOMPLETE', batch: box }; continue; }
-    if (!unknown) absorbRead(read, region, state);
+function unknownReason(action, box, limits) {
+  if (action === 'ERRORED') return 'LOAD_FAILED';
+  const limit = limits.mapgenLimit;
+  if (Number.isFinite(limit) && [...box.min, ...box.max].some(v => Math.abs(v) > limit)) return 'OUTSIDE_WORLD_LIMITS';
+  if (action === 'NOT_REPORTED') return 'READ_FAILED';
+  return 'LOAD_FAILED';
+}
+
+/** Load (emerge) then read boxes: per box a contract chunk read plus the engine
+ * guard used for the later same-step write check. */
+async function loadAndRead(engine, worldRef, groups, limits) {
+  const out = new Map();
+  for (const group of groups) {
+    const emerged = await engine.regionEmerge(group.box.min, group.box.max);
+    const actions = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.action]));
+    let parts = [{ items: group.items }], replies;
+    try {
+      replies = [await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: group.items.map(i => i.box) })];
+    } catch (error) {
+      if (error?.message !== 'LIMIT_EXCEEDED' || group.items.length === 1) throw error;
+      // Metadata made this batch's reply exceed the courier body: read each box alone.
+      parts = []; replies = [];
+      for (const item of group.items) {
+        parts.push({ items: [item] });
+        replies.push(await engine.regionRead({ min: item.box.min, max: item.box.max, boxes: [item.box] }));
+      }
+    }
+    replies.forEach((reply, r) => {
+      const read = expandRead(reply);
+      parts[r].items.forEach((item, i) => {
+        const g = reply.boxes[i];
+        const action = actions.get(key(blockOf(item.box))) ?? 'NOT_REPORTED';
+        // The engine readback decides: KNOWN only when no cell reads as 'ignore'.
+        // Luanti also reports CANCELLED for a queued block that another queued
+        // block's mapchunk generated, so CANCELLED is a fact, not a verdict.
+        const known = g.ignoreCells === 0 && KNOWN_ACTIONS.has(action);
+        const state = known ? stateOf(worldRef, read, item.box) : null;
+        out.set(key(item.box.min), { action, guard: g.guard, chunk: { chunkPos: blockOf(item.box), box: item.box,
+          availability: known ? 'KNOWN' : 'UNKNOWN',
+          loadMethod: known ? (action === 'FROM_MEMORY' ? 'ALREADY_LOADED' : 'LOADED_BY_EMERGE') : null,
+          unknownReason: known ? null : unknownReason(action, item.box, limits),
+          state, stateDigest: state ? sha('region-state', state) : null } });
+      });
+    });
   }
-  const base = { protocol: protocol.version, min, max, blocks, batches: batchFacts, metadataCells };
-  if (unknown) return { ...base, status: 'UNKNOWN', voxels: null, regionDigest: null, failure: unknown };
-  return { ...base, status: 'KNOWN', voxels: encodeVoxels(min, size, state.palette, state.cells),
-    regionDigest: regionDigest(blocks), failure: null };
+  return out;
+}
+
+export async function readRegion(engine, request) {
+  const limits = await engine.regionLimits();
+  const perBatch = blocksPerBatch(limits);
+  const chunks = regionChunksOfBox(request.box);
+  const items = chunks.map(c => ({ box: { min: [...c.box.min], max: [...c.box.max] } }));
+  const groups = batches(request.box.min, request.box.max, perBatch).map(b => ({ box: b,
+    items: items.filter(i => i.box.min.every((v, a) => v >= b.min[a]) && i.box.max.every((v, a) => v <= b.max[a])) }));
+  const read = await loadAndRead(engine, request.worldRef, groups, limits);
+  return { result: { worldRef: request.worldRef, box: request.box,
+    chunks: chunks.map(c => read.get(key(c.box.min)).chunk), localContext: request.localContext },
+    facts: { batches: groups.length, emerge: [...read.values()].map(v => v.action) } };
 }
 
 /**
- * Write region voxels in mapblock batches. Every block of the region must be
- * listed in expectedBlocks with the digest the caller read. All batches are
- * prechecked (loaded, known, matching) before the first write; each batch is
- * rechecked by the engine in the same server step as its write.
+ * Precheck every chunk (loaded, KNOWN, expectedCurrentDigest, engine-side
+ * check-only of the write), then write batch by batch and read back. Failures
+ * before the first write are errors with mutationState NONE; after it, every
+ * chunk carries its own WRITTEN / NOT_WRITTEN / UNKNOWN fact.
  */
-export async function writeRegion(engine, input) {
-  const protocol = negotiate(input.protocol);
-  const decoded = decodeVoxels(input.voxels);
-  const expected = new Map();
-  if (!Array.isArray(input.expectedBlocks)) fail('SCHEMA_INVALID');
-  for (const e of input.expectedBlocks) {
-    if (!Array.isArray(e?.blockPos) || typeof e.digest !== 'string' || !/^[0-9a-f]{64}$/.test(e.digest)) fail('SCHEMA_INVALID');
-    expected.set(key(e.blockPos), e.digest);
+export async function writeRegion(engine, request) {
+  const limits = await engine.regionLimits();
+  const perBatch = blocksPerBatch(limits);
+  const apply = request.purpose === 'APPLY';
+  const items = request.writes.map(w => {
+    const box = regionBlockBox(apply ? w.ops : w.state.block);
+    return { write: w, box: { min: [...box.min], max: [...box.max] } };
+  });
+  const groups = groupBoxes(items, i => i.box, perBatch);
+  const before = await loadAndRead(engine, request.worldRef, groups, limits);
+  for (const item of items) {
+    const seen = before.get(key(item.box.min));
+    if (seen.chunk.availability !== 'KNOWN') throw new RegionFault('TARGET_FACTS_INCOMPLETE', 'REQUIRED_FACT_UNKNOWN');
+    if (seen.chunk.stateDigest !== item.write.expectedCurrentDigest) throw new RegionFault('TRANSACTION_CONFLICT', 'EXTERNAL_EDIT_CONFLICT');
+    const block = expandRegionBlock(apply ? item.write.ops : item.write.state.block);
+    item.command = { ...writeRuns(item.box, block.indices, block.palette, -1), guard: seen.guard,
+      ...(apply ? {} : { extras: item.write.state.extras }) };
   }
-  const all = subBoxes(decoded.min, decoded.max);
-  if (all.length !== expected.size || all.some(b => !expected.has(key(b.block)))) fail('SCHEMA_INVALID');
-  const perBatch = blocksPerBatch(await engine.regionLimits());
-  const plan = batches(decoded.min, decoded.max, perBatch).map(box => ({ box, slice: sliceForWrite(decoded, box) }));
-  const result = (status, extra) => ({ protocol: protocol.version, status, atomic: false,
-    transactionOwner: 'hanaworlds-canvas', min: decoded.min, max: decoded.max, ...extra });
-  const command = (box, slice, digestOf, checkOnly) => ({ min: slice.min, max: slice.max, palette: slice.palette,
-    contentRuns: slice.contentRuns, param2Runs: slice.param2Runs, checkOnly,
-    expected: subBoxes(box.min, box.max).map(sb => ({ min: sb.min, max: sb.max, digest: digestOf(sb.block) })) });
-  // Precheck every batch before the first write (loaded, known, expected
-  // digests, stateless static nodes, bodies): nothing is written on failure.
-  const before = [];
-  for (const [index, { box, slice }] of plan.entries()) {
-    const { blocks } = await loadBatch(engine, box);
-    before.push(...blocks);
-    const bad = blocks.find(b => b.availability !== 'KNOWN');
-    if (bad) return result('REJECTED', { batches: [], blocks: before,
-      failure: { code: 'TARGET_FACTS_INCOMPLETE', blockPos: bad.blockPos, emerge: bad.emerge }, written: false });
-    const stale = blocks.find(b => b.digest !== expected.get(key(b.blockPos)));
-    if (stale) return result('REJECTED', { batches: [], blocks: before,
-      failure: { code: 'TRANSACTION_CONFLICT', blockPos: stale.blockPos }, written: false });
-    if (slice.specified === 0) continue;
-    try { await engine.regionWrite(command(box, slice, b => expected.get(key(b)), true)); }
-    catch (error) {
-      return result('REJECTED', { batches: [], blocks: before, written: false,
-        failure: { code: error?.message ?? 'CAPABILITY_UNAVAILABLE', batchIndex: index } });
-    }
+  const command = (group, checkOnly) => ({ purpose: request.purpose, min: group.box.min, max: group.box.max,
+    chunks: group.items.map(i => i.command), checkOnly });
+  for (const group of groups) {
+    try { await engine.regionWrite(command(group, true)); }
+    catch (error) { throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR'); }
   }
-  const facts = [], after = new Map(before.map(b => [key(b.blockPos), { ...b }]));
-  let written = false;
-  for (const [index, { box, slice }] of plan.entries()) {
-    if (slice.specified === 0) { facts.push({ index, min: box.min, max: box.max, status: 'NOT_NEEDED' }); continue; }
-    let reply;
+  const status = new Map(), facts = [];
+  let lightComplete = true, failure = null;
+  for (const [index, group] of groups.entries()) {
+    if (failure) { group.items.forEach(i => status.set(key(i.box.min), 'NOT_WRITTEN')); continue; }
     try {
-      reply = await engine.regionWrite(command(box, slice, b => after.get(key(b)).digest, false));
+      const reply = await engine.regionWrite(command(group, false));
+      if (reply?.written !== true) throw new Error('CAPABILITY_UNAVAILABLE');
+      lightComplete &&= reply.lightComplete === true;
+      facts.push({ batch: index, chunks: group.items.length, changedCells: reply.changedCells, extrasCleared: reply.extrasCleared,
+        extrasSet: reply.extrasSet, lightComplete: reply.lightComplete, lightBox: reply.lightBox });
+      group.items.forEach(i => status.set(key(i.box.min), 'WRITTEN'));
     } catch (error) {
       const code = error?.message ?? 'CAPABILITY_UNAVAILABLE';
-      // A lost reply leaves this batch's mutation unknown; precondition errors
-      // are raised by the engine before set_data/write_to_map.
-      const lost = code === 'RECOVERY_PENDING' || code === 'ENGINE_RESPONSE_UNKNOWN' || code === 'ADAPTER_UNAVAILABLE';
-      facts.push({ index, min: box.min, max: box.max, status: lost ? 'UNKNOWN' : 'NOT_WRITTEN', code });
-      const status = lost ? 'UNKNOWN' : written ? 'PARTIAL' : 'REJECTED';
-      return result(status, { batches: facts, blocks: [...after.values()], written: lost ? 'UNKNOWN' : written,
-        failure: { code, batchIndex: index } });
+      failure = { batch: index, code };
+      facts.push({ batch: index, chunks: group.items.length, error: code });
+      group.items.forEach(i => status.set(key(i.box.min), LOST.has(code) ? 'UNKNOWN' : 'NOT_WRITTEN'));
     }
-    written = true;
-    for (const b of reply.blocks ?? []) after.set(key(b.blockPos), { ...after.get(key(b.blockPos)), digest: b.digest });
-    const ok = reply.written === true && reply.readbackMatches === true && reply.unspecifiedKept === true &&
-      reply.lightComplete === true;
-    facts.push({ index, min: box.min, max: box.max, status: ok ? 'WRITTEN_VERIFIED' : 'WRITTEN_UNVERIFIED',
-      changedCells: reply.changedCells, readbackMatches: reply.readbackMatches,
-      unspecifiedKept: reply.unspecifiedKept, light: { complete: reply.lightComplete === true,
-        method: LIGHT_METHOD, digest: reply.lightDigest } });
-    if (!ok) return result('PARTIAL', { batches: facts, blocks: [...after.values()], written: true,
-      failure: { code: reply.lightComplete !== true ? 'LIGHT_INCOMPLETE' : 'READBACK_MISMATCH', batchIndex: index } });
   }
-  const blocks = [...after.values()];
-  return result('COMPLETE', { batches: facts, blocks, written, regionDigest: regionDigest(blocks),
-    lightComplete: true, failure: null });
+  // Readback of every written chunk from the map.
+  const readback = new Map();
+  for (const group of groups) {
+    const done = group.items.filter(i => status.get(key(i.box.min)) === 'WRITTEN');
+    if (!done.length) continue;
+    try {
+      const reply = await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: done.map(i => i.box) });
+      const read = expandRead(reply);
+      done.forEach((item, i) => {
+        if (reply.boxes[i].ignoreCells === 0) readback.set(key(item.box.min), sha('region-state', stateOf(request.worldRef, read, item.box)));
+      });
+    } catch (error) { facts.push({ readbackError: error?.message ?? 'CAPABILITY_UNAVAILABLE' }); }
+  }
+  const chunks = items.map(i => {
+    let s = status.get(key(i.box.min)); const digest = readback.get(key(i.box.min)) ?? null;
+    if (s === 'WRITTEN' && digest === null) s = 'UNKNOWN'; // written but no readback: outcome not known
+    return { chunkPos: i.write.chunkPos, status: s, readbackDigest: s === 'WRITTEN' ? digest : null };
+  });
+  const anyWritten = chunks.some(c => c.status === 'WRITTEN');
+  const lightBox = items.reduce((b, i) => ({ min: b.min.map((v, a) => Math.min(v, i.box.min[a])),
+    max: b.max.map((v, a) => Math.max(v, i.box.max[a])) }), { min: [...items[0].box.min], max: [...items[0].box.max] });
+  return { result: { transactionId: request.transactionId, worldRef: request.worldRef, purpose: request.purpose, chunks,
+    lighting: { status: anyWritten && lightComplete ? 'COMPLETE' : 'NOT_COMPLETE', box: lightBox, method: LIGHT_METHOD },
+    localContext: request.localContext }, facts: { batches: facts, failure } };
 }
