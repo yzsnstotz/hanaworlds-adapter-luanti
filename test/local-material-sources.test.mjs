@@ -64,10 +64,41 @@ test('fresh byte changes alter sourceRevision without forging game revision',()=
  const b=await resolve(m,connection);assert.notEqual(a.snapshot.sourceRevision,b.snapshot.sourceRevision);
  assert.equal(a.snapshot.gameRevision,b.snapshot.gameRevision);assert.notEqual(a.textures[0].bytesDigest,b.textures[0].bytesDigest);
 }));
-test('missing file and multiple mod source collisions are never guessed',()=>setup(async(m,{mod})=>{
+test('missing file is never guessed; Luanti 5.17 reverse load order resolves cross-mod names',()=>setup(async(m,{mod,game})=>{
  const resolve=await resolver();await rm(join(mod,'textures','native.png'));
  assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'MISSING_TEXTURE');
- const other=join(mod,'other');await mkdir(join(other,'textures'),{recursive:true});
- await writeFile(join(mod,'textures','native.png'),png);await writeFile(join(other,'textures','native.png'),png);
- m.mods.push({name:'other',path:other});assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNRESOLVED_SOURCE');
+ // server.cpp fillMediaCache + ServerModManager::getModsMediaPaths: a later
+ // loaded mod's media is listed first and therefore wins the file name.
+ const other=join(game,'mods','other');await mkdir(join(other,'textures'),{recursive:true});
+ const late=Buffer.concat([png,Buffer.from('later mod')]);
+ await writeFile(join(mod,'textures','native.png'),png);await writeFile(join(other,'textures','native.png'),late);
+ m.mods.push({name:'other',path:other});
+ let row=(await resolve(m,connection)).snapshot.materials[0];
+ assert.equal(row.texture.sourceRef,'mod:other/textures/native.png');assert.equal(row.texture.bytesDigest,hash(late));
+ m.mods.reverse();row=(await resolve(m,connection)).snapshot.materials[0];
+ assert.equal(row.texture.sourceRef,'mod:native/textures/native.png');
+ // Two copies inside the winning mod depend on directory listing order.
+ await mkdir(join(mod,'textures','sub'));await writeFile(join(mod,'textures','sub','native.png'),late);
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNRESOLVED_SOURCE');
+}));
+test('engine-ignored directories and formats are not sources; empty winner is unresolved',()=>setup(async(m,{mod,user})=>{
+ const resolve=await resolver();
+ // GetRecursiveDirs skips sub-directories starting with "_" or ".".
+ for(const d of ['_hidden','.git']){await mkdir(join(mod,'textures',d),{recursive:true});await writeFile(join(mod,'textures',d,'native.png'),Buffer.from('ignored'));}
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].texture.bytesDigest,hash(png));
+ // Server media accepts .png/.jpg/.tga only; .jpeg/.webp are never served.
+ for(const name of ['native.jpeg','native.webp','native.tga']){
+  m.appearance['native:stone'].textureName=name;await writeFile(join(mod,'textures',name),png);
+  assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNSUPPORTED_APPEARANCE',name);
+ }
+ m.appearance['native:stone'].textureName='native.jpg';await writeFile(join(mod,'textures','native.jpg'),png);
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].texture.mediaType,'image/jpeg');
+ m.appearance['native:stone'].textureName='native.png';
+ await writeFile(join(mod,'textures','native.png'),Buffer.alloc(0));
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNRESOLVED_SOURCE','engine skips empty media and falls through');
+ await writeFile(join(mod,'textures','native.png'),png);
+ await mkdir(join(user,'textures','server'),{recursive:true});await writeFile(join(user,'textures','server','native.png'),png);
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNRESOLVED_SOURCE','user server media outranks game/mod');
+ await rm(join(user,'textures'),{recursive:true});m.texturePath=null;
+ assert.equal((await resolve(m,connection)).snapshot.materials[0].reason,'UNRESOLVED_SOURCE','unknown texture_path override');
 }));

@@ -1,8 +1,10 @@
-# HanaWorlds Luanti Adapter 0.3.1
+# HanaWorlds Luanti Adapter 0.4.0 (image material line, payload 0.4.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
-`hanaworlds-contracts@0.4.0` (source `8cfb18f8e13aa33d7a942f230ec6117914322cdd`,
-pack SHA256 `d7b22e76de5e161abe7525596df608b3f00445fb4237808941cb5ef8328e9bc4`).
+`hanaworlds-contracts@0.4.2` (source `aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777`,
+pack SHA256 `c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6`).
+The text-line package 0.3.1/payload 0.3.0 stays a separate fixed artifact; this
+0.4.0 line does not replace or stay compatible with it.
 There is no player account, username/password, grant, AUTO mode, administrator
 approval or protection-region permission path in this package. Canvas owns
 transaction, affected-object and durable history decisions.
@@ -81,6 +83,36 @@ it back; an unverified restore remains an error with unknown mutation state.
 Undo transports the exact saved before image from the same verified source
 transaction and verifies the restored readback. It does not infer an inverse
 from a new build or delete a bounding box.
+
+## Readonly material sources (0.4.0)
+
+`ctx.get('hanaworldsLuantiNativeFacts').readMaterialSources(worldRef)` returns the
+contracts0.4.2 `{snapshot, textures}` envelope for the actual paired world. The
+paired Luanti process supplies one synchronous registry snapshot through the private
+courier (`fact_material_metadata`): the same Catalogue as `readCatalogue`, the
+engine game path (`get_game_info().path`), user path (`get_user_path()`), the
+`texture_path` setting, load-ordered mods (`get_modnames(true)` + `get_modpath`)
+and a narrow appearance projection. Node reads texture bytes only from those roots.
+
+Legal param2 (`Catalogue.allowedParam2`) is derived from engine semantics only:
+`facedir` → 0..23; `none` → the engine placement value (`place_param2`, else 0,
+as in builtin `item_place_node`). Every other paramtype2 stays null/unknown.
+A supported appearance is an opaque `normal` drawtype whose 1..6 tiles all name
+the same plain `.png`/`.jpg` file with no modifier, animation, colour, palette or
+overlay. Source precedence follows Luanti 5.17.0 `Server::fillMediaCache`:
+user `textures/server` (reported UNRESOLVED_SOURCE, not a game/mod source), game
+`textures`, then mods in reverse load order; sub-directories starting with `_` or
+`.` are ignored, a duplicate inside the winning recursive root, an empty/oversized
+file, any symlink/unreadable media directory, an `override.txt` in game textures or
+a non-empty `texture_path` all give UNKNOWN. `hasPersistentState`/`collisionBoxes`
+remain unknown regardless of KNOWN textures. Metadata is read twice around the
+byte resolution; any change of registry facts, bytes, connection or process rejects
+`CURRENT_WORLD_MISMATCH`. Source basis is SERVER_ASSET_ONLY: no client texture-pack
+or rendered-appearance claim, no RGB values, no cache.
+
+`npm run test:materials` covers the Lua projection and resolver (FIXTURE).
+`test/real-material-sources.mjs` is the focused real-Luanti reproduction with an
+explicit component fixture game; it does not represent the product game.
 
 ## Validation and retained history
 

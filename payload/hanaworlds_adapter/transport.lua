@@ -66,6 +66,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       if type(facts) ~= 'table' or type(facts.catalogue) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.catalogue(minetest) end
+    elseif command.operation == 'fact_material_metadata' then
+      if type(facts) ~= 'table' or type(facts.material_metadata) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.material_metadata(minetest) end
     elseif command.operation == 'fact_world_revision' then
       if type(facts) ~= 'table' or type(facts.world_revision) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'

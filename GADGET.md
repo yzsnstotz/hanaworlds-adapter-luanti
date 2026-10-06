@@ -1,7 +1,7 @@
 # HanaWorlds Luanti Adapter
 
-Version0.3.1 implements fresh local `world-adapter/v6` with payload0.3.0 and
-contracts0.4.0. The visible Host management facts include current world,
+Version0.4.0 implements fresh local `world-adapter/v6` with payload0.4.0 and
+contracts0.4.2, adding the readonly `readMaterialSources(worldRef)` fact. The visible Host management facts include current world,
 connection incarnation, actual native PID, payload digest and the non-switchable
 Adapter placement invariants. It requires no player permission approval.
 
