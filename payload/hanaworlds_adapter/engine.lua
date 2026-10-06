@@ -1,5 +1,5 @@
 -- Engine-side primitives. This module is held privately by init.lua; no
--- world mutation is exposed until a verified Adapter transport supplies authority
+-- world mutation is exposed until the private local Adapter transport supplies a current-world command
 -- and a host-fsynced PREPARED record.
 local M = {}
 local Engine = {}
@@ -12,11 +12,6 @@ local function position(cell)
       or math.abs(cell[i]) > 9007199254740991 then return nil end
   end
   return {x = cell[1], y = cell[2], z = cell[3]}
-end
-
-local function has_privilege(name)
-  return type(name) == 'string' and name ~= ''
-    and minetest.check_player_privs(name, {worldedit = true})
 end
 
 local function public_record(cell)
@@ -64,27 +59,12 @@ local function equal(a, b)
 end
 
 function M.new(dependencies)
-  return setmetatable({authorize = dependencies.authorize, verifyPrepared = dependencies.verifyPrepared,
+  return setmetatable({verifyPrepared = dependencies.verifyPrepared,
     verifyRestore = dependencies.verifyRestore}, Engine)
 end
 
-local function capture(self, player_name, positions, action, protected_positions)
-  if not self.authorize or not self.authorize(player_name, action) or not has_privilege(player_name) then
-    return nil, 'PERMISSION_DENIED'
-  end
+local function capture(self, positions)
   if type(positions) ~= 'table' or #positions == 0 then return nil, 'SCHEMA_INVALID' end
-  local protected = nil
-  if protected_positions ~= nil then
-    if type(protected_positions) ~= 'table' or #protected_positions == 0 then
-      return nil, 'SCHEMA_INVALID' end
-    protected = {}
-    for _, cell in ipairs(protected_positions) do
-      if not position(cell) then return nil, 'SCHEMA_INVALID' end
-      local cell_key = table.concat(cell, ',')
-      if protected[cell_key] then return nil, 'SCHEMA_INVALID' end
-      protected[cell_key] = true
-    end
-  end
   local records, covered, seen = {}, {}, {}
   for _, cell in ipairs(positions) do
     local pos = position(cell)
@@ -92,32 +72,23 @@ local function capture(self, player_name, positions, action, protected_positions
     local key = table.concat(cell, ',')
     if seen[key] then return nil, 'SCHEMA_INVALID' end
     seen[key] = true
-    if (protected == nil or protected[key]) and minetest.is_protected(pos, player_name) then
-      return nil, 'PERMISSION_DENIED' end
     local record, code = public_record(cell)
     if not record then return nil, code end
     records[#records + 1] = record
     covered[#covered + 1] = {cell[1], cell[2], cell[3]}
   end
-  if protected then
-    for cell_key in pairs(protected) do
-      if not seen[cell_key] then return nil, 'SCHEMA_INVALID' end
-    end
-  end
   return {coveredPositions = covered, records = records}
 end
 
-function Engine:snapshot(player_name, positions, protected_positions)
-  return capture(self, player_name, positions, 'INSPECT', protected_positions)
+function Engine:snapshot(positions)
+  return capture(self, positions)
 end
 
-function Engine:readback(player_name, positions, protected_positions)
-  return capture(self, player_name, positions, 'READBACK', protected_positions)
+function Engine:readback(positions)
+  return capture(self, positions)
 end
 
-function Engine:inspect(player_name, positions)
-  if not self.authorize or not self.authorize(player_name, 'INSPECT')
-    or not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
+function Engine:inspect(positions)
   if type(positions) ~= 'table' or #positions == 0 then return nil, 'SCHEMA_INVALID' end
   local occupied, empty, unknown, seen = {}, {}, {}, {}
   for _, cell in ipairs(positions) do
@@ -126,7 +97,6 @@ function Engine:inspect(player_name, positions)
     local key = table.concat(cell, ',')
     if seen[key] then return nil, 'SCHEMA_INVALID' end
     seen[key] = true
-    if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
     local ok, node = pcall(minetest.get_node_or_nil, pos)
     if not ok then
       unknown[#unknown + 1] = {position = cell, reason = 'READ_FAILED'}
@@ -181,11 +151,9 @@ local function refresh_light(positions)
   return true
 end
 
-function Engine:apply(player_name, effects, before_image, prepared, scope_before_image)
-  if not self.authorize or not self.authorize(player_name, 'APPLY_RECOVERABLE') or
-      not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
+function Engine:apply(effects, before_image, prepared, scope_before_image)
   if not prepared or prepared.status ~= 'PREPARED' or not self.verifyPrepared
-      or not self.verifyPrepared(player_name, effects, before_image, prepared) then
+      or not self.verifyPrepared(effects, before_image, prepared) then
     return nil, 'CAPABILITY_UNAVAILABLE'
   end
   if type(effects) ~= 'table' or #effects == 0 or type(before_image) ~= 'table'
@@ -225,7 +193,6 @@ function Engine:apply(player_name, effects, before_image, prepared, scope_before
       or not equal(effect.position, before_image.records[i].position) then
       return nil, 'SCHEMA_INVALID'
     end
-    if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
     if not static_node(effect.nodeName) or not static_node(before_image.records[i].nodeName)
       or not stateless(before_image.records[i]) then return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
     if type(effect.param2) ~= 'number' or effect.param2 < 0 or effect.param2 > 255
@@ -243,8 +210,6 @@ function Engine:apply(player_name, effects, before_image, prepared, scope_before
   local count = 0
   for _, effect in ipairs(effects) do
     local pos = position(effect.position)
-    if not self.authorize(player_name, 'APPLY_RECOVERABLE') or not has_privilege(player_name)
-      or minetest.is_protected(pos, player_name) then return nil, 'APPLY_FAILED' end
     local ok, changed = pcall(editing.set, pos, pos, effect.nodeName)
     if not ok or changed ~= 1 then return nil, 'APPLY_FAILED' end
     local param_ok, param_changed = pcall(editing.set_param2, pos, pos, effect.param2)
@@ -256,13 +221,11 @@ function Engine:apply(player_name, effects, before_image, prepared, scope_before
 end
 
 -- History targets are Adapter-private full-state images. The host has already
--- fsynced PREPARED and proved the current author/source transaction; the Lua
+-- fsynced PREPARED and proved the current world/source transaction; the Lua
 -- courier additionally binds this call to its one in-flight command.
-function Engine:apply_state(player_name, target_image, before_image, prepared)
-  if not self.authorize or not self.authorize(player_name, 'APPLY_RECOVERABLE')
-    or not has_privilege(player_name) then return nil, 'PERMISSION_DENIED' end
+function Engine:apply_state(target_image, before_image, prepared)
   if not prepared or prepared.status ~= 'PREPARED' or not self.verifyPrepared
-    or not self.verifyPrepared(player_name, target_image, before_image, prepared) then
+    or not self.verifyPrepared(target_image, before_image, prepared) then
     return nil, 'CAPABILITY_UNAVAILABLE'
   end
   if type(target_image) ~= 'table' or type(before_image) ~= 'table'
@@ -286,7 +249,6 @@ function Engine:apply_state(player_name, target_image, before_image, prepared)
     if not pos or not equal(cell, target.position)
       or not equal(cell, before_image.coveredPositions[i])
       or not equal(cell, prior.position) then return nil, 'SCHEMA_INVALID' end
-    if minetest.is_protected(pos, player_name) then return nil, 'PERMISSION_DENIED' end
     if not static_node(target.nodeName) or not static_node(prior.nodeName)
       or type(target.param1) ~= 'number' or target.param1 < 0 or target.param1 > 255
       or target.param1 ~= math.floor(target.param1)
@@ -315,9 +277,6 @@ function Engine:apply_state(player_name, target_image, before_image, prepared)
   local count = 0
   for _, target in ipairs(target_image.records) do
     local pos = position(target.position)
-    if not self.authorize(player_name, 'APPLY_RECOVERABLE')
-      or not has_privilege(player_name) or minetest.is_protected(pos, player_name) then
-      return nil, 'APPLY_FAILED' end
     local ok, changed = pcall(editing.set, pos, pos, target.nodeName)
     if not ok or changed ~= 1 then return nil, 'APPLY_FAILED' end
     local p_ok, p_changed = pcall(editing.set_param2, pos, pos, target.param2)
@@ -342,10 +301,9 @@ function Engine:apply_state(player_name, target_image, before_image, prepared)
   return {status = 'APPLIED_PENDING_READBACK', writtenCells = count}
 end
 
-function Engine:restore(service_name, before_image, recovery)
-  if not self.verifyRestore or not self.verifyRestore(service_name, before_image, recovery)
+function Engine:restore(before_image, recovery)
+  if not self.verifyRestore or not self.verifyRestore(before_image, recovery)
     or not recovery or recovery.status ~= 'RESTORING' then return nil, 'CAPABILITY_UNAVAILABLE' end
-  if not minetest.check_player_privs(service_name, {worldedit = true}) then return nil, 'PERMISSION_DENIED' end
   if type(before_image) ~= 'table' or type(before_image.records) ~= 'table'
     or #before_image.records == 0 then return nil, 'SCHEMA_INVALID' end
   local editing = rawget(_G, 'worldedit')
@@ -354,14 +312,12 @@ function Engine:restore(service_name, before_image, recovery)
     return nil, 'CAPABILITY_UNAVAILABLE' end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
-    if not pos or minetest.is_protected(pos, service_name) then return nil, 'RESTORE_FAILED' end
+    if not pos then return nil, 'RESTORE_FAILED' end
     if not static_node(record.nodeName) then return nil, 'RESTORE_FAILED' end
   end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
-    if not self.verifyRestore(service_name, before_image, recovery)
-      or not minetest.check_player_privs(service_name, {worldedit = true})
-      or minetest.is_protected(pos, service_name) then return nil, 'RESTORE_FAILED' end
+    if not self.verifyRestore(before_image, recovery) then return nil, 'RESTORE_FAILED' end
     local ok, changed = pcall(editing.set, pos, pos, record.nodeName)
     if not ok or changed ~= 1 then return nil, 'RESTORE_FAILED' end
     local param_ok, param_changed = pcall(editing.set_param2, pos, pos, record.param2)

@@ -15,7 +15,7 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region, grants, facts)
+  region, facts)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -35,82 +35,25 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
   local header = {'Authorization: Bearer ' .. config.token, 'Content-Type: application/json'}
   local current
   local engine = engine_module.new({
-    authorize = function(name, action)
-      if not current or name ~= current.actorName or action ~= current.action then
-        return false end
-      local proof = grants and grants:verify(name)
-      return proof and proof.current == true and proof.worldRef == manifest.worldRef
-        and proof.grantRef == current.grantRef
-    end,
-    verifyPrepared = function(_, _, _, prepared)
+    verifyPrepared = function(_, _, prepared)
       return current and (current.operation == 'apply' or current.operation == 'apply_state')
         and prepared == current.prepared
         and prepared.status == 'PREPARED'
         and prepared.operationDigest == current.operationDigest
     end,
-    verifyRestore = function(name, _, recovery)
-      return current and current.operation == 'restore' and name == current.serviceName
+    verifyRestore = function(_, recovery)
+      return current and current.operation == 'restore'
         and recovery == current.recovery and recovery.status == 'RESTORING'
     end,
   })
 
   local function run(command)
     if type(command) ~= 'table' or type(command.id) ~= 'string'
-      or command.worldRef ~= manifest.worldRef then return nil, 'CONNECTION_UNAUTHORIZED' end
-    -- The paired host cannot nominate an unconsenting player. Every new
-    -- player command rechecks the engine's current grant, session and privs.
-    local player_operation = {
-      present_frame = true, snapshot = true, inspect = true,
-      prepare_check = true, inspect_region = true, apply = true,
-      apply_state = true, readback = true, fact_profile = true,
-      fact_capacity = true, fact_catalogue = true, fact_world_revision = true,
-      fact_object_revisions = true,
-    }
-    if player_operation[command.operation] then
-      local actor
-      if command.operation == 'present_frame' then actor = command.engineActorName
-      else actor = command.actorName end
-      -- An unused second name must never select another player's grant.
-      if type(actor) ~= 'string' or actor == ''
-        or (command.actorName ~= nil and command.actorName ~= actor)
-        or (command.engineActorName ~= nil and command.engineActorName ~= actor) then
-        return nil, 'PERMISSION_DENIED'
-      end
-      local proof = grants and grants:verify(actor)
-      if not proof or proof.current ~= true or proof.worldRef ~= manifest.worldRef
-        or proof.engineActorName ~= actor
-        or proof.scope ~= 'WORLD_BUILD_WITH_ENGINE_PROTECTION'
-        or type(command.grantRef) ~= 'string' or command.grantRef == ''
-        or command.grantRef ~= proof.grantRef then
-        return nil, 'PERMISSION_DENIED'
-      end
-    end
+      or command.worldRef ~= manifest.worldRef then return nil, 'CURRENT_WORLD_MISMATCH' end
     current = command
     local result, code
-    if command.operation == 'present_frame' then
-      result = present_frame(command.engineActorName, command.frame)
-      if not result then code = 'INVALID_FRAME' end
-    elseif command.operation == 'handshake' then
+    if command.operation == 'handshake' then
       result = capabilities()
-    elseif command.operation == 'authorize' then
-      local name = command.actorName
-      local proof = grants and grants:verify(name) or {current = false}
-      result = {current = proof.current == true, engineActorName = name,
-        worldRef = manifest.worldRef, scope = proof.scope, grantRef = proof.grantRef,
-        worldeditAvailable = capabilities().worldeditAvailable}
-    elseif command.operation == 'list_grants' then
-      if capabilities().worldeditAvailable ~= true then code = 'CAPABILITY_UNAVAILABLE'
-      elseif type(grants) ~= 'table' or type(grants.list_current) ~= 'function' then
-        code = 'CAPABILITY_UNAVAILABLE'
-      else
-        local current = grants:list_current()
-        if type(current) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
-        else result = {grants = current} end
-      end
-    elseif command.operation == 'authorization_mode' then
-      if type(grants) ~= 'table' or type(grants.mode) ~= 'function' then
-        code = 'CAPABILITY_UNAVAILABLE'
-      else result = grants:mode() end
     elseif command.operation == 'fact_profile' then
       if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
@@ -132,40 +75,35 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.object_revisions(minetest, command.objectRefs) end
     elseif command.operation == 'snapshot' then
-      result, code = engine:snapshot(command.actorName, command.positions,
-        command.protectedPositions)
+      result, code = engine:snapshot(command.positions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'inspect' then
-      result, code = engine:inspect(command.actorName, command.positions)
+      result, code = engine:inspect(command.positions)
     elseif command.operation == 'prepare_check' then
-      result, code = region:prepare_check(command.actorName, command.positions)
+      result, code = region:prepare_check(command.positions)
     elseif command.operation == 'inspect_region' then
-      if type(command.actorName) ~= 'string' or command.actorName == ''
-        or (minetest.player_exists and not minetest.player_exists(command.actorName)) then
-        code = 'PRINCIPAL_UNKNOWN'
-      elseif command.worldRef ~= manifest.worldRef then
-        code = 'CONNECTION_UNAUTHORIZED'
-      else
-        local raw
-        raw, code = region:inspect({worldRef = command.worldRef, sessionRef = command.sessionRef,
-          anchor = command.anchor, footprint = command.footprint, settings = command.settings,
-          actorName = command.actorName, walkable = command.walkable or {},
-          limitExceeded = command.limitExceeded == true})
-        if raw then result = {raw_json = raw} end
-      end
+      local raw
+      raw, code = region:inspect({worldRef = command.worldRef, sessionRef = command.sessionRef,
+        anchor = command.anchor, footprint = command.footprint, settings = command.settings,
+        walkable = command.walkable or {}, limitExceeded = command.limitExceeded == true})
+      if raw then result = {raw_json = raw} end
     elseif command.operation == 'apply' then
-      result, code = engine:apply(command.actorName, command.effects,
-        command.beforeImage, command.prepared, command.scopeBeforeImage)
+      local positions = {}
+      for _, e in ipairs(command.effects) do positions[#positions+1] = e.position end
+      local checked
+      checked, code = region:prepare_check(positions)
+      if checked then result, code = engine:apply(command.effects,
+        command.beforeImage, command.prepared, command.scopeBeforeImage) end
     elseif command.operation == 'apply_state' then
-      result, code = engine:apply_state(command.actorName, command.targetImage,
-        command.beforeImage, command.prepared)
+      local checked
+      checked, code = region:prepare_check(command.targetImage.coveredPositions)
+      if checked then result, code = engine:apply_state(command.targetImage,
+        command.beforeImage, command.prepared) end
     elseif command.operation == 'readback' then
-      result, code = engine:readback(command.actorName, command.positions,
-        command.protectedPositions)
+      result, code = engine:readback(command.positions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'restore' then
-      result, code = engine:restore(command.serviceName,
-        command.beforeImage, command.recovery)
+      result, code = engine:restore(command.beforeImage, command.recovery)
     else code = 'UNKNOWN_ACTION' end
     current = nil
     return result, code
@@ -222,8 +160,6 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         .. ',"knownEmptyCells":' .. array(result.knownEmptyCells,
           function(cell) return array(cell, json) end)
         .. ',"unknownCells":' .. array(result.unknownCells, json) .. '}'
-    elseif shaped and result.grants then
-      encoded = '{"grants":' .. array(result.grants, json) .. '}'
     elseif shaped and result.records then
       encoded = encode_state(result)
     end
@@ -266,17 +202,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       end)
   end
   minetest.after(0, poll)
-  return {invoke_action = function(request, engine_actor_name)
-    if type(request) ~= 'table' or type(engine_actor_name) ~= 'string' then return false end
-    http.fetch({url = base .. '/action', method = 'POST', data = json({
-      worldRef = manifest.worldRef, engineActorName = engine_actor_name, request = request}),
-      extra_headers = header, quiet = true}, function(response)
-      if not response.succeeded or response.code ~= 200 then
-        minetest.log('warning', 'HanaWorlds action transport unavailable')
-      end
-    end)
-    return true
-  end}
+  return true
 end
 
 return M

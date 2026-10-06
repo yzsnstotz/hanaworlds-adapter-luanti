@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalWorldPort } from '../src/local-world-port.mjs';
 
 test('public local acquire and inspect correlate process/world without account fields', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'hw-local-040-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'hw-local-040-')));
   const world = join(root, 'world'); await mkdir(world);
   await writeFile(join(world, 'world.mt'), 'gameid = local_fixture\n');
   let input;

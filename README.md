@@ -1,49 +1,88 @@
-# HanaWorlds Luanti Adapter
+# HanaWorlds Luanti Adapter 0.3.0
 
-Stage 1 source is proposed by pull request. No release is available from this baseline.
+Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
+`hanaworlds-contracts@0.4.0` (source `8cfb18f8e13aa33d7a942f230ec6117914322cdd`,
+pack SHA256 `d7b22e76de5e161abe7525596df608b3f00445fb4237808941cb5ef8328e9bc4`).
+There is no player account, username/password, grant, AUTO mode, administrator
+approval or protection-region permission path in this package. Canvas owns
+transaction, affected-object and durable history decisions.
 
-## Trusted Host current-grant check
+## Public in-process ports
 
-The DSH Host service `hanaworldsSessionAuthorizationV1` advertises the bundled
-`hanaworlds-contracts@0.3.9` handshake and accepts
-`call('VerifyCurrentGrant', request)` using `session-authorization/v1`. The
-request must contain the **original** `OriginalSessionBinding` already issued
-and durably held by a trusted Host. This Adapter does not create a Session
-binding or infer one from an online player. It checks the current paired
-Luanti grant for the exact world, player, original grant reference, grant
-epoch and native `WORLD_BUILD_WITH_ENGINE_PROTECTION` scope on every call.
-For this Luanti payload, the native grant reference is the grant epoch.
+The plugin publishes `hanaworldsWorldAdapterV6.call(operation, request)`,
+`hanaworldsLuantiLocalWorlds` and
+`hanaworldsLuantiNativeFacts.readScopedState(connectionRef, positions)`.
+The V6 port carries the exact bundled handshake. Mutating calls require the
+actual active Cordis caller fiber for the Host Loader's `hanaworlds-canvas`
+entry in the same root; caller JSON cannot assert this provenance. The only
+HTTP route is a loopback, read-only status route.
 
-The Host supplies `hanaworldsSessionAuthorizationHostV1` with
-`authenticateAdapterCaller()` and `call('ReadOriginalBinding', request)`.
-The former must check the active privileged Host call provenance **outside
-request JSON**; a constant `true` is valid only in an isolated test fixture.
-The latter must read the Host's original durable issuance for the exact live
-Core Session incarnation. The Adapter compares every field of that returned
-binding with the caller-held original before and after its game query. A
-missing Host service or failed provenance check rejects the call. Missing
-original history returns `UNKNOWN`; a replaced or mismatched original returns
-`MISMATCH`; revoked, offline, permission-lost or regranted original grants
-return `REVOKED`. Only an exact live match returns `CURRENT`. The consuming
-Host must recheck its Session binding before a write. The Adapter never
-decides a Canvas transaction.
+Local provisioning: discover the selected world, acquire with
+`{connectionRef, requesterRef, userPath, action:'PROVISION_PAYLOAD'}`, then
+`provision({connectionRef, requesterRef, leaseRef})`. The Host's
+`hanaworldsNativeEngineControl` must supply actual native process facts and
+stop that process before invoking its finite stopped-world callback.
+Provisioning installs six payload files, a fresh world identity and a private
+loopback courier key. Existing payload locations fail; there is no migration
+or old-wire compatibility. Acquire again with `BIND_RUNNING_WORLD`, then
+`pair(...)`. Pair verifies the actually loaded payload digest and creates a
+new connection incarnation. Every scoped request rechecks the actual Host
+process/world/operation association and the Canvas selection context.
 
-## Fresh local provisioning (0.2.6)
+Canvas supplies `hanaworldsCanvasV5.call('ReadWorldSelectionContext', ...)`
+using the exact 0.4.0 `WorldSelectionContext.selection` envelope. Existing
+object footprints come from
+`hanaworldsCanvasFootprintRegistry.readFootprints(worldRef, objectRefs, request)`:
+`{current:true, durable:true, worldRef, objects:ScopedObjectFootprints}`.
+This must be Canvas's current durable registry projection; request-held
+footprints are compared with it before prepare and again before apply.
 
-The public `hanaworldsLuantiLocalWorlds` service discovers missing worlds, obtains native administrator proof through the public Host, and installs the current payload only inside its finite stopped-world callback. Installation creates a new world identity and courier pairing. Existing payload locations are rejected; upgrade, backup/restore, rollback and identity-preserving reinstall implementations and their version-specific tests have been removed under CONTRACT 4.0.0. Current running identity, authorization/revocation, automatic mode, protection and transaction recovery remain available.
+For history, Canvas supplies `hanaworldsCanvasHistoryFacts.read(request)`:
+`{current:true, durable:true, worldRef, originTransactionId, historyRevision,
+worldRevision, objectRevisions, affectedObjectRefs, originVerifiedReceiptDigest}`.
+Those values must come from Canvas's durable current history/head, not be
+copied out of caller JSON. The Adapter additionally verifies its own saved
+origin receipt, before image, after image and their exact digests. For
+inspection, the existing public `hanaworldsWorldRevisionOracle.read(worldRef)`
+and `hanaworldsLuantiInspectionContext.read(request)` supply Canvas's current
+revision/selected-object context. These are logical Canvas revisions, not
+claims of a Luanti whole-world revision. Native catalogue, region, body and
+cell state come from the paired engine. Missing public peer facts fail closed.
 
-The component self-test uses only ENGINE-CURRENT `stop-fixed-component` (99a8973) and a fresh world/profile. See `test/local-world-runtime/README.md` for the public loader/registry/native chain and cleanup procedure. Old diagnostic and failure inputs remain protected evidence; an implementation observation never signs the independent Adapter gate or product acceptance.
+## Scoped writes and same-origin Undo
 
-## Native automatic authorization entry (0.2.7)
+`readScopedState` returns the actual state profile and opaque per-cell hashes.
+A cell hash is SHA256 of the UTF-8 prefix
+`HanaWorlds|contracts@0.4.0|adapter-scoped-cell/v1\n` followed by canonical JSON
+of `{profile,record}`. Consumers carry these bytes in `ScopedWorldBinding`;
+they do not recreate cell state from a plan. The complete union of checked
+positions and existing object footprints is re-snapshotted before the durable
+write barrier and checked again inside Luanti immediately before mutation.
 
-A native administrator or authenticated singleplayer world owner receives the existing world authorization form on joining. Click **Automatic authorization** to open the current automatic panel, then explicitly enable or disable it. Closing the form changes no mode; leaving and rejoining offers the entry again. The entry and toggle recheck native authority and the current online player session. Ordinary builders keep the individual authorization flow. This isolated candidate has SOURCE/FIXTURE checks only; its rendered native entry and formal product write gate require independent verification.
+Before images and request outcomes are fsynced to the Adapter's world-bound
+journal under the native `dshHomePath` service. The engine writes only compiled
+static-node effects, repairs derived lighting, then the Adapter reads the
+complete scoped state. The actual derived param1 bytes are retained in the
+after image. An exact completed request returns its saved response without a
+second engine write. Partial failure restores the whole saved scope and reads
+it back; an unverified restore remains an error with unknown mutation state.
+Undo transports the exact saved before image from the same verified source
+transaction and verifies the restored readback. It does not infer an inverse
+from a new build or delete a bounding box.
 
-## Host lifecycle (Adapter 0.2.8, payload 0.2.7)
+## Validation and retained history
 
-Each Adapter instance retains the disposer returned by the public Host route registration. Normal unload removes its status route before asynchronous resource cleanup. Repeated or concurrent closes cannot unregister a later instance at the same path; rejected resource cleanup remains retryable. Cordis owns publication and withdrawal of its services, including rollback of failed activation. The Host duplicate-route and required-management guards remain intact.
+Use Node24.13.1, an isolated npm cache, `npm ci --ignore-scripts`, `npm run build`,
+`npm test`, `npm run test:lua` and `npm run verify:contracts`. The current core
+runtime reproduction is `test/real-local-world.mjs`; its inputs are an actual
+extracted npm pack, fixed Cordis App path, a fresh evidence root and separately
+installed pinned WorldEdit. It launches only its own headless Luanti processes.
+Host/Canvas interfaces in that reproduction are explicit public peer fixtures.
+It proves component native transport, not formal Desktop, model, GUI or owner
+acceptance. No release, registry publication or deployment is performed.
 
-This change only affects Host lifecycle. All game payload bytes, native authority, grant, automatic mode, transaction and protection rules are unchanged from 0.2.7. See `test/host-lifecycle/README.md` for the isolated public Host reproduction and evidence limits.
-
-## Current contract input (Adapter 0.2.9)
-
-The generated vendor subset now uses the exact admitted contracts0.3.9 artifact. Current world and original-grant provider advertisements match its capability helpers, which refuse older package advertisements. This pin update retains the 0.2.8 lifecycle implementation and unchanged 0.2.7 payload. Public Add over fixed75b5's already loaded seed0.2.6 still runs the old factory and remains a separate Desktop replacement blocker; see `test/host-lifecycle/add-replacement.mjs`. No new authorization issuer or transaction decision is introduced.
+The old 8146f000/0.2.9 source and its old-wire tests remain in Git/source as
+historical inputs. Legacy modules and grant.lua are excluded from this package's
+explicit file list. Old tests are retained; old protocol tests and the larger
+reentry/replay/concurrency/remote matrix are DEFERRED, not deleted or counted as
+current passes. See `DEFERRED-LOCAL-WORLD.md`.

@@ -1,13 +1,9 @@
--- First-building region inspection (world-adapter/v4 InspectRegion), the
--- Adapter's relay and pick records, and the Prepare protection/body recheck.
--- Raw player positions, yaw and collision boxes are read here, used once and
--- never returned, logged or written anywhere except the pick record kept in
--- this world's own Adapter engine state file.
+-- Local-world placement and body geometry. No account or permission source.
 local M = {}
 local Region = {}
 Region.__index = Region
 
-local STATE_FORMAT = 'hanaworlds-adapter-engine-state/1'
+local STATE_FORMAT = 'hanaworlds-adapter-local-picks/1'
 local AXES = {
   {name = '+Z', v = {0, 0, 1}}, {name = '-X', v = {-1, 0, 0}},
   {name = '-Z', v = {0, 0, -1}}, {name = '+X', v = {1, 0, 0}},
@@ -59,7 +55,7 @@ end
 
 function M.new(deps)
   local self = setmetatable({core = deps.core, path = deps.state_path,
-    relays = {}, picks = {}, readable = false}, Region)
+    picks = {}, readable = false}, Region)
   self:load()
   return self
 end
@@ -76,7 +72,6 @@ function Region:load()
     self.readable = false
     return
   end
-  self.relays = type(decoded.relays) == 'table' and decoded.relays or {}
   self.picks = type(decoded.picks) == 'table' and decoded.picks or {}
   self.readable = true
 end
@@ -84,34 +79,16 @@ end
 function Region:persist()
   if not self.readable then return false end
   local ok, encoded = pcall(self.core.write_json, {format = STATE_FORMAT,
-    relays = self.relays, picks = self.picks})
+    picks = self.picks})
   if not ok or type(encoded) ~= 'string' then return false end
   return self.core.safe_file_write(self.path, encoded) == true
 end
 
--- Durable relay record (invocationId, sessionRef, worldRef, player name),
--- written before the in-world invocation is delivered.
-function Region:record_relay(invocation_id, session_ref, world_ref, player_name)
-  if not self.readable or type(invocation_id) ~= 'string' or invocation_id == ''
-    or type(session_ref) ~= 'string' or type(world_ref) ~= 'string'
-    or type(player_name) ~= 'string' then return false end
-  local old = self.relays[invocation_id]
-  if old then
-    return old.sessionRef == session_ref and old.worldRef == world_ref
-      and old.engineActorName == player_name
-  end
-  self.relays[invocation_id] = {sessionRef = session_ref, worldRef = world_ref,
-    engineActorName = player_name}
-  if self:persist() then return true end
-  self.relays[invocation_id] = nil
-  return false
-end
-
--- Private pick record: picked node, picker, picker yaw at pick time, world.
-function Region:record_pick(pick_ref, session_ref, world_ref, player_name, node, yaw)
+-- Private local pick geometry, bound to the issuing session and world.
+function Region:record_pick(pick_ref, session_ref, world_ref, node, yaw)
   if not self.readable or self.picks[pick_ref] or type(yaw) ~= 'number' then return false end
   self.picks[pick_ref] = {sessionRef = session_ref, worldRef = world_ref,
-    picker = player_name, node = {node[1], node[2], node[3]}, pickerYaw = yaw}
+    node = {node[1], node[2], node[3]}, pickerYaw = yaw}
   if self:persist() then return true end
   self.picks[pick_ref] = nil
   return false
@@ -155,18 +132,10 @@ local function body_at(list_of_bodies, p)
   return false
 end
 
-local function online_names(core)
-  local names = {}
-  for _, player in ipairs(core.get_connected_players()) do
-    names[#names + 1] = player:get_player_name()
-  end
-  return names
-end
-
 local function nonneg(n) return type(n) == 'number' and n >= 0 and n == math.floor(n) end
 local function positive(n) return nonneg(n) and n >= 1 end
 
--- args: worldRef, sessionRef, anchor, footprint, settings, actorName,
+-- args: worldRef, sessionRef, anchor, footprint, settings,
 -- walkable (nodeName -> true/false; absent or 'null' marker = unknown),
 -- limitExceeded. Returns an encoded JSON reply or nil, errorCode.
 function Region:inspect(args)
@@ -176,7 +145,7 @@ function Region:inspect(args)
     or not positive(fp.widthCells) or not positive(fp.depthCells) or not positive(fp.heightCells)
     or not nonneg(st.frontGapCells) or not nonneg(st.forwardSearchCells)
     or not nonneg(st.lateralSearchCells) or not nonneg(st.verticalSearchCells)
-    or type(args.actorName) ~= 'string' or type(args.walkable) ~= 'table' then
+    or type(args.walkable) ~= 'table' then
     return nil, 'SCHEMA_INVALID'
   end
   local function choice(reason, names)
@@ -193,28 +162,10 @@ function Region:inspect(args)
     anchor_cell = {pick.node[1], pick.node[2] + 1, pick.node[3]}
     yaw, picked = pick.pickerYaw, true
   else
-    local name
-    if anchor.kind == 'NAMED_PLAYER' then
-      name = anchor.engineActorName
-      if type(name) ~= 'string' or not core.get_player_by_name(name) then
-        return choice('PLAYER_OFFLINE')
-      end
-    elseif anchor.kind == 'DEFAULT_PLAYER' then
-      if not self.readable then return nil, 'INSPECTION_FAILED' end
-      local relay = type(anchor.invocationId) == 'string' and self.relays[anchor.invocationId] or nil
-      if relay and relay.sessionRef == args.sessionRef and relay.worldRef == args.worldRef then
-        name = relay.engineActorName
-        if not core.get_player_by_name(name) then return choice('PLAYER_OFFLINE') end
-      else
-        local names = online_names(core)
-        if #names == 0 then return choice('NO_ONLINE_PLAYER') end
-        if #names > 1 then return choice('MULTIPLE_ONLINE_PLAYERS', names) end
-        name = names[1]
-      end
-    else
-      return nil, 'SCHEMA_INVALID'
-    end
-    local player = core.get_player_by_name(name)
+    if anchor.kind ~= 'CURRENT_VIEW' then return nil, 'SCHEMA_INVALID' end
+    local players = core.get_connected_players()
+    if #players ~= 1 then return nil, 'INSPECTION_FAILED' end
+    local player = players[1]
     local pos = player and player:get_pos()
     if type(pos) ~= 'table' then return nil, 'INSPECTION_FAILED' end
     yaw = player:get_look_horizontal()
@@ -257,7 +208,6 @@ function Region:inspect(args)
           local cs = state(p)
           if cs.kind == 'UNKNOWN' then bad.FRONT_AREA_UNKNOWN = true end
           if cs.kind == 'OCCUPIED' then bad.FRONT_AREA_OCCUPIED = true end
-          if core.is_protected(vec(p), args.actorName) then bad.FRONT_AREA_PROTECTED = true end
           if body_at(body_list, p) then bad.FRONT_AREA_BODY_OCCUPIED = true end
         end
         for _, p in ipairs(support) do
@@ -272,7 +222,7 @@ function Region:inspect(args)
         end
         if next(bad) == nil then
           -- Chosen footprint plus support layer: every cell of the bounding box.
-          local rows, protected, occupied = {}, {}, {}
+          local rows, occupied = {}, {}, {}
           local all = {}
           for _, p in ipairs(cells) do all[#all + 1] = p end
           for _, p in ipairs(support) do all[#all + 1] = p end
@@ -281,11 +231,9 @@ function Region:inspect(args)
             rows[#rows + 1] = '{"position":' .. pos_json(p) .. ',"state":' .. quote(cs.kind)
               .. (cs.kind == 'OCCUPIED' and (',"nodeName":' .. quote(cs.nodeName)
                 .. ',"param2":' .. int(cs.param2)) or '') .. '}'
-            if core.is_protected(vec(p), args.actorName) then protected[#protected + 1] = p end
             if body_at(body_list, p) then occupied[#occupied + 1] = p end
           end
           return '{"kind":"REGION","cells":[' .. table.concat(rows, ',') .. ']'
-            .. ',"protected":' .. list(protected, pos_json)
             .. ',"body":' .. list(occupied, pos_json)
             .. ',"entranceFacing":' .. quote(ENTRANCE[k + 1]) .. '}'
         end
@@ -299,16 +247,12 @@ function Region:inspect(args)
   return '{"kind":"CHOICE","reasons":' .. list(out, quote) .. ',"names":null}'
 end
 
--- Prepare recheck before the durable barrier: per-cell chained is_protected
--- for the acting principal first, then every connected player's body.
-function Region:prepare_check(actor_name, positions)
+-- Recheck actual body geometry immediately before the native write.
+function Region:prepare_check(positions)
   local core = self.core
-  if type(actor_name) ~= 'string' or type(positions) ~= 'table' or #positions == 0 then
-    return nil, 'SCHEMA_INVALID'
-  end
+  if type(positions) ~= 'table' or #positions == 0 then return nil, 'SCHEMA_INVALID' end
   for _, p in ipairs(positions) do
     if type(p) ~= 'table' or #p ~= 3 then return nil, 'SCHEMA_INVALID' end
-    if core.is_protected(vec(p), actor_name) then return nil, 'PERMISSION_DENIED' end
   end
   local body_list = bodies(core)
   if not body_list then return nil, 'TARGET_FACTS_INCOMPLETE' end

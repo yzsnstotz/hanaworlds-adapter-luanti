@@ -99,3 +99,14 @@ The 0.2.4 grant/mode implementation and fixtures are new MIT origin code. No Lua
 ## S1-AD-LOCAL-PROVISIONING-01 provenance
 
 Version 0.2.5 adds MIT origin code for the trusted public local-world port and its tests. It imports no sibling implementation, adds no production dependency and copies no engine source. The admitted contracts and external WorldEdit boundaries above remain unchanged. A test-only native client uses separately pinned public MIT mt/SRP libraries; it is excluded from the production package. Account/profile preparation and WorldEdit installation are isolated test inputs, not redistributed product engine binaries or a release decision.
+
+## Local-world 0.3.0 update (2026-10-06)
+
+New local runtime/records/courier/transactions files are written in this origin
+under the same MIT owner declaration. Current payload loads only the six files
+in src/version.mjs; no Luanti/WorldEdit source or user-authorization module is
+bundled. The exact contracts0.4.0 MIT subset and its LICENSE/NOTICE replace the
+old admitted contract bytes; scripts/contracts-pin.mjs and the vendored manifest
+carry the exact revision/hash/20 entries. Separately installed WorldEdit remains
+an external runtime input under its own AGPL terms. This is a source/package
+update, not publication or a new combined-work license conclusion.

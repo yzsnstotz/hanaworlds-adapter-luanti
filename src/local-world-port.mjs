@@ -56,7 +56,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       (row.processId === undefined || facts.processId === row.processId);
   }
   function provider(row) {
-    if (closed || resolveControl() !== row.host) deny();
+    if (closed || (resolveControl()?.[Symbol.for('cordis.original')] ?? resolveControl()) !== (row.host[Symbol.for('cordis.original')] ?? row.host)) deny();
     return row.host;
   }
   function forget(row) {
@@ -95,7 +95,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
   }
   async function stopUnused(row) {
     try {
-      if (resolveControl() === row.host)
+      if ((resolveControl()?.[Symbol.for('cordis.original')] ?? resolveControl()) === (row.host[Symbol.for('cordis.original')] ?? row.host))
         await row.host.withStoppedWorld({ ...row.nativeQuery }, async () => undefined);
     } catch { /* Host owns cleanup of rejected or dead native sessions */ }
     forget(row);
@@ -196,7 +196,13 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     },
 
   };
-  return { port, manages: path => typeof path === 'string' && managed.has(resolve(path)),
+  return { port,
+    async inspectConnection(connectionRef) {
+      const row = [...running.values()].find(x => x.world.connectionRef === connectionRef);
+      if (!row || !row.paired) deny('WORLD_NOT_BOUND');
+      return inspectRow(row);
+    },
+    manages: path => typeof path === 'string' && managed.has(resolve(path)),
     async close() {
       closed = true; await Promise.allSettled([...pending]);
       await Promise.all([...leases.values()].map(stopUnused));
