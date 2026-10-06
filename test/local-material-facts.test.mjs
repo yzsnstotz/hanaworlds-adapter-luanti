@@ -2,10 +2,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-const cwd = fileURLToPath(new URL('..', import.meta.url));
-const run = (...a) => JSON.parse(execFileSync('lua', ['test/support/material-facts.lua', ...a], { cwd, encoding: 'utf8' }));
-const C = await import(new URL('../vendor/hanaworlds-contracts/dist/local/index.mjs', import.meta.url));
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+// HW_MATERIAL_PACKAGE selects an extracted npm package; the stub script stays in source.
+const cwd = process.env.HW_MATERIAL_PACKAGE ?? fileURLToPath(new URL('..', import.meta.url));
+const script = fileURLToPath(new URL('./support/material-facts.lua', import.meta.url));
+const run = (...a) => JSON.parse(execFileSync('lua', [script, ...a], { cwd, encoding: 'utf8' }));
+const C = await import(pathToFileURL(join(cwd, 'vendor/hanaworlds-contracts/dist/local/index.mjs')));
 
 test('one native snapshot carries Catalogue, actual paths, load-ordered mods and appearance', () => {
   const m = run();

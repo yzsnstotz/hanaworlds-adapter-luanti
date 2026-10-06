@@ -206,14 +206,16 @@ end
 -- native media roots (game path, user path, load-ordered mod paths and the
 -- texture_path override setting). Node resolves bytes from these roots only.
 function M.material_metadata(core)
+  -- core.settings is the engine Settings userdata, not a Lua table.
+  local settings = core.settings
   if not available(core, 'get_user_path') or not available(core, 'get_modpath')
-    or type(core.settings) ~= 'table' or type(core.settings.get) ~= 'function' then
+    or settings == nil or type(settings.get) ~= 'function' then
     return nil, 'CAPABILITY_UNAVAILABLE'
   end
   local raw, names, info = catalogue(core)
   if not raw then return nil, names end
   local user, ordered = core.get_user_path(), core.get_modnames(true)
-  local texture_path = core.settings:get('texture_path')
+  local texture_path = settings:get('texture_path')
   if type(info.path) ~= 'string' or info.path == '' or type(user) ~= 'string' or user == ''
     or type(ordered) ~= 'table' or #ordered == 0
     or (texture_path ~= nil and type(texture_path) ~= 'string') then
