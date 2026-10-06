@@ -40,12 +40,6 @@ function M.capacity(core, cell_count, body_bytes)
     source = 'PAIRED_COURIER_RESPONSE_BYTES'}
 end
 
-local callbacks = {'on_construct', 'on_destruct', 'after_destruct',
-  'after_place_node', 'on_timer', 'on_metadata_inventory_move',
-  'on_metadata_inventory_put', 'on_metadata_inventory_take',
-  'allow_metadata_inventory_move', 'allow_metadata_inventory_put',
-  'allow_metadata_inventory_take'}
-
 -- Legal param2 values are derived only where the engine semantics are
 -- verified (Luanti 5.17 lua_api.md "Nodes"/paramtype2, builtin item_place_node):
 -- facedir stores one of 24 rotations; none is engine-unused mod data, so only
@@ -66,54 +60,32 @@ local function legal_param2(def)
   return nil
 end
 
--- hasPersistentState is published only where the loaded registry proves that the
--- engine has no path to dispatch code that could attach metadata, inventory or a
--- timer to cells of this node; anything else stays unknown (null), never a guessed
--- false and never true. Lua function bodies are opaque, so the proof is reachability:
---  a. none of the state-entry definition hooks below is present;
---  b. player-dispatched hooks are unreachable (pointable == false), or there are
---     no player hooks and no global punch/dig handlers at all;
---  c. no registered ABM or LBM names the node or one of its non-zero groups.
--- Luanti 5.17 lua_api.md: node callbacks, register_abm/register_lbm nodenames,
--- pointable, register_on_punchnode/register_on_dignode.
-local state_entry = {'on_construct', 'after_place_node', 'on_timer', 'on_receive_fields',
-  'preserve_metadata', 'on_destruct', 'after_destruct', 'on_blast',
+-- Catalogue hasCallbacks/hasPersistentState follow Contracts scope write-path-init/v1:
+-- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (VoxelManip
+-- node data via WorldEdit set/set_param2 and this payload's region writer, swap_node
+-- for restores), on which the engine runs no node-definition callback. Player
+-- callbacks, ABM/LBM and other later world dynamics are out of that scope and are
+-- caught by full-state readback digests, not claimed absent.
+-- Engine-documented node-definition callback fields (Luanti 5.17 lua_api.md,
+-- "Node definition"); definedCallbacks lists those present on a definition.
+local node_callbacks = {'after_destruct', 'after_dig_node', 'after_place_node',
+  'allow_metadata_inventory_move', 'allow_metadata_inventory_put', 'allow_metadata_inventory_take',
+  'can_dig', 'on_blast', 'on_construct', 'on_destruct', 'on_dig', 'on_flood',
   'on_metadata_inventory_move', 'on_metadata_inventory_put', 'on_metadata_inventory_take',
-  'allow_metadata_inventory_move', 'allow_metadata_inventory_put', 'allow_metadata_inventory_take'}
-local player_hooks = {'on_punch', 'on_dig', 'after_dig_node', 'on_rightclick'}
-
-local function dispatch_targets(core)
-  local names, groups = {}, {}
-  for _, list in ipairs({core.registered_abms, core.registered_lbms}) do
-    if type(list) ~= 'table' then return nil end
-    for _, entry in ipairs(list) do
-      local nodenames = entry.nodenames
-      if type(nodenames) == 'string' then nodenames = {nodenames} end
-      if type(nodenames) ~= 'table' then return nil end
-      for _, n in ipairs(nodenames) do
-        if type(n) ~= 'string' then return nil end
-        local g = n:match('^group:(.+)$')
-        if g then groups[g] = true else names[n] = true end
-      end
-    end
-  end
-  return names, groups
-end
-
-local function persistent_state(def, name, targets, global_player)
-  -- 'ignore' is the engine's not-loaded placeholder (CONTENT_IGNORE), never the
-  -- node of a cell; a static-material fact for it would make it writable.
-  if not targets or name == 'ignore' then return nil end
-  for _, key in ipairs(state_entry) do if def[key] ~= nil then return nil end end
-  if def.pointable ~= false then
-    if global_player then return nil end
-    for _, key in ipairs(player_hooks) do if def[key] ~= nil then return nil end end
-  end
-  if targets.names[name] then return nil end
-  for g, v in pairs(type(def.groups) == 'table' and def.groups or {}) do
-    if v ~= 0 and targets.groups[g] then return nil end
-  end
-  return false
+  'on_punch', 'on_receive_fields', 'on_rightclick', 'on_timer', 'preserve_metadata'}
+local initialization = {after_destruct = true, after_place_node = true, on_construct = true,
+  on_destruct = true, on_timer = true}
+local state_indicator = {allow_metadata_inventory_move = true, allow_metadata_inventory_put = true,
+  allow_metadata_inventory_take = true, on_metadata_inventory_move = true,
+  on_metadata_inventory_put = true, on_metadata_inventory_take = true,
+  on_receive_fields = true, preserve_metadata = true}
+-- Engine global registries that fire on this write path (map modification events of
+-- VoxelManip write_to_map and swap_node). nil = registry not readable = unknown.
+local function global_write_callbacks(core)
+  local list = core.registered_on_mapblocks_changed
+  if type(list) ~= 'table' then return nil end
+  if #list > 0 then return {'register_on_mapblocks_changed'} end
+  return {}
 end
 
 -- Catalogue revisions fingerprint the currently loaded engine registry. They
@@ -142,21 +114,27 @@ local function catalogue(core)
   table.sort(mod_names)
   if #names == 0 then return nil, 'CAPABILITY_UNAVAILABLE' end
   local function json(value) return assert(core.write_json(value)) end
-  local target_names, target_groups = dispatch_targets(core)
-  local targets = target_names and {names = target_names, groups = target_groups} or nil
-  local global_player = type(core.registered_on_punchnodes) ~= 'table' or type(core.registered_on_dignodes) ~= 'table'
-    or #core.registered_on_punchnodes > 0 or #core.registered_on_dignodes > 0
-  local node_json, registry_parts = {}, {}
+  local globals = global_write_callbacks(core)
+  local clean = globals ~= nil and #globals == 0
+  local node_json, registry_parts, evidence_json = {}, {}, {}
   for _, name in ipairs(names) do
     local def = core.registered_nodes[name]
     if type(def) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
-    local has_callbacks = false
-    local callback_parts = {}
-    for _, key in ipairs(callbacks) do
+    -- Defined callback names only: a function's identity is not stable across runs.
+    local defined, has_init, has_state = {}, false, false
+    for _, key in ipairs(node_callbacks) do
       if def[key] ~= nil then
-        has_callbacks = true
-        callback_parts[#callback_parts + 1] = key .. '=' .. tostring(def[key])
+        defined[#defined + 1] = key
+        has_init = has_init or initialization[key] == true
+        has_state = has_state or state_indicator[key] == true
       end
+    end
+    local has_callbacks, persistent = nil, nil
+    -- 'ignore' is the engine's not-loaded placeholder, never a cell's node: kept
+    -- unknown (stricter than the derivation) so it can never become writable.
+    if clean and name ~= 'ignore' then
+      has_callbacks = has_init
+      if not has_init and not has_state then persistent = false end
     end
     local known = {
       walkable = def.walkable,
@@ -169,7 +147,7 @@ local function catalogue(core)
       param2Type = type(def.paramtype2) == 'string' and def.paramtype2 ~= ''
         and def.paramtype2 or nil,
       hasCallbacks = has_callbacks,
-      hasPersistentState = persistent_state(def, name, targets, global_player),
+      hasPersistentState = persistent,
     }
     local allowed = legal_param2(def)
     local fields = {'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
@@ -193,7 +171,7 @@ local function catalogue(core)
     scalar[#scalar + 1] = 'allowedParam2=' .. allowed_json
     table.sort(unknown)
     local rev = core.sha256(name .. '|' .. table.concat(scalar, '|') .. '|'
-      .. table.concat(callback_parts, '|'))
+      .. table.concat(defined, '|'))
     if type(rev) ~= 'string' or rev == '' then return nil, 'CAPABILITY_UNAVAILABLE' end
     local properties = {}
     for _, field in ipairs(fields) do
@@ -207,6 +185,10 @@ local function catalogue(core)
     properties[#properties + 1] = '"unknownFields":[' .. table.concat(unknown_json, ',') .. ']'
     node_json[#node_json + 1] = json(name) .. ':{' .. table.concat(properties, ',') .. '}'
     registry_parts[#registry_parts + 1] = name .. '=' .. rev
+    local defined_json = {}
+    for i, key in ipairs(defined) do defined_json[i] = json(key) end
+    evidence_json[#evidence_json + 1] = '{"nodeName":' .. json(name) .. ',"definitionRevision":'
+      .. json(rev) .. ',"definedCallbacks":[' .. table.concat(defined_json, ',') .. ']}'
   end
   local registry = core.sha256(info.id .. '|' .. table.concat(mod_names, '|') .. '|'
     .. table.concat(registry_parts, '|'))
@@ -218,13 +200,30 @@ local function catalogue(core)
     .. json('luanti-runtime-registry') .. ',"gameId":' .. json(info.id)
     .. ',"gameRevision":' .. json(registry) .. ',"modRevisions":{'
     .. table.concat(mod_json, ',') .. '},"nodes":{'
-    .. table.concat(node_json, ',') .. '}}', names, info
+    .. table.concat(node_json, ',') .. '}}', names, info, evidence_json, globals
 end
 
 function M.catalogue(core)
   local raw, code = catalogue(core)
   if not raw then return nil, code end
   return {raw_json = raw}
+end
+
+-- One registry snapshot: the Catalogue and its write-path-init/v1 inventory
+-- (WritePathEvidence without catalogueDigest, which the host computes).
+function M.write_path(core)
+  local raw, names, _, evidence, globals = catalogue(core)
+  if not raw then return nil, names end
+  local function json(value) return assert(core.write_json(value)) end
+  local globals_json = 'null'
+  if globals then
+    local parts = {}
+    for i, name in ipairs(globals) do parts[i] = json(name) end
+    globals_json = '[' .. table.concat(parts, ',') .. ']'
+  end
+  return {raw_json = '{"catalogue":' .. raw .. ',"evidence":{"profileVersion":"write-path-evidence/v1",'
+    .. '"scope":"write-path-init/v1","writePath":"CALLBACK_FREE_NODE_DATA","globalWriteCallbacks":'
+    .. globals_json .. ',"nodes":[' .. table.concat(evidence, ',') .. ']}}'}
 end
 
 -- Appearance support is deliberately narrow: an opaque "normal" cube whose

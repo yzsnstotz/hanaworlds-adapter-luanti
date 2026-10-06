@@ -29,23 +29,34 @@ test('legal param2 only for engine-verified none/facedir; others stay null', () 
   assert.ok(!n['fx:plain'].unknownFields.includes('allowedParam2'));
   for (const v of Object.values(n)) { assert.equal(v.hasPersistentState, null); assert.equal(v.collisionBoxes, null); }
 });
-test('hasPersistentState is false only where no engine dispatch can reach state code', () => {
-  const n = run('state').nodes;
-  for (const k of ['air', 'fx:plain', 'fx:hidden_dug', 'fx:zero_group']) {
-    assert.equal(n[k].hasPersistentState, false, k); assert.ok(!n[k].unknownFields.includes('hasPersistentState'), k);
-  }
-  for (const k of ['ignore', 'fx:dug', 'fx:built', 'fx:fields', 'fx:abm_name', 'fx:abm_group', 'fx:lbm']) {
-    assert.equal(n[k].hasPersistentState, null, k); assert.ok(n[k].unknownFields.includes('hasPersistentState'), k);
-  }
-  const g = run('state-global').nodes; // a global punch handler reaches every pointable node
-  assert.equal(g['fx:plain'].hasPersistentState, null); assert.equal(g.air.hasPersistentState, false);
-  assert.notEqual(g['fx:plain'].definitionRevision, n['fx:plain'].definitionRevision, 'the fact is part of the definition revision');
-  // Without dispatch tables (no native source) every node stays unknown.
-  for (const v of Object.values(run('catalogue').nodes)) assert.equal(v.hasPersistentState, null);
-  C.validateType('Catalogue', run('state'));
+test('write-path-init/v1: facts from initialization/state callbacks and the write-path global registry', () => {
+  const n = run('state').nodes, f = k => [n[k].hasCallbacks, n[k].hasPersistentState];
+  assert.deepEqual(f('air'), [false, false]); assert.deepEqual(f('fx:stone'), [false, false]); // player hooks/ABM out of scope
+  assert.deepEqual(f('fx:chest'), [true, null]); assert.deepEqual(f('fx:timer'), [true, null]);
+  assert.deepEqual(f('fx:form'), [false, null]); assert.deepEqual(f('fx:keep'), [false, null]);
+  assert.deepEqual(f('ignore'), [null, null], 'engine placeholder stays unknown (stricter)');
+  for (const m of ['state-global', 'state-unknown', 'catalogue']) // handler present, registry unreadable, or no registry
+    for (const v of Object.values(run(m).nodes)) { assert.equal(v.hasCallbacks, null, m); assert.equal(v.hasPersistentState, null, m); }
+  const g = run('state-global').nodes;
+  assert.notEqual(g['fx:stone'].definitionRevision, n['fx:stone'].definitionRevision, 'facts are part of the definition revision');
+  assert.equal(run('state').nodes['fx:stone'].definitionRevision, n['fx:stone'].definitionRevision, 'revision is deterministic');
+  // The exported inventory satisfies the public derivation; the Catalogue is never looser.
+  const wp = run('state', 'write_path'), nodes = [...wp.evidence.nodes].sort((a, b) => a.nodeName < b.nodeName ? -1 : 1);
+  const evidence = { ...wp.evidence, nodes, catalogueDigest: C.digestValue('catalogue', wp.catalogue).sha256 };
+  assert.deepEqual(wp.catalogue, run('state'));
+  assert.deepEqual(evidence.globalWriteCallbacks, []);
+  assert.deepEqual(nodes.find(x => x.nodeName === 'fx:stone').definedCallbacks, ['after_dig_node', 'on_blast', 'on_dig', 'on_punch']);
+  const check = C.validateCatalogueWritePathFacts(wp.catalogue, evidence);
+  assert.deepEqual([...check.verified].sort(), ['air', 'fx:stone']); assert.deepEqual(check.stricter, ['ignore']);
+  const gw = run('state-global', 'write_path');
+  assert.deepEqual(gw.evidence.globalWriteCallbacks, ['register_on_mapblocks_changed']);
+  assert.equal(run('state-unknown', 'write_path').evidence.globalWriteCallbacks, null);
+  // Public admission on these facts: air+stone admitted; init/state nodes and unknown rejected.
   const cat = run('state');
-  assert.doesNotThrow(() => C.validateStaticMaterials({ a: { nodeName: 'air', param2: 0 } }, cat));
-  assert.throws(() => C.validateStaticMaterials({ s: { nodeName: 'fx:dug', param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/);
+  assert.doesNotThrow(() => C.validateStaticMaterials({ a: { nodeName: 'air', param2: 0 }, s: { nodeName: 'fx:stone', param2: 0 } }, cat));
+  for (const k of ['fx:chest', 'fx:timer', 'fx:form', 'ignore'])
+    assert.throws(() => C.validateStaticMaterials({ m: { nodeName: k, param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/, k);
+  assert.throws(() => C.validateStaticMaterials({ m: { nodeName: 'fx:stone', param2: 0 } }, run('state-global')), /UNSUPPORTED_MUTATION_SEMANTICS/);
 });
 test('only identical unmodified opaque normal tiles are a supported appearance', () => {
   const a = run().appearance;

@@ -200,27 +200,49 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   try { materials = await native.readMaterialSources(paired.worldRef); results.materials = { sourceRevision: materials.snapshot?.sourceRevision,
     surface: (materials.snapshot?.materials ?? materials.materials ?? []).filter(m => surface.includes(m.nodeName)).map(m => ({ ...m, textureBytes: undefined })) }; }
   catch (error) { results.materials = { error: error.message }; } // recorded as is; not part of the flat-world claim
-  // G3: hasPersistentState from the loaded registry, consumed by the public Contracts
-  // static-material rule (per-cell BUILD materials and region palettes use the same rule).
-  const fact = n => ({ hasPersistentState: catalogue.nodes[n].hasPersistentState, hasCallbacks: catalogue.nodes[n].hasCallbacks,
-    allowedParam2: catalogue.nodes[n].allowedParam2, unknownFields: catalogue.nodes[n].unknownFields });
-  const provenFalse = Object.keys(catalogue.nodes).filter(n => catalogue.nodes[n].hasPersistentState === false).sort();
+  // G3 (Contracts 0.5.2 write-path-init/v1): facts and their WritePathEvidence from one
+  // registry snapshot, the Adapter's declared protocol capabilities, then the public
+  // static-material admission (per-cell BUILD materials and region palettes share it).
+  const v6port = canvas.get('hanaworldsWorldAdapterV6'), regionPort = canvas.get('hanaworldsWorldAdapterRegionV1');
+  const proto = {
+    v6: C.checkProtocolCompatibility(v6port.protocolHandshake, [C.protocolRequirement('world-adapter/v6',
+      ['world-adapter/v6:callback-free-write', 'world-adapter/v6:write-path-state-facts'], 1)]).result,
+    region: C.checkProtocolCompatibility(regionPort.protocolHandshake, [C.protocolRequirement('world-adapter-region/v1',
+      ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:restore-state'], 1)]).result };
+  assert.deepEqual(proto, { v6: 'PROTOCOL_COMPATIBLE', region: 'PROTOCOL_COMPATIBLE' });
+  const wp = await native.readWritePathEvidence(paired.worldRef);
+  assert.equal(wp.catalogue.gameRevision, catalogue.gameRevision, 'same registry snapshot as readCatalogue');
+  assert.deepEqual(wp.evidence.globalWriteCallbacks, [], 'no write-path global callback registered');
+  const hooks = Object.fromEntries(wp.evidence.nodes.map(n => [n.nodeName, n.definedCallbacks]));
+  const fact = n => ({ hasCallbacks: catalogue.nodes[n].hasCallbacks, hasPersistentState: catalogue.nodes[n].hasPersistentState,
+    allowedParam2: catalogue.nodes[n].allowedParam2, definedCallbacks: hooks[n], unknownFields: catalogue.nodes[n].unknownFields });
+  assert.deepEqual([fact('air').hasCallbacks, fact('air').hasPersistentState], [false, false]);
+  assert.deepEqual([fact('mcl_core:stone').hasCallbacks, fact('mcl_core:stone').hasPersistentState], [false, false]);
   assert.ok(Object.values(catalogue.nodes).every(v => v.hasPersistentState !== true), 'never published as true');
-  assert.equal(catalogue.nodes.ignore.hasPersistentState, null, 'engine placeholder is not a cell node');
-  assert.equal(catalogue.nodes.air.hasPersistentState, false); assert.ok(!catalogue.nodes.air.unknownFields.includes('hasPersistentState'));
-  assert.equal(catalogue.nodes['mcl_core:stone'].hasPersistentState, null); assert.ok(catalogue.nodes['mcl_core:stone'].unknownFields.includes('hasPersistentState'));
-  const air = { nodeName: 'air', param2: 0 }, stone = { nodeName: 'mcl_core:stone', param2: 0 };
-  const g3 = { air: fact('air'), stone: fact('mcl_core:stone'), provenFalse, provenFalseCount: provenFalse.length, nodes: registered.size };
-  g3.perCellAir = (C.validateStaticMaterials({ m: air }, catalogue), 'ADMITTED');
-  g3.perCellStone = (() => { try { C.validateStaticMaterials({ m: stone }, catalogue); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } })();
-  assert.equal(g3.perCellStone.startsWith('UNSUPPORTED_MUTATION_SEMANTICS'), true);
+  assert.deepEqual([catalogue.nodes.ignore.hasCallbacks, catalogue.nodes.ignore.hasPersistentState], [null, null]);
+  const initNode = ['mcl_furnaces:furnace', 'mcl_chests:chest'].find(n => hooks[n]?.includes('on_construct'));
+  assert.ok(initNode, 'a real initialization-path node to reject');
+  assert.deepEqual([catalogue.nodes[initNode].hasCallbacks, catalogue.nodes[initNode].hasPersistentState], [true, null]);
+  const count = v => Object.values(catalogue.nodes).filter(n => n.hasPersistentState === v).length;
+  const air = { nodeName: 'air', param2: 0 }, stone = { nodeName: 'mcl_core:stone', param2: 0 }, init = { nodeName: initNode, param2: 0 };
+  const verdict = f => { try { f(); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } };
   const block = palette => C.encodeRegionBlock({ origin: [0, 0, 0], size: [palette.length, 1, 1], palette, indices: Int32Array.from(palette.map((_, i) => i)) });
-  g3.regionAirPalette = (C.validateRegionPalette(block([air]), catalogue), 'ADMITTED');
-  g3.regionAirStonePalette = (() => { try { C.validateRegionPalette(block([air, stone]), catalogue); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } })();
-  assert.equal(g3.regionAirStonePalette.startsWith('UNSUPPORTED_MUTATION_SEMANTICS'), true);
-  results.g3 = g3;
-  check('G3_PERSISTENT_STATE_FACTS_AND_CONTRACT_ADMISSION', { air: g3.air, stone: g3.stone, provenFalseCount: g3.provenFalseCount,
-    perCellAir: g3.perCellAir, perCellStone: g3.perCellStone, regionAirPalette: g3.regionAirPalette, regionAirStonePalette: g3.regionAirStonePalette });
+  const g3 = { protocols: proto, globalWriteCallbacks: wp.evidence.globalWriteCallbacks, verifiedCount: wp.check.verified.length, stricter: wp.check.stricter,
+    falseCount: count(false), nullCount: count(null), nodes: registered.size,
+    air: fact('air'), stone: fact('mcl_core:stone'), grass: fact('mcl_core:dirt_with_grass'), dirt: fact('mcl_core:dirt'), initNode, init: fact(initNode),
+    perCellAirStone: verdict(() => C.validateStaticMaterials({ a: air, s: stone }, catalogue)),
+    regionAirStonePalette: verdict(() => C.validateRegionPalette(block([air, stone]), catalogue)),
+    perCellInit: verdict(() => C.validateStaticMaterials({ m: init }, catalogue)),
+    regionInitPalette: verdict(() => C.validateRegionPalette(block([air, init]), catalogue)),
+    ignore: verdict(() => C.validateStaticMaterials({ m: { nodeName: 'ignore', param2: 0 } }, catalogue)) };
+  assert.equal(g3.perCellAirStone, 'ADMITTED'); assert.equal(g3.regionAirStonePalette, 'ADMITTED');
+  for (const k of ['perCellInit', 'regionInitPalette', 'ignore']) assert.ok(g3[k].startsWith('UNSUPPORTED_MUTATION_SEMANTICS/'), k);
+  assert.ok(wp.check.verified.includes('air') && wp.check.verified.includes('mcl_core:stone'));
+  results.g3 = g3; results.writePathEvidence = { catalogueDigest: wp.evidence.catalogueDigest, nodes: wp.evidence.nodes.length,
+    sample: wp.evidence.nodes.filter(n => ['air', 'mcl_core:stone', 'mcl_core:dirt', 'mcl_core:dirt_with_grass', 'mcl_core:bedrock', initNode].includes(n.nodeName)) };
+  check('G3_WRITE_PATH_FACTS_PROTOCOL_AND_ADMISSION', { protocols: proto, air: g3.air, stone: g3.stone, initNode, init: g3.init,
+    perCellAirStone: g3.perCellAirStone, regionAirStonePalette: g3.regionAirStonePalette, perCellInit: g3.perCellInit, regionInitPalette: g3.regionInitPalette,
+    ignore: g3.ignore, falseCount: g3.falseCount, nullCount: g3.nullCount, stricter: g3.stricter });
   check('GAME_IDENTITY_AND_SURFACE_MATERIALS', { gameId: catalogue.gameId, gameRevision: catalogue.gameRevision, materials: results.materials.error ?? 'read' });
 
   // 4. Load adjacent mapblocks through the Adapter and read back a flat surface.
@@ -240,36 +262,17 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   assert.deepEqual(seen.nodes.map(n => n.name), ['mcl_core:dirt_with_grass', 'mcl_core:dirt_with_grass', 'mcl_core:dirt', 'air']);
   check('FLAT_SURFACE_READBACK', { columns: 64 * 64, tops: Object.fromEntries(tops), column, loadMethods, engine: seen });
 
-  // 5a. Normal G3 path: a carve whose air-only palette passed the public Contracts check.
-  const carvePalette = [air];
-  const carve = (x, y, z) => (x >= -10 && x <= -8 && z >= 20 && z <= 22 && y >= 7 && y <= 8) ? 0 : -1;
-  const cw = [], ce = [];
-  for (const c of r0.chunks) {
-    const { min, max } = c.box, size = max.map((v, i) => v - min[i] + 1), indices = new Int32Array(size[0] * size[1] * size[2]);
-    let i = 0, any = false;
-    for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = carve(x, y, z); any ||= indices[i] !== -1; i++; }
-    if (!any) continue;
-    const ops = C.validateRegionPalette(C.encodeRegionBlock({ origin: min, size, palette: carvePalette, indices }), catalogue);
-    cw.push({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest, ops, state: null });
-    ce.push(D('region-state', C.expectedRegionState(c.state, ops)));
-  }
-  const creq = { ...req0(), transactionId: 'flat-carve-1', purpose: 'APPLY', writes: cw }, cres = await io('WriteRegion', creq);
-  assert.equal(cres.error, null, JSON.stringify(cres.error)); assert.equal(C.validateRegionWrite(creq, cres).allWritten, true);
-  cres.result.chunks.forEach((c, i) => assert.equal(c.readbackDigest, ce[i]));
-  const rc = await readR(box, 'READBACK');
-  assert.equal(nodeAt(rc, [-9, 8, 21]).nodeName, 'air'); assert.equal(nodeAt(rc, [-9, 6, 21]).nodeName, 'mcl_core:dirt');
-  check('G3_CONTRACT_ADMITTED_AIR_CARVE', { chunks: cw.length, lighting: cres.result.lighting });
-
-  // 5. Adapter transport regression (Contracts would reject stone today, see G3): dig a pit and raise a stone pillar.
-  const palette = [{ nodeName: 'air', param2: 0 }, { nodeName: 'mcl_core:stone', param2: 0 }];
+  // 5. Normal G3 region path: an air+stone palette admitted by the public validateRegionPalette
+  //    fills a stone pillar and explicitly carves a pit (air) in the flat terrain.
+  const palette = [air, stone];
   const rule = (x, y, z) => (x >= 14 && x <= 17 && z >= 14 && z <= 17 && y >= 6 && y <= 8) ? 0 : (x === -3 && z === -3 && y >= 9 && y <= 12) ? 1 : -1;
   const writes = [], expected = [];
-  for (const c of rc.chunks) { // current states after the carve
+  for (const c of r0.chunks) {
     const { min, max } = c.box, size = max.map((v, i) => v - min[i] + 1), indices = new Int32Array(size[0] * size[1] * size[2]);
     let i = 0, any = false;
     for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = rule(x, y, z); any ||= indices[i] !== -1; i++; }
     if (!any) continue;
-    const ops = C.encodeRegionBlock({ origin: min, size, palette, indices });
+    const ops = C.validateRegionPalette(C.encodeRegionBlock({ origin: min, size, palette, indices }), catalogue);
     writes.push({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest, ops, state: null });
     expected.push(D('region-state', C.expectedRegionState(c.state, ops)));
   }
@@ -280,11 +283,26 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   const r1 = await readR(box, 'READBACK');
   assert.equal(nodeAt(r1, [15, 7, 15]).nodeName, 'air'); assert.equal(nodeAt(r1, [15, 5, 15]).nodeName, 'mcl_core:bedrock');
   assert.equal(nodeAt(r1, [-3, 12, -3]).nodeName, 'mcl_core:stone'); assert.equal(nodeAt(r1, [-3, 13, -3]).nodeName, 'air');
+  const pillarChunk = r1.chunks.find(c => c.chunkPos.join() === '-1,0,-1');
+  assert.ok(!pillarChunk.state.extras.some(e => e.position[0] === -3 && e.position[2] === -3), 'no state left at the written cells');
   const seen5 = await engine({ read: [[15, 6, 15], [-3, 11, -3], [18, 8, 18]] });
   assert.deepEqual(seen5.nodes.map(n => n.name), ['air', 'mcl_core:stone', 'mcl_core:dirt_with_grass']);
-  check('REGION_EDIT_ON_FLAT_TERRAIN', { chunks: writes.length, lighting: wres.result.lighting, engine: seen5 });
+  check('G3_ADMITTED_REGION_FILL_AND_CARVE', { chunks: writes.length, lighting: wres.result.lighting, engine: seen5 });
 
-  // 6. Per-cell transport regression on the same world and connection (stone: transport only, see G3).
+  //    An initialization-path node is rejected by name before any write, also at the Adapter itself.
+  const target = r1.chunks.find(c => c.chunkPos.join() === '0,0,0'), tsize = target.box.max.map((v, i) => v - target.box.min[i] + 1);
+  const tIdx = new Int32Array(tsize[0] * tsize[1] * tsize[2]).fill(-1); tIdx[(5 - target.box.min[0]) + (9 - target.box.min[1]) * tsize[0] + (5 - target.box.min[2]) * tsize[0] * tsize[1]] = 0;
+  const initOps = C.encodeRegionBlock({ origin: target.box.min, size: tsize, palette: [init], indices: tIdx });
+  assert.throws(() => C.validateRegionPalette(initOps, catalogue), /UNSUPPORTED_MUTATION_SEMANTICS/);
+  const ireq = { ...req0(), transactionId: 'init-reject-1', purpose: 'APPLY', writes: [{ chunkPos: target.chunkPos, expectedCurrentDigest: target.stateDigest, ops: initOps, state: null }] };
+  const ires = await io('WriteRegion', ireq);
+  assert.notEqual(ires.error, null, 'the Adapter also refuses a non-static palette'); assert.equal(ires.error.mutationState, 'NONE');
+  const rAfter = await readR(box, 'READBACK');
+  assert.equal(rAfter.chunks.find(c => c.chunkPos.join() === '0,0,0').stateDigest, target.stateDigest, 'zero writes');
+  check('G3_INIT_PATH_NODE_REJECTED_BEFORE_WRITE', { initNode, contracts: g3.regionInitPalette, adapter: ires.error });
+
+  // 6. Normal G3 per-cell path on the same world and connection: stone admitted by the public
+  //    validateStaticMaterials, then prepare/apply/readback and same-origin Undo.
   const picked = await engine({ pick: [0, 8, 0], pickRef: 'fixture-pick', sessionRef: 'fixture-session' });
   assert.equal(picked.picked, true);
   const base = () => ({ contractVersion: 'world-adapter/v6', sessionRef: 'fixture-session', worldRef: localContext.worldRef, localContext });
@@ -297,6 +315,7 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   const operations = { contractVersion: 'operations/v3', buildDigest: '1'.repeat(64), compilerRevision: 'fixture-brush', compilationConfigDigest: '2'.repeat(64), worldRef: paired.worldRef,
     frameDigest: region.inspection.targetFacts.frameDigest, catalogueDigest: region.inspection.targetFacts.catalogueDigest, targetFactsDigest: region.inspection.targetFactsDigest,
     effects: positions.map(position => ({ position, nodeName: 'mcl_core:stone', param2: 0 })) };
+  C.validateStaticMaterials({ s: stone }, catalogue);
   const operationDigest = D('operations', operations);
   const scope = { transactionId: 'cell-1', worldRef: paired.worldRef, operationDigest, stateProfile: actual.stateProfile, checkedPositions: positions, objects: [], cells: actual.cells, localContext };
   const preq = { ...base(), requestId: 'prepare-cell-1', transactionId: 'cell-1', operationDigest, operations, scope, scopeDigest: D('scoped-world', scope), guarantee: 'RECOVERABLE_VERIFIED' };

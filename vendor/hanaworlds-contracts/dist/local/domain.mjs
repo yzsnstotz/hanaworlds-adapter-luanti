@@ -16,6 +16,7 @@ function arrayCompare(name, order) {
   if (order === 'numeric x,y,z' || order === 'numeric lexicographic six coordinates') return comparePosition;
   if (order === 'position numeric x,y,z') return (a, b) => comparePosition(a.position, b.position);
   if (order === 'nodeName UTF16 then param2 numeric') return comparePalette;
+  if (order === 'nodeName UTF16 ascending') return (a, b) => compareUTF16(a.nodeName, b.nodeName);
   if (order === 'chunkPos numeric x,y,z') return (a, b) => comparePosition(a.chunkPos, b.chunkPos);
   if (order === 'protocol UTF16 ascending') return (a, b) => compareUTF16(a.protocol, b.protocol);
   if (order === 'objectRef UTF16 ascending') return (a, b) => compareUTF16(a.objectRef, b.objectRef);
