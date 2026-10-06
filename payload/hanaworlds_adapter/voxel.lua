@@ -182,11 +182,26 @@ function M.emerge(core, minp, maxp)
     [core.EMERGE_FROM_DISK] = 'FROM_DISK', [core.EMERGE_CANCELLED] = 'CANCELLED',
     [core.EMERGE_ERRORED] = 'ERRORED',
   }
+  -- Whether each block was already in memory before this request: the emerge
+  -- action alone cannot say it (blocks generated within the same mapchunk are
+  -- reported FROM_MEMORY by the same emerge).
+  local before = {}
+  if type(core.compare_block_status) == 'function' then
+    for bz = floor_block(p1.z), floor_block(p2.z) do
+      for by = floor_block(p1.y), floor_block(p2.y) do
+        for bx = floor_block(p1.x), floor_block(p2.x) do
+          before[bx .. ',' .. by .. ',' .. bz] = core.compare_block_status(
+            {x = bx * BLOCK, y = by * BLOCK, z = bz * BLOCK}, 'loaded') == true
+        end
+      end
+    end
+  end
   return {defer = function(done)
     local blocks = {}
     core.emerge_area(p1, p2, function(blockpos, action, remaining)
+      local loaded = before[blockpos.x .. ',' .. blockpos.y .. ',' .. blockpos.z]
       blocks[#blocks + 1] = {blockPos = {blockpos.x, blockpos.y, blockpos.z},
-        action = names[action] or 'ERRORED'}
+        action = names[action] or 'ERRORED', loadedBefore = loaded}
       if remaining == 0 then done({blocks = blocks}) end
     end)
   end}

@@ -68,6 +68,7 @@ async function loadAndRead(engine, worldRef, groups, limits) {
   for (const group of groups) {
     const emerged = await engine.regionEmerge(group.box.min, group.box.max);
     const actions = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.action]));
+    const preloaded = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.loadedBefore === true]));
     let parts = [{ items: group.items }], replies;
     try {
       replies = [await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: group.items.map(i => i.box) })];
@@ -90,9 +91,9 @@ async function loadAndRead(engine, worldRef, groups, limits) {
         // block's mapchunk generated, so CANCELLED is a fact, not a verdict.
         const known = g.ignoreCells === 0 && KNOWN_ACTIONS.has(action);
         const state = known ? stateOf(worldRef, read, item.box) : null;
-        out.set(key(item.box.min), { action, guard: g.guard, chunk: { chunkPos: blockOf(item.box), box: item.box,
+        out.set(key(item.box.min), { action, loadedBefore: preloaded.get(key(blockOf(item.box))), guard: g.guard, chunk: { chunkPos: blockOf(item.box), box: item.box,
           availability: known ? 'KNOWN' : 'UNKNOWN',
-          loadMethod: known ? (action === 'FROM_MEMORY' ? 'ALREADY_LOADED' : 'LOADED_BY_EMERGE') : null,
+          loadMethod: known ? (preloaded.get(key(blockOf(item.box))) ? 'ALREADY_LOADED' : 'LOADED_BY_EMERGE') : null,
           unknownReason: known ? null : unknownReason(action, item.box, limits),
           state, stateDigest: state ? sha('region-state', state) : null } });
       });
@@ -111,7 +112,8 @@ export async function readRegion(engine, request) {
   const read = await loadAndRead(engine, request.worldRef, groups, limits);
   return { result: { worldRef: request.worldRef, box: request.box,
     chunks: chunks.map(c => read.get(key(c.box.min)).chunk), localContext: request.localContext },
-    facts: { batches: groups.length, emerge: [...read.values()].map(v => v.action) } };
+    facts: { batches: groups.length, emerge: [...read.values()].map(v => v.action),
+      loadedBefore: [...read.values()].map(v => v.loadedBefore) } };
 }
 
 /**

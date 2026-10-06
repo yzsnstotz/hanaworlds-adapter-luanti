@@ -1,8 +1,8 @@
 # HanaWorlds Luanti Adapter 0.5.0 (region I/O line, payload 0.5.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
-`hanaworlds-contracts@0.4.2` (source `aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777`,
-pack SHA256 `c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6`).
+`hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
+pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
 The text-line package 0.3.1/payload 0.3.0 and the image-material package
 0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
 I/O and does not migrate worlds provisioned with an older payload.
@@ -115,63 +115,50 @@ or rendered-appearance claim, no RGB values, no cache.
 `test/real-material-sources.mjs` is the focused real-Luanti reproduction with an
 explicit component fixture game; it does not represent the product game.
 
-## Region I/O (0.5.0)
+## Region I/O — world-adapter-region/v1 (0.5.0)
 
-`ctx.get('hanaworldsLuantiRegionIO')` is the bulk transport for the Canvas
-transaction owner (only the `hanaworlds-canvas` caller fiber is admitted):
+Consumes `hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
+pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
+`ctx.get('hanaworldsWorldAdapterRegionV1')` exposes `call('ReadRegion' | 'WriteRegion',
+request)`, `protocolHandshake` (protocol `world-adapter-region` major 1 minor 0 and the
+five `world-adapter-region/v1:*` capabilities; provenance is a record only) and
+`lastFacts()` (engine batch/emerge facts of the last call, evidence only). Only the
+`hanaworlds-canvas` caller fiber is admitted; every call checks the current paired
+connection/incarnation and the Canvas `ReadWorldSelectionContext` like the per-cell
+path. Another wire (e.g. `world-adapter-region/v2`) is `UNSUPPORTED_VERSION` before any
+engine dispatch; consumers decide compatibility with the contract's
+`checkProtocolCompatibility` (same major, minor, capabilities), never package versions.
 
-- `describe()` — self-description: purpose, typical scale, preconditions,
-  protocol `hanaworlds-region-io` 1.0.0 and its capabilities, `atomic: false`.
-- `negotiate({name, version, requiredCapabilities})` — compatible iff same
-  breaking line (major; for 0.x, major.minor) and every required capability is
-  offered. Minor/patch/source-hash differences never reject; another line rejects
-  `PROTOCOL_MAJOR_MISMATCH`, a missing capability `CAPABILITY_UNAVAILABLE`.
-- `readRegion({worldRef, connectionRef, connectionIncarnationRef, protocol, min, max})`
-- `writeRegion({worldRef, connectionRef, connectionIncarnationRef, protocol, voxels, expectedBlocks})`
+**ReadRegion.** Each mapblock-aligned batch is queued with `core.emerge_area` (memory,
+disk or generation) and read with one VoxelManip `read_from_map`. A chunk is KNOWN only
+when none of its cells reads back as `ignore`. `loadMethod` comes from
+`core.compare_block_status(block, "loaded")` taken before the request (the emerge
+action alone cannot tell: Luanti reports blocks generated within the same mapchunk as
+FROM_MEMORY or CANCELLED). Unknown chunks carry `OUTSIDE_WORLD_LIMITS` (beyond
+`mapgen_limit`) or `LOAD_FAILED`. `RegionState` = node/param2 block + extras (node
+metadata fields, inventory stack strings, started timers of nodes that define
+`on_timer`); param1 is derived light and not part of the state (contract).
 
-Every call is checked before any engine dispatch: protocol line, current paired
-world/connection/incarnation and the native process (`inspectConnection`).
+**WriteRegion.** Every chunk is loaded and must be KNOWN with a state digest equal to
+`expectedCurrentDigest`; an engine check-only pass of every batch follows; any failure
+there is an error with `mutationState: NONE`. Each batch is then rechecked by the
+engine in the same server step (private guard over nodes, param2 and extras), written
+with `set_data`/`set_param2_data`/`write_to_map(true)`, extras applied (APPLY: every
+specified cell loses its extras; RESTORE: exactly the given extras) and its mapblocks
+light-repaired with `core.fix_light`. Every written chunk is read back from the map and
+reported with its `readbackDigest`. A later failure leaves earlier chunks `WRITTEN`
+and the rest `NOT_WRITTEN` (`UNKNOWN` for a lost reply). Lighting is `COMPLETE` only
+when every written batch's `fix_light` returned true. Nothing is a commit: Canvas
+compares summaries and restores its BEFORE_IMAGE states with purpose RESTORE.
 
-**Load before read.** Each mapblock-aligned batch is first queued with
-`core.emerge_area` (fetch from memory, load from disk or generate) and the reply
-waits for the engine's last callback; it is then read with one VoxelManip
-`read_from_map`. A block is KNOWN only when none of its cells reads back as
-`ignore`; the emerge action (GENERATED / FROM_MEMORY / FROM_DISK / CANCELLED /
-ERRORED) is reported as a fact. Luanti also reports CANCELLED for a queued block
-that another queued block's mapchunk already generated, so the readback, not the
-action, decides. Any UNKNOWN block makes the read `UNKNOWN` (no voxels) and a
-write `REJECTED` before the first write.
+**Batch size** derives from the courier's 4 MiB reply limit and the loaded registry
+(worst-case runs/palette per mapblock), not from a setting; a batch whose metadata
+makes the reply too large is read one mapblock at a time.
 
-**Write.** `voxels` are region voxels v1 (see FIXTURE NOTICE in
-`src/region-voxels.mjs`): palette of `{nodeName, param2}` and runs in x-fastest,
-then y, then z order. `air` is an explicit dig; a `null` run is unspecified and
-keeps the current cell. `expectedBlocks` must list every block of the region with
-the digest the caller read. All batches are prechecked (loaded, digests match,
-changed cells static/stateless/non-liquid, no solid into a player body) by the
-engine without writing; then each batch is rechecked, written with
-`set_data`/`set_param2_data`/`write_to_map(true)` (engine lighting), its light
-repaired with `core.fix_light` over the batch's mapblocks (the returned `true` is
-the light completion fact) and read back from the map: specified cells must equal
-the target and unspecified cells must be unchanged. Writes never fall back to a
-per-node loop.
-
-**Not a transaction.** Batches are separate engine steps. A failure after the
-first batch returns `PARTIAL` with per-batch facts (`WRITTEN_VERIFIED`,
-`NOT_WRITTEN`, `UNKNOWN` for a lost reply) and after-digests; the Canvas restores
-its own pre-write region snapshot with `writeRegion` (restore transport). Nothing
-here is reported as atomic.
-
-**Batch size** is derived from the courier's actual 4 MiB body limit and the
-loaded registry (worst-case run/palette bytes), not from a setting; one batch is
-the only engine-side working set. Region/block digests use the text format
-`hw-region-cells/1` (identical in `voxel.lua` and `region-voxels.mjs`; each read
-recomputes them on the host from the returned cells).
-
-`npm run test:region` (FIXTURE engine double) covers negotiation, the voxels
-fixture, batching, rejection and partial facts. `test/real-region-io.mjs` is the
-real-Luanti reproduction (explicit component fixture game `hw_region_fixture`,
-public Host/Canvas peer fixtures, independent `hw_probe` node/light/write-counter
-reads).
+`npm run test:region` (FIXTURE engine double) covers the contract shapes, handshake,
+rejections and per-chunk facts. `test/real-region-io.mjs` is the real-Luanti
+reproduction (explicit component fixture game `hw_region_fixture`, public Host and
+Canvas peer fixtures, independent `hw_probe` node/light/metadata/write-counter reads).
 
 ## Validation and retained history
 

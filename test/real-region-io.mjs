@@ -1,7 +1,9 @@
 // Region I/O REAL_RUNTIME: own source or extracted package + Cordis 4.0.4 + real Luanti 5.17.
 // The game `hw_region_fixture` is an explicit COMPONENT FIXTURE, never the product game.
 // Host lifecycle and the Canvas caller are public peer fixtures; the Canvas fixture only
-// calls the public hanaworldsLuantiRegionIO service and makes no transaction decision here.
+// answers ReadWorldSelectionContext and calls the public world-adapter-region/v1 port
+// (hanaworldsWorldAdapterRegionV1). Expected after-states are computed with the public
+// contract helper expectedRegionState, exactly as the Canvas side would.
 // Independent engine attestation comes from the hw_probe mod (node/light reads and write
 // counters taken inside the same Luanti process, outside the Adapter payload).
 import assert from 'node:assert/strict';
@@ -16,7 +18,6 @@ const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_WORLDEDIT, 'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE and HW_WORLDEDIT are required');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
 const C = await import(pathToFileURL(join(installed, 'vendor/hanaworlds-contracts/dist/local/index.mjs')));
-const V = await import(pathToFileURL(join(installed, 'src/region-voxels.mjs')));
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const LUANTI = '/Applications/luanti.app/Contents/MacOS/luanti';
 const profile = join(root, 'profile'), world = join(profile, 'worlds', 'current'), home = join(root, 'home');
@@ -83,7 +84,8 @@ local function answer()
       local pos={x=p[1],y=p[2],z=p[3]}
       local n=minetest.get_node_or_nil(pos)
       out[i]={pos=p,name=n and n.name or 'UNLOADED',param2=n and n.param2 or -1,
-        light=minetest.get_node_light(pos,0.5) or -1,owner=minetest.get_meta(pos):get_string('owner')}
+        light=minetest.get_node_light(pos,0.5) or -1,param1=n and n.param1 or -1,
+        owner=minetest.get_meta(pos):get_string('owner'),timer=minetest.get_node_timer(pos):get_timeout()}
     end
     minetest.safe_file_write(path .. '/probe-answer.json',minetest.write_json(out))
   end
@@ -94,9 +96,16 @@ minetest.after(0,function()
   save()
   minetest.emerge_area({x=-64,y=-16,z=-64},{x=79,y=15,z=79},function(_,_,remaining)
     if remaining~=0 then return end
+    minetest.emerge_area({x=192,y=0,z=192},{x=207,y=15,z=207},function(_,_,left)
+      if left~=0 then return end
+      raw_set({x=200,y=0,z=200},{name='base:timer'})
+      minetest.get_node_timer({x=200,y=0,z=200}):start(100000)
+    end)
     raw_set({x=40,y=2,z=40},{name='base:chest'})
     minetest.get_meta({x=40,y=2,z=40}):set_string('owner','fixture')
     raw_set({x=41,y=2,z=40},{name='base:timer'})
+    raw_set({x=-40,y=2,z=-40},{name='base:chest'})
+    minetest.get_meta({x=-40,y=2,z=-40}):set_string('owner','fixture-restore')
     answer()
     minetest.log('action','HW_LOCAL_READY=' .. tostring(rawget(_G,'hanaworlds_adapter')~=nil))
   end)
@@ -146,10 +155,16 @@ const ctx = new Context();
 ctx.provide('webServer', { register() { return () => {}; } });
 ctx.provide('dshHomePath', (...parts) => join(home, ...parts));
 ctx.provide('hanaworldsNativeEngineControl', host);
-let canvas;
+let canvas, localContext;
 const adapterFiber = ctx.plugin({ name: 'hanaworlds-adapter-luanti', inject, apply(c) { apply(c, { localWorldRoots: [join(profile, 'worlds')] }); } });
 await adapterFiber.await();
-const canvasFiber = ctx.plugin({ name: 'hanaworlds-canvas', apply(c) { canvas = c; } });
+const canvasFiber = ctx.plugin({ name: 'hanaworlds-canvas', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
+  assert.equal(name, 'ReadWorldSelectionContext'); C.validateBoundRequest('canvas/v5', name, r);
+  return C.validateBoundResponse('canvas/v5', name, r, { contractVersion: 'canvas/v5', requestId: r.requestId, error: null, result: {
+    sessionRef: r.sessionRef, worldRef: r.worldRef, inventory: { capabilityRevision: 'fixture-inventory-1', connections: [] },
+    selection: { status: 'BOUND', connectionRef: localContext.connectionRef, context: { currentSession: r.sessionRef, activeWorldRef: localContext.worldRef,
+      orderedSelectedObjectRefs: [], sessionRevision: 'fixture-session-1', selectionRevision: localContext.selectionRevision, localContext } } } });
+} }); } });
 await canvasFiber.await();
 canvas.fiber.entry = { options: { name: 'hanaworlds-canvas' } }; // same origin metadata the Host Loader supplies
 const local = ctx.get('hanaworldsLuantiLocalWorlds');
@@ -165,33 +180,57 @@ async function engineRead(positions) {
   }
   throw Error('PROBE_ANSWER_TIMEOUT');
 }
-const P = { name: 'hanaworlds-region-io', version: '1.4.2', requiredCapabilities: ['region-voxels-v1', 'air-dig', 'mapblock-batches', 'load-before-read', 'light-complete-fact'] };
-const summary = r => r && ({ status: r.status, written: r.written, failure: r.failure, regionDigest: r.regionDigest,
-  batches: r.batches?.map(b => ({ status: b.status, changedCells: b.changedCells, light: b.light, min: b.min, max: b.max, blocks: b.blocks })),
-  blocks: r.blocks?.length, emerge: r.blocks && [...new Set(r.blocks.map(b => b.emerge))], currentAfter: r.currentAfter });
-let binding;
-async function io(name, input, caller = canvas) {
-  const started = Date.now();
+const W = 'world-adapter-region/v1';
+const CAPS = ['world-adapter-region/v1:chunked-read', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
+  'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state'];
+let seq = 0;
+const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext });
+const summarize = r => r.result ? { chunks: r.result.chunks.length,
+  status: [...new Set(r.result.chunks.map(c => c.availability ?? c.status))], loadMethod: [...new Set(r.result.chunks.map(c => c.loadMethod).filter(Boolean))],
+  unknownReason: [...new Set(r.result.chunks.map(c => c.unknownReason).filter(Boolean))], lighting: r.result.lighting } : { error: r.error };
+async function io(name, request, caller = canvas) {
+  const started = Date.now(), port = caller.get('hanaworldsWorldAdapterRegionV1');
   try {
-    const result = await caller.get('hanaworldsLuantiRegionIO')[name]({ ...binding, protocol: P, ...input });
-    calls.push({ name, input: { ...input, voxels: input.voxels && { ...input.voxels, runs: `${input.voxels.runs.length} runs` } }, ms: Date.now() - started, result: summary(result) });
-    return result;
+    const response = await port.call(name, request);
+    calls.push({ name, requestId: request.requestId, purpose: request.purpose, box: request.box, ms: Date.now() - started,
+      response: summarize(response), facts: port.lastFacts() });
+    return response;
   } catch (error) {
-    calls.push({ name, input: { min: input.min, max: input.max, protocol: input.protocol }, ms: Date.now() - started, error: error.message });
+    calls.push({ name, requestId: request?.requestId, ms: Date.now() - started, thrown: error.message });
     throw error;
   }
 }
-// Region R: 7 x 2 x 7 = 98 mapblocks, not block aligned on the low side.
-const R = { min: [-48, -8, -48], max: [63, 7, 63] };
-const size = R.max.map((v, i) => v - R.min[i] + 1);
-function voxels(rule, min = R.min, sz = size) {
-  const palette = [{ nodeName: 'base:stone', param2: 0 }, { nodeName: 'air', param2: 0 }, { nodeName: 'base:rotated', param2: 7 }];
-  const cells = new Int32Array(sz[0] * sz[1] * sz[2]); let i = 0;
-  for (let z = min[2]; z < min[2] + sz[2]; z++) for (let y = min[1]; y < min[1] + sz[1]; y++) for (let x = min[0]; x < min[0] + sz[0]; x++) cells[i++] = rule(x, y, z);
-  return V.encodeVoxels(min, sz, palette, cells);
+const readR = async (box, purpose = 'BEFORE_IMAGE') => {
+  const req = { ...req0(), box, purpose }, res = await io('ReadRegion', req);
+  assert.equal(res.error, null, JSON.stringify(res.error)); C.validateRegionRead(req, res); return res.result;
+};
+async function writeR(purpose, writes, caller) {
+  const req = { ...req0(), transactionId: `tx-${seq}`, purpose, writes }, res = await io('WriteRegion', req, caller);
+  return { req, res, ...(res.error ? {} : C.validateRegionWrite(req, res)) };
 }
-const expect = r => r.blocks.map(b => ({ blockPos: b.blockPos, digest: b.digest }));
+function ops(chunk, rule) {
+  const { min, max } = chunk.box, size = max.map((v, i) => v - min[i] + 1);
+  const palette = [{ nodeName: 'base:stone', param2: 0 }, { nodeName: 'air', param2: 0 }, { nodeName: 'base:rotated', param2: 7 }];
+  const indices = new Int32Array(size[0] * size[1] * size[2]); let i = 0, any = false;
+  for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = rule(x, y, z); any ||= indices[i] !== -1; i++; }
+  return any ? C.encodeRegionBlock({ origin: min, size, palette, indices }) : null;
+}
+// APPLY writes for every chunk the rule touches; also the Canvas-side expected after-states.
+function apply_(read, rule) {
+  const writes = [], expected = [];
+  for (const c of read.chunks) {
+    const block = ops(c, rule); if (!block) continue;
+    writes.push({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest, ops: block, state: null });
+    expected.push(C.digestValue('region-state', C.expectedRegionState(c.state, block)).sha256);
+  }
+  return { writes, expected };
+}
+const R = { min: [-48, -8, -48], max: [63, 7, 63] }; // 7 x 2 x 7 = 98 mapblocks, low side not aligned
 const check = (event, detail = {}) => { events.push({ event, ...detail }); console.log('PASS', event); };
+const sameDigests = (res, read, expected) => res.result.chunks.forEach((c, i) => {
+  assert.equal(c.status, 'WRITTEN'); assert.equal(c.readbackDigest, expected[i]);
+  assert.equal(read.chunks.find(r => r.chunkPos.join() === c.chunkPos.join()).stateDigest, expected[i]);
+});
 try {
   const [found] = await local.discover();
   const acquire = await local.acquire({ connectionRef: found.connectionRef, requesterRef: 'fixture-host', userPath: profile, action: 'PROVISION_PAYLOAD' });
@@ -199,101 +238,108 @@ try {
   const provision = await local.provision(query(acquire)); assert.equal(provision.payloadDigest, await payloadDigest());
   const opened = await local.acquire({ connectionRef: found.connectionRef, requesterRef: 'fixture-host', userPath: profile, action: 'BIND_RUNNING_WORLD' });
   const paired = await local.pair(query(opened));
-  binding = { worldRef: paired.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef };
-  const described = canvas.get('hanaworldsLuantiRegionIO').describe();
-  assert.equal(described.atomic, false); assert.equal(described.transactionOwner, 'hanaworlds-canvas');
-  check('SELF_DESCRIPTION', { purpose: described.purpose, preconditions: described.preconditions, version: described.version });
+  localContext = { connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef, worldRef: paired.worldRef, selectionRevision: 'fixture-selection-1' };
+  const port = canvas.get('hanaworldsWorldAdapterRegionV1');
+  // 1. Protocol major + capabilities (consumer side) and pre-dispatch rejections.
+  assert.equal(C.checkProtocolCompatibility(port.protocolHandshake, [C.protocolRequirement(W, CAPS)]).result, 'PROTOCOL_COMPATIBLE');
+  assert.throws(() => C.checkProtocolCompatibility(port.protocolHandshake, [C.protocolRequirement('world-adapter-region/v2', CAPS)]), /UNSUPPORTED_VERSION/);
   const c0 = await counts(); assert.equal(c0.vm_hook, 'installed');
-
-  // 1. Wrong major / wrong binding / non-Canvas caller: rejected before any engine dispatch.
-  await assert.rejects(io('writeRegion', { protocol: { ...P, version: '2.0.0' }, voxels: voxels(() => 0), expectedBlocks: [] }), /PROTOCOL_MAJOR_MISMATCH/);
-  await assert.rejects(io('readRegion', { protocol: { ...P, version: '0.9.0' }, ...R }), /PROTOCOL_MAJOR_MISMATCH/);
-  await assert.rejects(io('readRegion', { ...R, protocol: { ...P, requiredCapabilities: ['teleport'] } }), /CAPABILITY_UNAVAILABLE/);
-  await assert.rejects(io('readRegion', { ...R, worldRef: 'luanti:00000000-0000-0000-0000-000000000000' }), /CURRENT_WORLD_MISMATCH/);
-  await assert.rejects(io('readRegion', { ...R, connectionIncarnationRef: 'stale-incarnation' }), /CURRENT_WORLD_MISMATCH/);
-  await assert.rejects(io('readRegion', { ...R, connectionRef: 'local:unknown' }), /WORLD_NOT_BOUND/);
-  await assert.rejects(io('readRegion', R, ctx), /CAPABILITY_UNAVAILABLE/);
+  assert.throws(() => port.call('ReadRegion', { ...req0(), contractVersion: 'world-adapter-region/v2', box: R, purpose: 'INSPECT' }), /UNSUPPORTED_VERSION/);
+  assert.throws(() => port.call('ReadRegion', { ...req0(), worldRef: 'luanti:other', box: R, purpose: 'INSPECT' }), /CURRENT_WORLD_MISMATCH/);
+  const stale = await io('ReadRegion', { ...req0(), localContext: { ...localContext, connectionIncarnationRef: 'stale' }, box: R, purpose: 'INSPECT' });
+  assert.equal(stale.error.code, 'CURRENT_WORLD_MISMATCH');
+  const outsider = await io('ReadRegion', { ...req0(), box: R, purpose: 'INSPECT' }, ctx);
+  assert.equal(outsider.error.code, 'CAPABILITY_UNAVAILABLE');
   assert.deepEqual(await counts(), c0);
-  check('PRE_DISPATCH_REJECTIONS', { cases: ['major 2.0.0', '0.9.0', 'missing capability', 'wrong world', 'stale incarnation', 'unknown connection', 'non-Canvas caller'], writes: c0 });
+  check('PROTOCOL_AND_PRE_DISPATCH_REJECTIONS', { handshake: port.protocolHandshake, cases: ['v2 requirement', 'v2 wire', 'wrong world', 'stale incarnation', 'non-Canvas caller'], counts: c0 });
 
-  // 2. Cross-block read (same major, different minor/patch accepted), then fill.
-  const r0 = await io('readRegion', R);
-  assert.equal(r0.status, 'KNOWN'); assert.equal(r0.blocks.length, 98); assert.ok(r0.batches.length > 1, 'multi-batch');
-  assert.ok(r0.blocks.every(b => b.availability === 'KNOWN'));
-  const fill = await io('writeRegion', { voxels: voxels((x, y) => y < 0 ? 0 : -1), expectedBlocks: expect(r0) });
-  assert.equal(fill.status, 'COMPLETE', JSON.stringify(fill.failure)); assert.equal(fill.atomic, false);
-  assert.ok(fill.batches.every(b => b.status === 'WRITTEN_VERIFIED' && b.light.complete === true));
+  // 2. Cross-chunk BEFORE_IMAGE read and multi-batch fill.
+  const r0 = await readR(R);
+  C.requireKnownRegion(r0); assert.equal(r0.chunks.length, 98);
+  assert.ok(port.lastFacts().batches > 1, 'multi-batch read');
+  const fill = apply_(r0, (x, y) => y < 0 ? 0 : -1);
+  const w1 = await writeR('APPLY', fill.writes);
+  assert.equal(w1.allWritten, true, JSON.stringify(w1.res.error ?? w1.res.result.lighting)); assert.equal(w1.committed, false);
+  const f1 = port.lastFacts(); assert.ok(f1.batches.length > 1);
   const c1 = await counts();
-  assert.equal(c1.vm_write - c0.vm_write, fill.batches.length); assert.equal(c1.set_node, c0.set_node); assert.equal(c1.worldedit_set, c0.worldedit_set);
-  const r1 = await io('readRegion', R);
-  assert.equal(r1.regionDigest, fill.regionDigest);
-  check('FILL_MULTI_BATCH_VOXELMANIP', { batches: fill.batches.length, vmWrites: c1.vm_write - c0.vm_write, perNodeWrites: c1.set_node - c0.set_node, regionDigest: fill.regionDigest });
+  assert.equal(c1.vm_write - c0.vm_write, f1.batches.length); assert.equal(c1.set_node, c0.set_node); assert.equal(c1.worldedit_set, c0.worldedit_set);
+  const r1 = await readR(R, 'READBACK'); sameDigests(w1.res, r1, fill.expected);
+  check('FILL_MULTI_BATCH_VOXELMANIP', { chunks: fill.writes.length, batches: f1.batches.length, vmWrites: c1.vm_write - c0.vm_write, perNodeWrites: c1.set_node - c0.set_node, lighting: w1.res.result.lighting });
 
-  // 3. Explicit air dig across block boundaries + roof fill; unspecified cells kept; light completes.
+  // 3. Explicit air dig across block boundaries, roof fill, param2, and an overwritten
+  //    metadata cell (chest at 40,2,40 -> air). Unspecified cells and the timer node keep.
   const pit = (x, y, z) => x >= -2 && x <= 2 && z >= -2 && z <= 2 && y >= -4 && y <= -1;
   const roof = (x, y, z) => y === 5 && x >= -30 && x <= 30 && z >= -30 && z <= 30;
-  const dig = await io('writeRegion', { voxels: voxels((x, y, z) => pit(x, y, z) ? 1 : roof(x, y, z) ? 0 : (x === 10 && y === 0 && z === 10) ? 2 : -1), expectedBlocks: expect(r1) });
-  assert.equal(dig.status, 'COMPLETE', JSON.stringify(dig.failure));
-  assert.ok(dig.batches.every(b => b.status === 'NOT_NEEDED' || (b.readbackMatches && b.unspecifiedKept && b.light.complete)));
-  const seen = await engineRead([[0, -1, 0], [-1, -4, -1], [0, -5, 0], [0, 5, 0], [0, 4, 0], [0, 6, 0], [50, 0, 50], [10, 0, 10], [40, 2, 40], [55, -3, 55]]);
+  const rule3 = (x, y, z) => pit(x, y, z) ? 1 : roof(x, y, z) ? 0 : (x === 10 && y === 0 && z === 10) ? 2 : (x === 40 && y === 2 && z === 40) ? 1 : -1;
+  const before3 = await engineRead([[40, 2, 40]]);
+  const dig = apply_(r1, rule3);
+  const chestChunk = r1.chunks.find(c => c.chunkPos.join() === '2,0,2');
+  assert.ok(chestChunk.state.extras.some(e => e.position.join() === '40,2,40' && e.metadata.owner === 'fixture'));
+  const w2 = await writeR('APPLY', dig.writes);
+  assert.equal(w2.allWritten, true, JSON.stringify(w2.res.error));
+  const r2 = await readR(R, 'READBACK'); sameDigests(w2.res, r2, dig.expected);
+  assert.equal(r2.chunks.find(c => c.chunkPos.join() === '2,0,2').state.extras.some(e => e.position.join() === '40,2,40'), false);
+  const seen = await engineRead([[0, -1, 0], [-1, -4, -1], [0, -5, 0], [0, 5, 0], [0, 4, 0], [0, 6, 0], [50, 0, 50], [10, 0, 10], [40, 2, 40], [41, 2, 40], [55, -3, 55], [-40, 2, -40]]);
   const at = p => seen.find(s => s.pos.join() === p.join());
   assert.equal(at([0, -1, 0]).name, 'air'); assert.equal(at([-1, -4, -1]).name, 'air'); assert.equal(at([0, -5, 0]).name, 'base:stone');
   assert.equal(at([0, 5, 0]).name, 'base:stone'); assert.equal(at([10, 0, 10]).name, 'base:rotated'); assert.equal(at([10, 0, 10]).param2, 7);
-  assert.equal(at([40, 2, 40]).name, 'base:chest'); assert.equal(at([40, 2, 40]).owner, 'fixture'); assert.equal(at([55, -3, 55]).name, 'base:stone');
+  assert.equal(at([40, 2, 40]).name, 'air'); assert.equal(at([40, 2, 40]).owner, ''); // overwritten cell: old metadata cleared
+  assert.equal(at([41, 2, 40]).name, 'base:timer'); assert.equal(at([55, -3, 55]).name, 'base:stone'); assert.equal(at([-40, 2, -40]).owner, 'fixture-restore');
   assert.equal(at([0, 6, 0]).light, 15); assert.equal(at([50, 0, 50]).light, 15);
   assert.ok(at([0, 4, 0]).light < 15, `light under roof centre ${at([0, 4, 0]).light}`);
-  assert.ok(at([0, -1, 0]).light < 15, `light in the covered pit ${at([0, -1, 0]).light}`);
-  const r2 = await io('readRegion', R); assert.equal(r2.regionDigest, dig.regionDigest);
-  check('DIG_AIR_CROSS_BLOCK_PARAM2_LIGHT', { engine: seen });
+  // param1 of air is the engine light byte (day + 16*night): derived, not node data.
+  check('DIG_AIR_PARAM2_METADATA_CLEAR_LIGHT', { chestBefore: before3[0], engine: seen, lighting: w2.res.result.lighting });
 
-  // 4. Stateful / non-static cells: precheck rejects, zero writes.
+  // 4. Stale expectedCurrentDigest (caller read is outdated): rejected, zero writes.
   const c2 = await counts();
-  const meta = await io('writeRegion', { voxels: voxels((x, y, z) => (x === 40 && y === 2 && z === 40) ? 1 : -1), expectedBlocks: expect(r2) });
-  assert.equal(meta.status, 'REJECTED'); assert.equal(meta.failure.code, 'UNSUPPORTED_MUTATION_SEMANTICS'); assert.equal(meta.written, false);
-  const timer = await io('writeRegion', { voxels: voxels((x, y, z) => (x === 41 && y === 2 && z === 40) ? 1 : -1), expectedBlocks: expect(r2) });
-  assert.equal(timer.status, 'REJECTED'); assert.equal(timer.failure.code, 'UNSUPPORTED_MUTATION_SEMANTICS');
+  const staleW = await writeR('APPLY', apply_(r1, (x, y) => y === 6 ? 0 : -1).writes);
+  assert.equal(staleW.res.error.code, 'TRANSACTION_CONFLICT'); assert.equal(staleW.res.error.mutationState, 'NONE');
   assert.deepEqual(await counts(), c2);
-  check('STATEFUL_REJECTED_ZERO_WRITE', { meta: meta.failure, timer: timer.failure });
+  check('STALE_DIGEST_REJECTED_ZERO_WRITE', { error: staleW.res.error });
 
-  // 5. Stale expected digests (caller read is outdated): REJECTED, zero writes.
-  const stale = await io('writeRegion', { voxels: voxels((x, y) => y === 6 ? 0 : -1), expectedBlocks: expect(r1) });
-  assert.equal(stale.status, 'REJECTED'); assert.equal(stale.failure.code, 'TRANSACTION_CONFLICT'); assert.deepEqual(await counts(), c2);
-  check('STALE_DIGEST_REJECTED_ZERO_WRITE', { failure: stale.failure });
-
-  // 6. Unloaded never-generated region: emerged (GENERATED) and read back KNOWN.
+  // 5. Never-generated region: loaded by emerge, then KNOWN; second read ALREADY_LOADED.
   const far = { min: [1000, 0, 1000], max: [1040, 20, 1040] };
-  const before = await engineRead([[1000, 0, 1000]]);
-  const g = await io('readRegion', far);
-  assert.equal(g.status, 'KNOWN'); assert.ok(g.blocks.some(b => b.emerge === 'GENERATED'), JSON.stringify(g.blocks.map(b => b.emerge)));
-  const again = await io('readRegion', far);
-  assert.ok(again.blocks.every(b => b.emerge === 'FROM_MEMORY' || b.emerge === 'FROM_DISK')); assert.equal(again.regionDigest, g.regionDigest);
-  check('UNLOADED_LOADED_THEN_KNOWN', { probeBefore: before[0], first: [...new Set(g.blocks.map(b => b.emerge))], second: [...new Set(again.blocks.map(b => b.emerge))] });
+  const farBefore = await engineRead([[1000, 0, 1000]]);
+  const g1 = await readR(far, 'INSPECT'); C.requireKnownRegion(g1);
+  assert.ok(g1.chunks.every(c => c.loadMethod === 'LOADED_BY_EMERGE'));
+  const g1Facts = port.lastFacts();
+  const g2 = await readR(far, 'INSPECT'); assert.ok(g2.chunks.every(c => c.loadMethod === 'ALREADY_LOADED'));
+  assert.deepEqual(g2.chunks.map(c => c.stateDigest), g1.chunks.map(c => c.stateDigest));
+  check('UNLOADED_LOADED_THEN_KNOWN', { probeBefore: farBefore[0], emergeActions: [...new Set(g1Facts.emerge)] });
 
-  // 7. Outside mapgen_limit: the engine cannot load it -> UNKNOWN; write rejected, zero writes.
+  // 6. Outside mapgen_limit: still UNKNOWN after the load attempt; a write is rejected before any write.
   const out = { min: [1600, 0, 1600], max: [1610, 4, 1610] };
-  const u = await io('readRegion', out);
-  assert.equal(u.status, 'UNKNOWN'); assert.equal(u.voxels, null);
-  const fake = V.subBoxes(out.min, out.max).map(b => ({ blockPos: b.block, digest: '0'.repeat(64) }));
+  const u = await readR(out, 'INSPECT');
+  assert.ok(u.chunks.every(c => c.availability === 'UNKNOWN' && c.unknownReason === 'OUTSIDE_WORLD_LIMITS'));
+  assert.throws(() => C.requireKnownRegion(u), /TARGET_FACTS_INCOMPLETE/);
   const c3 = await counts();
-  const uw = await io('writeRegion', { voxels: voxels(() => 0, out.min, out.max.map((v, i) => v - out.min[i] + 1)), expectedBlocks: fake });
-  assert.equal(uw.status, 'REJECTED'); assert.equal(uw.failure.code, 'TARGET_FACTS_INCOMPLETE'); assert.deepEqual(await counts(), c3);
-  check('UNKNOWN_REJECTED_ZERO_WRITE', { read: [...new Set(u.blocks.map(b => b.emerge))], failure: uw.failure });
+  const uw = await writeR('APPLY', u.chunks.map(c => ({ chunkPos: c.chunkPos, expectedCurrentDigest: '0'.repeat(64), ops: ops(c, () => 0), state: null })));
+  assert.equal(uw.res.error.code, 'TARGET_FACTS_INCOMPLETE'); assert.deepEqual(await counts(), c3);
+  check('UNKNOWN_REJECTED_ZERO_WRITE', { reasons: [...new Set(u.chunks.map(c => c.unknownReason))], error: uw.res.error });
 
-  // 8. A concurrent engine change after batch 1: PARTIAL (never atomic), facts per batch,
-  //    then the caller's own snapshot is restored through writeRegion.
-  const snapshot = await io('readRegion', R);
+  // 7. Concurrent engine change after batch 1: per-chunk WRITTEN/NOT_WRITTEN, never
+  //    committed; the caller's own BEFORE_IMAGE states are restored with RESTORE (extras included).
+  const snap = await readR(R);
   await writeFile(join(world, 'probe-conflict'), JSON.stringify([60, 6, 60])); // lies in the last batch
-  const partial = await io('writeRegion', { voxels: voxels((x, y) => y === 6 ? 0 : -1), expectedBlocks: expect(snapshot) });
-  assert.equal(partial.status, 'PARTIAL'); assert.equal(partial.atomic, false); assert.equal(partial.written, true);
-  assert.equal(partial.batches[0].status, 'WRITTEN_VERIFIED'); assert.equal(partial.batches.at(-1).status, 'NOT_WRITTEN');
-  assert.equal(partial.failure.code, 'TRANSACTION_CONFLICT');
-  const now = await io('readRegion', R); assert.notEqual(now.regionDigest, snapshot.regionDigest);
-  const restore = await io('writeRegion', { voxels: snapshot.voxels, expectedBlocks: expect(now) });
-  assert.equal(restore.status, 'COMPLETE', JSON.stringify(restore.failure));
-  const back = await io('readRegion', R); assert.equal(back.regionDigest, snapshot.regionDigest);
-  const kept = await engineRead([[40, 2, 40], [41, 2, 40], [60, 6, 60]]);
-  assert.equal(kept[0].name, 'base:chest'); assert.equal(kept[0].owner, 'fixture'); assert.equal(kept[1].name, 'base:timer'); assert.equal(kept[2].name, 'air');
-  check('PARTIAL_FACTS_THEN_SNAPSHOT_RESTORE', { partial: summary(partial), restoredDigest: back.regionDigest });
+  const w7 = await writeR('APPLY', apply_(snap, (x, y, z) => y === 6 || (x === -40 && y === 2 && z === -40) ? (y === 6 ? 0 : 1) : -1).writes);
+  assert.equal(w7.res.error, null); assert.equal(w7.allWritten, false); assert.equal(w7.committed, false);
+  const st = new Set(w7.res.result.chunks.map(c => c.status)); assert.ok(st.has('WRITTEN') && st.has('NOT_WRITTEN'));
+  const mid = await engineRead([[-40, 2, -40]]); assert.equal(mid[0].name, 'air'); assert.equal(mid[0].owner, '');
+  const now = await readR(R, 'READBACK');
+  const restore = await writeR('RESTORE', snap.chunks.map((c, i) => ({ chunkPos: c.chunkPos, expectedCurrentDigest: now.chunks[i].stateDigest, ops: null, state: c.state })));
+  assert.equal(restore.allWritten, true, JSON.stringify(restore.res.error));
+  const back = await readR(R, 'READBACK');
+  assert.deepEqual(back.chunks.map(c => c.stateDigest), snap.chunks.map(c => c.stateDigest));
+  const kept = await engineRead([[-40, 2, -40], [41, 2, 40], [60, 6, 60]]);
+  assert.equal(kept[0].name, 'base:chest'); assert.equal(kept[0].owner, 'fixture-restore'); assert.equal(kept[2].name, 'air');
+  check('PARTIAL_FACTS_THEN_RESTORE_WITH_EXTRAS', { partial: w7.res.result.chunks.reduce((m, c) => ({ ...m, [c.status]: (m[c.status] ?? 0) + 1 }), {}),
+    restoreLighting: restore.res.result.lighting, engine: kept });
+
+  // 8. Observation only: a chunk holding a running node timer, read twice.
+  const tbox = { min: [192, 0, 192], max: [207, 15, 207] };
+  const t1 = await readR(tbox, 'INSPECT'); await new Promise(y => setTimeout(y, 1500)); const t2 = await readR(tbox, 'INSPECT');
+  const te = (r) => r.chunks[0].state?.extras.find(e => e.position.join() === '200,0,200')?.timer ?? null;
+  events.push({ event: 'OBSERVED_RUNNING_TIMER_DIGEST', firstTimer: te(t1), secondTimer: te(t2), digestChanged: t1.chunks[0].stateDigest !== t2.chunks[0].stateDigest });
 
   check('PASS', { counts: await counts() });
 } finally {
@@ -302,4 +348,4 @@ try {
   await writeFile(join(root, 'processes.json'), JSON.stringify(processes, null, 2) + '\n');
   await writeFile(join(root, 'events.json'), JSON.stringify(events, null, 2) + '\n');
 }
-console.log('REAL_RUNTIME region-io own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');
+console.log('REAL_RUNTIME world-adapter-region/v1 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');
