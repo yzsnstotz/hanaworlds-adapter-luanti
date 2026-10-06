@@ -4,6 +4,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
+import { createFlatWorld, describeFlatWorldCreation } from './flat-world.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
 function deny(code = 'CURRENT_WORLD_MISMATCH') { throw new Error(code); }
@@ -177,6 +178,31 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
           if (callbackUsed && ['PAYLOAD_VERSION_MISMATCH', 'WORLD_NOT_FOUND'].includes(error?.message)) throw error;
           deny();
         } finally { callbackActive = false; forget(row); }
+      });
+    },
+    /** What a new flat world would use (roots, installed games, mapgen) and what is missing. */
+    async describeFlatWorldCreation(input) {
+      const q = fields(input, ['requesterRef', 'userPath']);
+      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath)) return Promise.reject(new Error('SCHEMA_INVALID'));
+      return track(() => describeFlatWorldCreation({ roots: rootPaths, userPath: resolve(q.userPath) }));
+    },
+    /** Creates a new local single-player world, flat by default, with this Adapter's payload
+     * already installed. The result names only that new world; on any failure nothing is
+     * selected, created or overwritten. The next step is BIND_RUNNING_WORLD on its connectionRef. */
+    async createFlatWorld(input) {
+      const q = fields(input, ['requesterRef', 'userPath', 'root', 'gameId', 'worldName'], ['requesterRef', 'userPath']);
+      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath) ||
+          ['root', 'gameId', 'worldName'].some(k => k in q && !text(q[k])) || ('root' in q && !isAbsolute(q.root)))
+        return Promise.reject(new Error('SCHEMA_INVALID'));
+      return track(async () => {
+        const made = await createFlatWorld({ roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
+          gameId: q.gameId, worldName: q.worldName, transportPort: await freePort() });
+        const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
+        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('WORLD_NOT_FOUND'); }
+        log('info', `LOCAL_FLAT_WORLD_CREATED ${rows[0].connectionRef}`);
+        return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
+          worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
+          game: made.game, mapgen: made.mapgen, perCellMod: made.perCellMod, nextAction: 'BIND_RUNNING_WORLD' };
       });
     },
     async pair(input) {
