@@ -5,9 +5,11 @@
 // world.mt, map_meta.txt or the payload.
 // Environment fixtures (labelled): the per-run Luanti user path with the game and WorldEdit
 // installed, one pre-existing world that must stay untouched, and the Host lifecycle and
-// Canvas callers as public peer fixtures. Observation fixture: `hw_probe`, added to the
+// Canvas callers as public peer fixtures. Observation/external-edit fixture: `hw_probe`, added to the
 // created world's worldmods after creation, records the one in-game pick a player would
-// make and answers independent node reads inside the same Luanti process.
+// make and answers independent node reads inside the same Luanti process. One explicit
+// metadata mutation simulates an independent later world edit for Undo conflict.
+// It is not evidence that a particular player/ABM/LBM ran.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { cp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -167,6 +169,12 @@ local function answer()
       local n=minetest.get_node_or_nil(pos)
       out.nodes[i]={pos=p,name=n and n.name or 'UNLOADED',light=minetest.get_node_light(pos,0.5) or -1}
     end
+    if q.editMeta then
+      local p=q.editMeta.position; local pos={x=p[1],y=p[2],z=p[3]}
+      minetest.load_area(pos)
+      minetest.get_meta(pos):set_string(q.editMeta.key,q.editMeta.value)
+      out.metadata=minetest.get_meta(pos):to_table().fields
+    end
     if q.pick then
       local a=rawget(_G,'hanaworlds_adapter')
       local m=minetest.parse_json(io.open(minetest.get_modpath('hanaworlds_adapter') .. '/payload.json','r'):read('*a'))
@@ -211,6 +219,9 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
       ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:restore-state'], 1)]).result };
   assert.deepEqual(proto, { v6: 'PROTOCOL_COMPATIBLE', region: 'PROTOCOL_COMPATIBLE' });
   const wp = await native.readWritePathEvidence(paired.worldRef);
+  await writeFile(join(root, 'catalogue.json'), JSON.stringify(wp.catalogue, null, 2) + '\n');
+  await writeFile(join(root, 'write-path-evidence.json'), JSON.stringify(wp.evidence, null, 2) + '\n');
+  await writeFile(join(root, 'write-path-check.json'), JSON.stringify(wp.check, null, 2) + '\n');
   assert.equal(wp.catalogue.gameRevision, catalogue.gameRevision, 'same registry snapshot as readCatalogue');
   assert.deepEqual(wp.evidence.globalWriteCallbacks, [], 'no write-path global callback registered');
   const hooks = Object.fromEntries(wp.evidence.nodes.map(n => [n.nodeName, n.definedCallbacks]));
@@ -332,6 +343,25 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   undo.historyOperationDigest = D('history-operation', Object.fromEntries(Object.keys(C.schemaBundle.definitions.HistoryOperationProjection.properties).map(k => [k, undo[k]])));
   history = { current: true, durable: true, worldRef: paired.worldRef, originTransactionId: 'cell-1', historyRevision: undo.expectedHistoryRevision, worldRevision: undo.expectedWorldRevision,
     objectRevisions: {}, affectedObjectRefs: [], originVerifiedReceiptDigest: undo.originVerifiedReceiptDigest };
+  // A later change to metadata must remain visible even on an admitted static node.
+  // Probe mutation is an explicit external-edit fixture; the Adapter must not erase it.
+  const changed = await engine({ editMeta: { position: positions[0], key: 'hw_external_edit', value: 'later-world-change' } });
+  assert.equal(changed.metadata.hw_external_edit, 'later-world-change');
+  const changedBefore = await native.readScopedState(paired.connectionRef, positions);
+  const changedRegion = await readR({ min: positions[0], max: positions[1] }, 'READBACK');
+  assert.ok(changedRegion.chunks.some(c => c.state.extras.some(e => e.metadata.hw_external_edit === 'later-world-change')));
+  const refused = await v6('PrepareHistoryTransaction', { ...undo, requestId: 'prepare-undo-external-conflict' });
+  assert.equal(refused.error?.code, 'UNDO_CONFLICT');
+  assert.equal(refused.error.mutationState, 'NONE');
+  const changedAfter = await native.readScopedState(paired.connectionRef, positions);
+  assert.deepEqual(changedAfter, changedBefore, 'failed Undo leaves the external change intact');
+  const afterConflict = await readR({ min: positions[0], max: positions[1] }, 'READBACK');
+  assert.deepEqual(afterConflict.chunks.map(c => c.stateDigest), changedRegion.chunks.map(c => c.stateDigest));
+  await writeFile(join(root, 'external-edit-undo.json'), JSON.stringify({ before: changedBefore, after: changedAfter,
+    beforeRegion: changedRegion, afterRegion: afterConflict, refusal: refused }, null, 2) + '\n');
+  check('G3_LATER_METADATA_EDIT_UNDO_CONFLICT', { error: refused.error, regionDigestUnchanged: true });
+  // Restore only the fixture's added field, then exercise the original successful Undo.
+  await engine({ editMeta: { position: positions[0], key: 'hw_external_edit', value: '' } });
   const up = await ok6('PrepareHistoryTransaction', undo);
   const ur = await ok6('ApplyHistoryTransaction', { ...base(), requestId: 'apply-undo', originTransactionId: 'cell-1', transactionId: 'undo-cell-1', direction: 'UNDO',
     historyOperationDigest: undo.historyOperationDigest, expectedWorldRevision: undo.expectedWorldRevision, expectedObjectRevisions: {}, preparedHistoryTransaction: up });

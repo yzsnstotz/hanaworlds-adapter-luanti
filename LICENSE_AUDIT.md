@@ -123,3 +123,19 @@ Gate-only external inputs, not redistributed:
   installed into the gate's own Luanti user path; its `mcl_superflat_classic` setting is read by name only.
 - WorldEdit · 62ffafe3bcb386600c431ef3840d91c3c8f85639 · AGPL-3.0 · as recorded above · per-cell StateProfile in the gate profile.
 - @deepseek-ai/cordis · 4.0.4 · as recorded for earlier gates · gate host fixture only.
+
+## Write-path facts 0.7.0 update (2026-10-07)
+
+The Catalogue projection, WritePathEvidence supplier, protocol declarations and
+focused tests are MIT origin code. No engine/WorldEdit implementation is copied
+or bundled and no production dependency is added. The bundled public subset is
+hanaworlds-contracts 0.5.2 · MIT · source 6185622e977ef5136e9ef12219e0ba89dbba29db ·
+pack SHA256 e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209 ·
+https://github.com/yzsnstotz/hanaworlds-contracts · schemas/runtime validation;
+its LICENSE/NOTICE and exact manifest are retained. The separately installed
+WorldEdit 62ffafe and Luanti 5.17 APIs supply callback-free node-data transport;
+VoxeLibre 0.92.3 supplies the real gate's registry and flat world. These external
+inputs retain the versions, sources and licenses above. Cordis 4.0.4 · MIT ·
+https://github.com/deepseek-ai/deepseek-harness/tree/main/vendor/cordis · temporary
+component Host/Canvas fixture runtime. This update authorizes no publication
+and makes no new combined-work licensing conclusion.
