@@ -29,6 +29,24 @@ test('legal param2 only for engine-verified none/facedir; others stay null', () 
   assert.ok(!n['fx:plain'].unknownFields.includes('allowedParam2'));
   for (const v of Object.values(n)) { assert.equal(v.hasPersistentState, null); assert.equal(v.collisionBoxes, null); }
 });
+test('hasPersistentState is false only where no engine dispatch can reach state code', () => {
+  const n = run('state').nodes;
+  for (const k of ['air', 'fx:plain', 'fx:hidden_dug', 'fx:zero_group']) {
+    assert.equal(n[k].hasPersistentState, false, k); assert.ok(!n[k].unknownFields.includes('hasPersistentState'), k);
+  }
+  for (const k of ['ignore', 'fx:dug', 'fx:built', 'fx:fields', 'fx:abm_name', 'fx:abm_group', 'fx:lbm']) {
+    assert.equal(n[k].hasPersistentState, null, k); assert.ok(n[k].unknownFields.includes('hasPersistentState'), k);
+  }
+  const g = run('state-global').nodes; // a global punch handler reaches every pointable node
+  assert.equal(g['fx:plain'].hasPersistentState, null); assert.equal(g.air.hasPersistentState, false);
+  assert.notEqual(g['fx:plain'].definitionRevision, n['fx:plain'].definitionRevision, 'the fact is part of the definition revision');
+  // Without dispatch tables (no native source) every node stays unknown.
+  for (const v of Object.values(run('catalogue').nodes)) assert.equal(v.hasPersistentState, null);
+  C.validateType('Catalogue', run('state'));
+  const cat = run('state');
+  assert.doesNotThrow(() => C.validateStaticMaterials({ a: { nodeName: 'air', param2: 0 } }, cat));
+  assert.throws(() => C.validateStaticMaterials({ s: { nodeName: 'fx:dug', param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/);
+});
 test('only identical unmodified opaque normal tiles are a supported appearance', () => {
   const a = run().appearance;
   for (const k of ['fx:plain', 'fx:six', 'fx:placed']) assert.deepEqual(a[k], { supported: true, textureName: 'fx_plain.png' });

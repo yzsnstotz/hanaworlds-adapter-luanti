@@ -1,6 +1,8 @@
 # HanaWorlds Luanti Adapter
 
-Version0.6.0 adds new flat local world creation (`createFlatWorld`,
+Version0.6.1 (payload0.5.1) publishes `hasPersistentState` only where the
+loaded registry proves no engine dispatch path to state code (real VoxeLibre:
+`air`); everything else stays null. Version0.6.0 adds new flat local world creation (`createFlatWorld`,
 `describeFlatWorldCreation` on `hanaworldsLuantiLocalWorlds`: Luanti flat mapgen
 written into the new world's map_meta.txt, payload pre-installed, explicit
 missing-prerequisite and game-choice errors, never overwriting a world). It

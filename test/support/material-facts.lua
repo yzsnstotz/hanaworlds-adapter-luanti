@@ -50,6 +50,28 @@ local core = {
   write_json = json,
 }
 local mode = arg and arg[1]
+if mode == 'state' or mode == 'state-global' then
+  -- Registry with engine dispatch tables: which nodes provably carry no state.
+  local hook = function() end
+  core.registered_nodes = {
+    ['air'] = node({drawtype = 'airlike', walkable = false, pointable = false, on_punch = hook, on_dig = hook}),
+    ['ignore'] = node({drawtype = 'airlike', walkable = false, pointable = false}),
+    ['fx:plain'] = node({tiles = {'fx_plain.png'}}),
+    ['fx:dug'] = node({tiles = {'fx_plain.png'}, after_dig_node = hook}),
+    ['fx:hidden_dug'] = node({tiles = {'fx_plain.png'}, pointable = false, on_dig = hook}),
+    ['fx:built'] = node({tiles = {'fx_plain.png'}, pointable = false, on_construct = hook}),
+    ['fx:fields'] = node({tiles = {'fx_plain.png'}, pointable = false, on_receive_fields = hook}),
+    ['fx:abm_name'] = node({tiles = {'fx_plain.png'}, pointable = false}),
+    ['fx:abm_group'] = node({tiles = {'fx_plain.png'}, pointable = false, groups = {opaque = 1}}),
+    ['fx:zero_group'] = node({tiles = {'fx_plain.png'}, pointable = false, groups = {opaque = 0}}),
+    ['fx:lbm'] = node({tiles = {'fx_plain.png'}, pointable = false, groups = {grass_palette = 1}}),
+  }
+  core.registered_abms = {{nodenames = {'fx:abm_name'}}, {nodenames = 'group:opaque'}}
+  core.registered_lbms = {{nodenames = {'group:grass_palette'}}}
+  core.registered_on_punchnodes = mode == 'state-global' and {hook} or {}
+  core.registered_on_dignodes = {}
+  print(assert(facts.catalogue(core)).raw_json) return
+end
 if mode == 'catalogue' then print(assert(facts.catalogue(core)).raw_json) return end
 if mode == 'nopath' then core.get_user_path = nil end
 local result, code = facts.material_metadata(core)

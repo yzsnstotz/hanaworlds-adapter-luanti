@@ -200,6 +200,27 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   try { materials = await native.readMaterialSources(paired.worldRef); results.materials = { sourceRevision: materials.snapshot?.sourceRevision,
     surface: (materials.snapshot?.materials ?? materials.materials ?? []).filter(m => surface.includes(m.nodeName)).map(m => ({ ...m, textureBytes: undefined })) }; }
   catch (error) { results.materials = { error: error.message }; } // recorded as is; not part of the flat-world claim
+  // G3: hasPersistentState from the loaded registry, consumed by the public Contracts
+  // static-material rule (per-cell BUILD materials and region palettes use the same rule).
+  const fact = n => ({ hasPersistentState: catalogue.nodes[n].hasPersistentState, hasCallbacks: catalogue.nodes[n].hasCallbacks,
+    allowedParam2: catalogue.nodes[n].allowedParam2, unknownFields: catalogue.nodes[n].unknownFields });
+  const provenFalse = Object.keys(catalogue.nodes).filter(n => catalogue.nodes[n].hasPersistentState === false).sort();
+  assert.ok(Object.values(catalogue.nodes).every(v => v.hasPersistentState !== true), 'never published as true');
+  assert.equal(catalogue.nodes.ignore.hasPersistentState, null, 'engine placeholder is not a cell node');
+  assert.equal(catalogue.nodes.air.hasPersistentState, false); assert.ok(!catalogue.nodes.air.unknownFields.includes('hasPersistentState'));
+  assert.equal(catalogue.nodes['mcl_core:stone'].hasPersistentState, null); assert.ok(catalogue.nodes['mcl_core:stone'].unknownFields.includes('hasPersistentState'));
+  const air = { nodeName: 'air', param2: 0 }, stone = { nodeName: 'mcl_core:stone', param2: 0 };
+  const g3 = { air: fact('air'), stone: fact('mcl_core:stone'), provenFalse, provenFalseCount: provenFalse.length, nodes: registered.size };
+  g3.perCellAir = (C.validateStaticMaterials({ m: air }, catalogue), 'ADMITTED');
+  g3.perCellStone = (() => { try { C.validateStaticMaterials({ m: stone }, catalogue); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } })();
+  assert.equal(g3.perCellStone.startsWith('UNSUPPORTED_MUTATION_SEMANTICS'), true);
+  const block = palette => C.encodeRegionBlock({ origin: [0, 0, 0], size: [palette.length, 1, 1], palette, indices: Int32Array.from(palette.map((_, i) => i)) });
+  g3.regionAirPalette = (C.validateRegionPalette(block([air]), catalogue), 'ADMITTED');
+  g3.regionAirStonePalette = (() => { try { C.validateRegionPalette(block([air, stone]), catalogue); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } })();
+  assert.equal(g3.regionAirStonePalette.startsWith('UNSUPPORTED_MUTATION_SEMANTICS'), true);
+  results.g3 = g3;
+  check('G3_PERSISTENT_STATE_FACTS_AND_CONTRACT_ADMISSION', { air: g3.air, stone: g3.stone, provenFalseCount: g3.provenFalseCount,
+    perCellAir: g3.perCellAir, perCellStone: g3.perCellStone, regionAirPalette: g3.regionAirPalette, regionAirStonePalette: g3.regionAirStonePalette });
   check('GAME_IDENTITY_AND_SURFACE_MATERIALS', { gameId: catalogue.gameId, gameRevision: catalogue.gameRevision, materials: results.materials.error ?? 'read' });
 
   // 4. Load adjacent mapblocks through the Adapter and read back a flat surface.
@@ -219,11 +240,31 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   assert.deepEqual(seen.nodes.map(n => n.name), ['mcl_core:dirt_with_grass', 'mcl_core:dirt_with_grass', 'mcl_core:dirt', 'air']);
   check('FLAT_SURFACE_READBACK', { columns: 64 * 64, tops: Object.fromEntries(tops), column, loadMethods, engine: seen });
 
-  // 5. Region transport edits the flat terrain: dig a pit (explicit air) and raise a stone pillar.
+  // 5a. Normal G3 path: a carve whose air-only palette passed the public Contracts check.
+  const carvePalette = [air];
+  const carve = (x, y, z) => (x >= -10 && x <= -8 && z >= 20 && z <= 22 && y >= 7 && y <= 8) ? 0 : -1;
+  const cw = [], ce = [];
+  for (const c of r0.chunks) {
+    const { min, max } = c.box, size = max.map((v, i) => v - min[i] + 1), indices = new Int32Array(size[0] * size[1] * size[2]);
+    let i = 0, any = false;
+    for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = carve(x, y, z); any ||= indices[i] !== -1; i++; }
+    if (!any) continue;
+    const ops = C.validateRegionPalette(C.encodeRegionBlock({ origin: min, size, palette: carvePalette, indices }), catalogue);
+    cw.push({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest, ops, state: null });
+    ce.push(D('region-state', C.expectedRegionState(c.state, ops)));
+  }
+  const creq = { ...req0(), transactionId: 'flat-carve-1', purpose: 'APPLY', writes: cw }, cres = await io('WriteRegion', creq);
+  assert.equal(cres.error, null, JSON.stringify(cres.error)); assert.equal(C.validateRegionWrite(creq, cres).allWritten, true);
+  cres.result.chunks.forEach((c, i) => assert.equal(c.readbackDigest, ce[i]));
+  const rc = await readR(box, 'READBACK');
+  assert.equal(nodeAt(rc, [-9, 8, 21]).nodeName, 'air'); assert.equal(nodeAt(rc, [-9, 6, 21]).nodeName, 'mcl_core:dirt');
+  check('G3_CONTRACT_ADMITTED_AIR_CARVE', { chunks: cw.length, lighting: cres.result.lighting });
+
+  // 5. Adapter transport regression (Contracts would reject stone today, see G3): dig a pit and raise a stone pillar.
   const palette = [{ nodeName: 'air', param2: 0 }, { nodeName: 'mcl_core:stone', param2: 0 }];
   const rule = (x, y, z) => (x >= 14 && x <= 17 && z >= 14 && z <= 17 && y >= 6 && y <= 8) ? 0 : (x === -3 && z === -3 && y >= 9 && y <= 12) ? 1 : -1;
   const writes = [], expected = [];
-  for (const c of r0.chunks) {
+  for (const c of rc.chunks) { // current states after the carve
     const { min, max } = c.box, size = max.map((v, i) => v - min[i] + 1), indices = new Int32Array(size[0] * size[1] * size[2]);
     let i = 0, any = false;
     for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = rule(x, y, z); any ||= indices[i] !== -1; i++; }
@@ -243,7 +284,7 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   assert.deepEqual(seen5.nodes.map(n => n.name), ['air', 'mcl_core:stone', 'mcl_core:dirt_with_grass']);
   check('REGION_EDIT_ON_FLAT_TERRAIN', { chunks: writes.length, lighting: wres.result.lighting, engine: seen5 });
 
-  // 6. Per-cell transport on the same world and connection: place two stone cells, read back, undo.
+  // 6. Per-cell transport regression on the same world and connection (stone: transport only, see G3).
   const picked = await engine({ pick: [0, 8, 0], pickRef: 'fixture-pick', sessionRef: 'fixture-session' });
   assert.equal(picked.picked, true);
   const base = () => ({ contractVersion: 'world-adapter/v6', sessionRef: 'fixture-session', worldRef: localContext.worldRef, localContext });

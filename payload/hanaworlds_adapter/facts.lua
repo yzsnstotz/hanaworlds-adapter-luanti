@@ -66,6 +66,56 @@ local function legal_param2(def)
   return nil
 end
 
+-- hasPersistentState is published only where the loaded registry proves that the
+-- engine has no path to dispatch code that could attach metadata, inventory or a
+-- timer to cells of this node; anything else stays unknown (null), never a guessed
+-- false and never true. Lua function bodies are opaque, so the proof is reachability:
+--  a. none of the state-entry definition hooks below is present;
+--  b. player-dispatched hooks are unreachable (pointable == false), or there are
+--     no player hooks and no global punch/dig handlers at all;
+--  c. no registered ABM or LBM names the node or one of its non-zero groups.
+-- Luanti 5.17 lua_api.md: node callbacks, register_abm/register_lbm nodenames,
+-- pointable, register_on_punchnode/register_on_dignode.
+local state_entry = {'on_construct', 'after_place_node', 'on_timer', 'on_receive_fields',
+  'preserve_metadata', 'on_destruct', 'after_destruct', 'on_blast',
+  'on_metadata_inventory_move', 'on_metadata_inventory_put', 'on_metadata_inventory_take',
+  'allow_metadata_inventory_move', 'allow_metadata_inventory_put', 'allow_metadata_inventory_take'}
+local player_hooks = {'on_punch', 'on_dig', 'after_dig_node', 'on_rightclick'}
+
+local function dispatch_targets(core)
+  local names, groups = {}, {}
+  for _, list in ipairs({core.registered_abms, core.registered_lbms}) do
+    if type(list) ~= 'table' then return nil end
+    for _, entry in ipairs(list) do
+      local nodenames = entry.nodenames
+      if type(nodenames) == 'string' then nodenames = {nodenames} end
+      if type(nodenames) ~= 'table' then return nil end
+      for _, n in ipairs(nodenames) do
+        if type(n) ~= 'string' then return nil end
+        local g = n:match('^group:(.+)$')
+        if g then groups[g] = true else names[n] = true end
+      end
+    end
+  end
+  return names, groups
+end
+
+local function persistent_state(def, name, targets, global_player)
+  -- 'ignore' is the engine's not-loaded placeholder (CONTENT_IGNORE), never the
+  -- node of a cell; a static-material fact for it would make it writable.
+  if not targets or name == 'ignore' then return nil end
+  for _, key in ipairs(state_entry) do if def[key] ~= nil then return nil end end
+  if def.pointable ~= false then
+    if global_player then return nil end
+    for _, key in ipairs(player_hooks) do if def[key] ~= nil then return nil end end
+  end
+  if targets.names[name] then return nil end
+  for g, v in pairs(type(def.groups) == 'table' and def.groups or {}) do
+    if v ~= 0 and targets.groups[g] then return nil end
+  end
+  return false
+end
+
 -- Catalogue revisions fingerprint the currently loaded engine registry. They
 -- are deliberately not advertised as source-code/git revisions of game mods.
 local function catalogue(core)
@@ -92,6 +142,10 @@ local function catalogue(core)
   table.sort(mod_names)
   if #names == 0 then return nil, 'CAPABILITY_UNAVAILABLE' end
   local function json(value) return assert(core.write_json(value)) end
+  local target_names, target_groups = dispatch_targets(core)
+  local targets = target_names and {names = target_names, groups = target_groups} or nil
+  local global_player = type(core.registered_on_punchnodes) ~= 'table' or type(core.registered_on_dignodes) ~= 'table'
+    or #core.registered_on_punchnodes > 0 or #core.registered_on_dignodes > 0
   local node_json, registry_parts = {}, {}
   for _, name in ipairs(names) do
     local def = core.registered_nodes[name]
@@ -115,17 +169,18 @@ local function catalogue(core)
       param2Type = type(def.paramtype2) == 'string' and def.paramtype2 ~= ''
         and def.paramtype2 or nil,
       hasCallbacks = has_callbacks,
+      hasPersistentState = persistent_state(def, name, targets, global_player),
     }
     local allowed = legal_param2(def)
     local fields = {'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
       'lightSource', 'param2Type', 'allowedParam2', 'hasCallbacks', 'hasPersistentState',
       'definitionRevision'}
-    local unknown = {'collisionBoxes', 'hasPersistentState'}
+    local unknown = {'collisionBoxes'}
     if allowed == nil then unknown[#unknown + 1] = 'allowedParam2' end
     local scalar = {}
     if type(known.walkable) ~= 'boolean' then known.walkable = nil end
     for _, field in ipairs({'walkable', 'liquidType', 'damagePerSecond', 'lightSource',
-      'param2Type', 'hasCallbacks'}) do
+      'param2Type', 'hasCallbacks', 'hasPersistentState'}) do
       if known[field] == nil then unknown[#unknown + 1] = field end
       scalar[#scalar + 1] = field .. '=' .. tostring(known[field])
     end

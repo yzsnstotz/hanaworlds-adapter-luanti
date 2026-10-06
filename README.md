@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.6.0 (flat-world creation + region I/O, payload 0.5.0)
+# HanaWorlds Luanti Adapter 0.6.1 (flat-world creation + region I/O, payload 0.5.1)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
@@ -6,7 +6,8 @@ pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
 The text-line package 0.3.1/payload 0.3.0 and the image-material package
 0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
 I/O and does not migrate worlds provisioned with an older payload. 0.6.0 adds
-new flat local world creation on the same payload 0.5.0 bytes (see below).
+new flat local world creation; 0.6.1/payload 0.5.1 publishes provable
+`hasPersistentState` facts in the Catalogue (see below).
 There is no player account, username/password, grant, AUTO mode, administrator
 approval or protection-region permission path in this package. Canvas owns
 transaction, affected-object and durable history decisions.
@@ -106,11 +107,27 @@ user `textures/server` (reported UNRESOLVED_SOURCE, not a game/mod source), game
 `textures`, then mods in reverse load order; sub-directories starting with `_` or
 `.` are ignored, a duplicate inside the winning recursive root, an empty/oversized
 file, any symlink/unreadable media directory, an `override.txt` in game textures or
-a non-empty `texture_path` all give UNKNOWN. `hasPersistentState`/`collisionBoxes`
-remain unknown regardless of KNOWN textures. Metadata is read twice around the
+a non-empty `texture_path` all give UNKNOWN. `collisionBoxes` remains
+unknown regardless of KNOWN textures; `hasPersistentState` follows the rule below. Metadata is read twice around the
 byte resolution; any change of registry facts, bytes, connection or process rejects
 `CURRENT_WORLD_MISMATCH`. Source basis is SERVER_ASSET_ONLY: no client texture-pack
 or rendered-appearance claim, no RGB values, no cache.
+
+`hasPersistentState` (payload 0.5.1) is `false` only where the loaded Luanti
+registry proves the engine has no path to dispatch code that could attach
+metadata, inventory or a timer to a cell of that node; otherwise it is null and
+listed in `unknownFields`; it is never published as true or as a guessed false.
+Lua function bodies are opaque, so the proof is reachability: (a) none of
+`on_construct, after_place_node, on_timer, on_receive_fields, preserve_metadata,
+on_destruct, after_destruct, on_blast` or the metadata-inventory callbacks is
+defined; (b) the node is `pointable = false`, or it has none of `on_punch,
+on_dig, after_dig_node, on_rightclick` (Luanti's builtin defaults count) and no
+global punch/dig handler is registered; (c) no registered ABM or LBM names the
+node or one of its non-zero groups. A missing registry table keeps every node
+null. `ignore` (the engine's not-loaded placeholder) stays null. On real Luanti
+5.17 + VoxeLibre 0.92.3 this proves `air` only; every placeable VoxeLibre node
+(stone included) is pointable with game punch/dig hooks and/or ABM targets and
+stays null, so the Contracts static-material rule keeps rejecting it.
 
 `npm run test:materials` covers the Lua projection and resolver (FIXTURE).
 `test/real-material-sources.mjs` is the focused real-Luanti reproduction with an
