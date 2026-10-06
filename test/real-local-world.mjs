@@ -11,7 +11,8 @@ const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed, 'extract the actual npm package first');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed,'src/index.mjs')));
 const C = await import(pathToFileURL(join(installed,'vendor/hanaworlds-contracts/dist/local/index.mjs')));
-const { Context } = await import(pathToFileURL(join(process.env.HW_CORDIS_APP,
+// HW_CORDIS_MODULE (an installed @deepseek-ai/cordis lib/index.js) or the fixed App's copy.
+const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE ?? join(process.env.HW_CORDIS_APP,
   'Contents/Resources/hanaworlds-dsh/node_modules/@deepseek-ai/cordis/lib/index.js')));
 const D=(kind,v)=>C.digestValue(kind,v).sha256;
 const profile=join(root,'profile'),world=join(profile,'worlds','current'),home=join(root,'home');

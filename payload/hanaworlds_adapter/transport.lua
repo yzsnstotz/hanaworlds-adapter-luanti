@@ -15,7 +15,7 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region, facts)
+  region, facts, voxel)
   local raw = read_own_file('transport.json')
   local config = raw and minetest.parse_json(raw) or nil
   if not http then
@@ -78,6 +78,13 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       if type(facts) ~= 'table' or type(facts.object_revisions) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.object_revisions(minetest, command.objectRefs) end
+    elseif command.operation == 'region_limits' or command.operation == 'region_emerge'
+      or command.operation == 'region_read' or command.operation == 'region_write' then
+      if type(voxel) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
+      elseif command.operation == 'region_limits' then result, code = voxel.limits(minetest, MAX_BODY_BYTES)
+      elseif command.operation == 'region_emerge' then result, code = voxel.emerge(minetest, command.min, command.max)
+      elseif command.operation == 'region_read' then result, code = voxel.read(minetest, command.min, command.max)
+      else result, code = voxel.write(minetest, command) end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.positions)
       if result then result.worldRef = manifest.worldRef end
@@ -185,6 +192,28 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         on_ready(true)
         if not decoded.command then minetest.after(0.2, poll); return end
         local ok, result, code = pcall(run, decoded.command)
+        local function send(result, code)
+          local body = encode_reply(decoded.command.id, result, code)
+          if #body > MAX_BODY_BYTES then
+            minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
+            body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
+          end
+          http.fetch({url = base .. '/result', method = 'POST', data = body,
+            extra_headers = header, quiet = true}, function()
+            minetest.after(0.2, poll)
+          end)
+        end
+        -- An engine-asynchronous command (emerge_area) replies from its own
+        -- completion callback; polling resumes only after that reply.
+        if ok and type(result) == 'table' and type(result.defer) == 'function' then
+          local deferred_ok, err = pcall(result.defer, function(value) send(value, nil) end)
+          if not deferred_ok then
+            minetest.log('error', 'HanaWorlds courier operation '
+              .. tostring(decoded.command.operation) .. ' failed: ' .. M.redact(err))
+            send(nil, 'CAPABILITY_UNAVAILABLE')
+          end
+          return
+        end
         if not ok then
           -- Fail closed but keep the root cause: log the operation and the Lua
           -- error (file:line kept; coordinate tuples and fractional numbers,
@@ -194,15 +223,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
             .. tostring(decoded.command.operation) .. ' failed: ' .. M.redact(result))
           result, code = nil, 'CAPABILITY_UNAVAILABLE'
         end
-        local body = encode_reply(decoded.command.id, result, code)
-        if #body > MAX_BODY_BYTES then
-          minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
-          body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
-        end
-        http.fetch({url = base .. '/result', method = 'POST', data = body,
-          extra_headers = header, quiet = true}, function()
-          minetest.after(0.2, poll)
-        end)
+        send(result, code)
       end)
   end
   minetest.after(0, poll)

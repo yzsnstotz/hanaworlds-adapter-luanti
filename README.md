@@ -1,10 +1,11 @@
-# HanaWorlds Luanti Adapter 0.4.0 (image material line, payload 0.4.0)
+# HanaWorlds Luanti Adapter 0.5.0 (region I/O line, payload 0.5.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.4.2` (source `aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777`,
 pack SHA256 `c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6`).
-The text-line package 0.3.1/payload 0.3.0 stays a separate fixed artifact; this
-0.4.0 line does not replace or stay compatible with it.
+The text-line package 0.3.1/payload 0.3.0 and the image-material package
+0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
+I/O and does not migrate worlds provisioned with an older payload.
 There is no player account, username/password, grant, AUTO mode, administrator
 approval or protection-region permission path in this package. Canvas owns
 transaction, affected-object and durable history decisions.
@@ -114,6 +115,64 @@ or rendered-appearance claim, no RGB values, no cache.
 `test/real-material-sources.mjs` is the focused real-Luanti reproduction with an
 explicit component fixture game; it does not represent the product game.
 
+## Region I/O (0.5.0)
+
+`ctx.get('hanaworldsLuantiRegionIO')` is the bulk transport for the Canvas
+transaction owner (only the `hanaworlds-canvas` caller fiber is admitted):
+
+- `describe()` — self-description: purpose, typical scale, preconditions,
+  protocol `hanaworlds-region-io` 1.0.0 and its capabilities, `atomic: false`.
+- `negotiate({name, version, requiredCapabilities})` — compatible iff same
+  breaking line (major; for 0.x, major.minor) and every required capability is
+  offered. Minor/patch/source-hash differences never reject; another line rejects
+  `PROTOCOL_MAJOR_MISMATCH`, a missing capability `CAPABILITY_UNAVAILABLE`.
+- `readRegion({worldRef, connectionRef, connectionIncarnationRef, protocol, min, max})`
+- `writeRegion({worldRef, connectionRef, connectionIncarnationRef, protocol, voxels, expectedBlocks})`
+
+Every call is checked before any engine dispatch: protocol line, current paired
+world/connection/incarnation and the native process (`inspectConnection`).
+
+**Load before read.** Each mapblock-aligned batch is first queued with
+`core.emerge_area` (fetch from memory, load from disk or generate) and the reply
+waits for the engine's last callback; it is then read with one VoxelManip
+`read_from_map`. A block is KNOWN only when none of its cells reads back as
+`ignore`; the emerge action (GENERATED / FROM_MEMORY / FROM_DISK / CANCELLED /
+ERRORED) is reported as a fact. Luanti also reports CANCELLED for a queued block
+that another queued block's mapchunk already generated, so the readback, not the
+action, decides. Any UNKNOWN block makes the read `UNKNOWN` (no voxels) and a
+write `REJECTED` before the first write.
+
+**Write.** `voxels` are region voxels v1 (see FIXTURE NOTICE in
+`src/region-voxels.mjs`): palette of `{nodeName, param2}` and runs in x-fastest,
+then y, then z order. `air` is an explicit dig; a `null` run is unspecified and
+keeps the current cell. `expectedBlocks` must list every block of the region with
+the digest the caller read. All batches are prechecked (loaded, digests match,
+changed cells static/stateless/non-liquid, no solid into a player body) by the
+engine without writing; then each batch is rechecked, written with
+`set_data`/`set_param2_data`/`write_to_map(true)` (engine lighting), its light
+repaired with `core.fix_light` over the batch's mapblocks (the returned `true` is
+the light completion fact) and read back from the map: specified cells must equal
+the target and unspecified cells must be unchanged. Writes never fall back to a
+per-node loop.
+
+**Not a transaction.** Batches are separate engine steps. A failure after the
+first batch returns `PARTIAL` with per-batch facts (`WRITTEN_VERIFIED`,
+`NOT_WRITTEN`, `UNKNOWN` for a lost reply) and after-digests; the Canvas restores
+its own pre-write region snapshot with `writeRegion` (restore transport). Nothing
+here is reported as atomic.
+
+**Batch size** is derived from the courier's actual 4 MiB body limit and the
+loaded registry (worst-case run/palette bytes), not from a setting; one batch is
+the only engine-side working set. Region/block digests use the text format
+`hw-region-cells/1` (identical in `voxel.lua` and `region-voxels.mjs`; each read
+recomputes them on the host from the returned cells).
+
+`npm run test:region` (FIXTURE engine double) covers negotiation, the voxels
+fixture, batching, rejection and partial facts. `test/real-region-io.mjs` is the
+real-Luanti reproduction (explicit component fixture game `hw_region_fixture`,
+public Host/Canvas peer fixtures, independent `hw_probe` node/light/write-counter
+reads).
+
 ## Validation and retained history
 
 The 0.3.1-only read seam reproduction is `test/real-catalogue.mjs`, using fresh
@@ -125,7 +184,8 @@ and the protected eleven-core-check 0.3.0 evidence remain unchanged.
 Use Node24.13.1, an isolated npm cache, `npm ci --ignore-scripts`, `npm run build`,
 `npm test`, `npm run test:lua` and `npm run verify:contracts`. The current core
 runtime reproduction is `test/real-local-world.mjs`; its inputs are an actual
-extracted npm pack, fixed Cordis App path, a fresh evidence root and separately
+extracted npm pack, an installed Cordis module (`HW_CORDIS_MODULE`) or the fixed
+Cordis App path, a fresh evidence root and separately
 installed pinned WorldEdit. It launches only its own headless Luanti processes.
 Host/Canvas interfaces in that reproduction are explicit public peer fixtures.
 It proves component native transport, not formal Desktop, model, GUI or owner

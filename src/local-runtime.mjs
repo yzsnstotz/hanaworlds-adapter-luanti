@@ -7,6 +7,8 @@ import { LocalTransactions, cellDigest, readbackView } from './local-transaction
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
+import { describeRegionIO, readRegion, writeRegion } from './region-io.mjs';
+import { negotiate } from './region-voxels.mjs';
 const WIRE = 'world-adapter/v6';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
@@ -198,6 +200,38 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},
       bodyOccupiedPositions:raw.body.sort(comparePosition),entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
   }
+  // Region I/O for the Canvas transaction owner: current paired world only,
+  // serialized with every other courier use of this runtime.
+  function region(caller, input, op) {
+    const work = serial.then(async () => {
+      if (closed) fail('ADAPTER_UNAVAILABLE');
+      canvasCaller(caller);
+      if (!input || typeof input !== 'object' || ![input.worldRef, input.connectionRef, input.connectionIncarnationRef]
+        .every(v => typeof v === 'string' && v)) fail('SCHEMA_INVALID');
+      negotiate(input.protocol); // wrong protocol line: rejected before any engine dispatch
+      const row = rows.get(input.connectionRef);
+      if (!row) fail('WORLD_NOT_BOUND');
+      if (row.worldRef !== input.worldRef || row.incarnation !== input.connectionIncarnationRef) fail('CURRENT_WORLD_MISMATCH');
+      await inspectConnection(row.connectionRef);
+      if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
+      const result = await op(row.engine, input);
+      let currentAfter = true;
+      try { await inspectConnection(row.connectionRef); } catch { currentAfter = false; }
+      if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) currentAfter = false;
+      if (op === readRegion && !currentAfter) fail('CURRENT_WORLD_MISMATCH');
+      return { worldRef: row.worldRef, connectionRef: row.connectionRef,
+        connectionIncarnationRef: row.incarnation, currentAfter, ...result };
+    });
+    serial = work.catch(() => {}); return work;
+  }
+  const regionIO = {
+    ctx,
+    [Symbol.for('cordis.tracker')]: { property: 'ctx' },
+    describe: () => describeRegionIO(),
+    negotiate: required => negotiate(required),
+    readRegion(input) { return region(this.ctx, input, readRegion); },
+    writeRegion(input) { return region(this.ctx, input, writeRegion); },
+  };
   const port = {
     ctx,
     [Symbol.for('cordis.tracker')]: { property: 'ctx' },
@@ -238,5 +272,5 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       serial = work.catch(() => {}); return work;
     },
   };
-  return { ...runtime, port };
+  return { ...runtime, port, regionIO };
 }

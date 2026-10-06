@@ -1,7 +1,10 @@
 # HanaWorlds Luanti Adapter
 
-Version0.4.0 implements fresh local `world-adapter/v6` with payload0.4.0 and
-contracts0.4.2, adding the readonly `readMaterialSources(worldRef)` fact. The visible Host management facts include current world,
+Version0.5.0 implements fresh local `world-adapter/v6` with payload0.5.0 and
+contracts0.4.2, keeping the readonly `readMaterialSources(worldRef)` fact and adding
+the Canvas-only `hanaworldsLuantiRegionIO` bulk transport (Luanti emerge_area +
+VoxelManip mapblock batches, explicit air dig, light completion fact, per-block
+digests; never atomic, Canvas restores its snapshot on PARTIAL). The visible Host management facts include current world,
 connection incarnation, actual native PID, payload digest and the non-switchable
 Adapter placement invariants. It requires no player permission approval.
 

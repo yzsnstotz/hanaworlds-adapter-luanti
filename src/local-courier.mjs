@@ -73,6 +73,10 @@ export class LocalCourier {
   catalogue() { return this.dispatch('fact_catalogue'); }
   materialMetadata() { return this.dispatch('fact_material_metadata'); }
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
+  regionLimits() { return this.dispatch('region_limits'); }
+  regionEmerge(min, max) { return this.dispatch('region_emerge', { min, max }); }
+  regionRead(min, max) { return this.dispatch('region_read', { min, max }); }
+  regionWrite(batch) { return this.dispatch('region_write', batch); }
   apply(effects, beforeImage, scopeBeforeImage, operationDigest) {
     return this.dispatch('apply', { effects, beforeImage, scopeBeforeImage, operationDigest,
       prepared: { status: 'PREPARED', operationDigest } });
