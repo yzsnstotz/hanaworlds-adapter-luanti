@@ -37,3 +37,9 @@ The component self-test uses only ENGINE-CURRENT `stop-fixed-component` (99a8973
 ## Native automatic authorization entry (0.2.7)
 
 A native administrator or authenticated singleplayer world owner receives the existing world authorization form on joining. Click **Automatic authorization** to open the current automatic panel, then explicitly enable or disable it. Closing the form changes no mode; leaving and rejoining offers the entry again. The entry and toggle recheck native authority and the current online player session. Ordinary builders keep the individual authorization flow. This isolated candidate has SOURCE/FIXTURE checks only; its rendered native entry and formal product write gate require independent verification.
+
+## Host lifecycle (Adapter 0.2.8, payload 0.2.7)
+
+Each Adapter instance retains the disposer returned by the public Host route registration. Normal unload removes its status route before asynchronous resource cleanup. Repeated or concurrent closes cannot unregister a later instance at the same path; rejected resource cleanup remains retryable. Cordis owns publication and withdrawal of its services, including rollback of failed activation. The Host duplicate-route and required-management guards remain intact.
+
+This change only affects Host lifecycle. All game payload bytes, native authority, grant, automatic mode, transaction and protection rules are unchanged from 0.2.7. See `test/host-lifecycle/README.md` for the isolated public Host reproduction and evidence limits.

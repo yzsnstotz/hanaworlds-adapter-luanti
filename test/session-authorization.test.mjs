@@ -20,7 +20,7 @@ test('versioned Host call refuses to infer a missing original Session proof', as
         result: { sessionRef: request.sessionRef, status: 'UNKNOWN' } };
     },
   };
-  const adapter = apply({ webServer: { register() {} },
+  const adapter = apply({ effect(run) { run(); }, webServer: { register() {} },
     provide: (name, service) => provided.set(name, service),
     get: name => name === 'hanaworldsSessionAuthorizationHostV1' ? host : undefined,
   }, { localWorldRoots: [] });
@@ -40,7 +40,7 @@ test('unpaired local world is UNKNOWN even when Host has an original record', as
     call: async (_operation, request) => ({ contractVersion: 'session-authorization/v1',
       requestId: request.requestId,
       result: { status: 'CURRENT', sessionRef: request.sessionRef, binding } }) };
-  const adapter = apply({ webServer: { register() {} },
+  const adapter = apply({ effect(run) { run(); }, webServer: { register() {} },
     provide: (name, service) => provided.set(name, service),
     get: name => name === 'hanaworldsSessionAuthorizationHostV1' ? host : undefined,
   }, { localWorldRoots: [] });

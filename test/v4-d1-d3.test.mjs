@@ -61,7 +61,7 @@ function providers(home, digest, overrides = {}) {
   };
   return { services, providerCalls: () => provider, tunnelCloses: () => closes };
 }
-const context = services => ({ webServer: { register() {} }, provide() {},
+const context = services => ({ effect(run) { run(); }, webServer: { register() {} }, provide() {},
   get: name => services[name], logger: () => ({ warn() {}, error() {} }) });
 const bindRequest = (requestId, connectionRef, worldRef, capabilityRevision) => ({
   contractVersion: 'world-adapter/v4', actorRef: 'canvas', sessionRef: 'session:one', requestId,

@@ -153,7 +153,7 @@ test('loopback in-world action: late provider relayed once; missing, withdrawn a
 });
 
 test('frame delivery resolves verifyFrameDelivery at delivery time and calls it on the facade', async () => {
-  const ctx = { webServer: { register() {} }, provide() {} };
+  const ctx = { effect(run) { run(); }, webServer: { register() {} }, provide() {} };
   const service = apply(ctx, {});
   const args = { worldRef: 'luanti:w', engineActorName: 'alice', authorizationRef: 'grant:one',
     frame: { sessionRef: 'session:one', actions: [] } };
@@ -194,7 +194,7 @@ test('plugin wiring: Workshop provided after Adapter start relays through the bo
   const operatorAuthority = { verify: async input => ({ current: true, ...input, worldStopped: true }) };
   const manifest = await provisionLocalPayload(world, { operatorAuthority, transportPort: port });
   const config = JSON.parse(await readFile(join(world, 'worldmods', 'hanaworlds_adapter', 'transport.json')));
-  const ctx = { webServer: { register() {} }, provide() {},
+  const ctx = { effect(run) { run(); }, webServer: { register() {} }, provide() {},
     hanaworldsOperatorAuthority: operatorAuthority,
     hanaworldsAuthority: { verify: async request => ({ current: true, sessionRef: request.sessionRef,
       authorizationRef: request.authorizationRef, worldRef: request.worldRef, actorRef: 'actor:alice',

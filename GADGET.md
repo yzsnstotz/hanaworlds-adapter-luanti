@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.2.7 component candidate
+# HanaWorlds Luanti Adapter 0.2.8 component candidate
 
 Status: `PARTIAL`. The provider and payload are a component candidate. This is not a release or Stage 1 product proof; only the user can mark `ACCEPTED`.
 
@@ -73,3 +73,9 @@ This implementation was self-tested with Node and Lua fixtures. Unified HanaWorl
 Every managed local operation re-resolves the same public native Host provider; removal or replacement invalidates its leases and never falls back to another operator provider. Adapter disposal closes its own courier and requests finite native stop for remaining owned leases through that same public service. It does not terminate unrelated processes or close the whole Host. The automatic mode, grant and protection logic is retained; the 0.2.7 native form entry above is the only behavioral addition.
 
 The delivered HTTP Host component and official Luanti 5.17 are component inputs. Native account initialization, game/profile setup and trusted consumer selection in the repeatable component self-test are explicit fixtures. Formal App selection/login, installer/public engine distribution, independent product UI and clean-machine gates remain separate work.
+
+## Public Host lifecycle (S1-AD-HOST-LIFECYCLE-01, Adapter 0.2.8)
+
+Normal Host disable disposes the Adapter's own status-prefix route and its resources. The exact returned route handle is consumed once before asynchronous cleanup; an old close cannot remove a replacement instance's route. Concurrent closes share the in-flight cleanup, and a rejected cleanup can be attempted again. Cordis owns all provided service effects and withdraws them on unload or failed activation; the Adapter does not delete another fiber's service. The public Host's duplicate-route and management-required protections are unchanged.
+
+The candidate package is 0.2.8 while its payload version and every payload file remain 0.2.7. No game authority, automatic mode, scope, protection, courier or transaction logic changes. The isolated test uses the fixed INSTALL75b5 Host and bundled Node, with fresh seed/profile preparation labelled SOURCE/FIXTURE and public pluginManager/HTTP actions labelled REAL_RUNTIME only for this component. It does not prove formal product immediate enablement, native game UI, INSTALL/AUTO/SLICE completion or user acceptance.

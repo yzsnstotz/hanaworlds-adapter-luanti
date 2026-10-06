@@ -16,7 +16,7 @@ async function freePort() {
 }
 
 test('host grant evidence lists only native current local grants and rejects old refs', async () => {
-  const cache = join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-AUTO-01');
+  const cache = process.env.HANAWORLDS_TEST_RUN_ROOT ?? join(homedir(), '.cache', 'hanaworlds-runs', 'S1-AD-AUTO-01');
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(join(cache, 'evidence-fixture-'));
   const world = join(root, 'world');
@@ -29,7 +29,7 @@ test('host grant evidence lists only native current local grants and rejects old
   const digest = await payloadDigest();
   const services = { hanaworldsOperatorAuthority: operatorAuthority };
   const provided = new Map();
-  const adapter = apply({ webServer: { register() {} }, provide: (name, value) => provided.set(name, value),
+  const adapter = apply({ effect(run) { run(); }, webServer: { register() {} }, provide: (name, value) => provided.set(name, value),
     get: name => services[name] }, { localWorldRoots: [root], serviceName: 'operator' });
   const evidence = provided.get('hanaworldsLuantiGrantEvidence');
   const sessionAuthorization = provided.get('hanaworldsSessionAuthorizationV1');

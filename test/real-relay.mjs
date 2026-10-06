@@ -126,7 +126,7 @@ class DiagnosticWorkshop {
       authorizationRef, actorRef: 'actor:alice' };
   }
 }
-const ctx = { webServer: { register() {} }, provide() {},
+const ctx = { effect(run) { run(); }, webServer: { register() {} }, provide() {},
   hanaworldsOperatorAuthority: operatorAuthority,
   hanaworldsAuthority: { verify: async request => ({ current: true, sessionRef: request.sessionRef,
     authorizationRef: request.authorizationRef, worldRef: request.worldRef, actorRef: 'actor:alice',

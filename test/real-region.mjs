@@ -218,7 +218,7 @@ const publicOnly = value => {
 let courier, preparedDigest;
 try {
   // Fresh current payload; current transactions and restart use this identity.
-  const service = v2.apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
+  const service = v2.apply({ effect(run) { run(); }, webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
   const up = await service.provisionLocal(world, transportPort);
   courier = await v2.LocalEngineTransport.open(world, { serviceName: 'operator' });
   const upLog = await start('v020', 'HanaWorlds region probe ready; payload=true; region=true');

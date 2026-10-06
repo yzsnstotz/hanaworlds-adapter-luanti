@@ -186,6 +186,7 @@ export function apply(ctx, config = {}) {
     grantEvidence: runtime.grantEvidence,
     resolveHost: () => optionalHostService(ctx, 'hanaworldsSessionAuthorizationHostV1'),
   });
+  let unregisterRoute, closing;
   const service = {
     worldAdapter,
     worldAdapterV5,
@@ -213,7 +214,16 @@ export function apply(ctx, config = {}) {
       return transport.presentFrame(engineActorName, { ...frame, actorRef: proof.actorRef,
         authorizationRef });
     },
-    async close() { await localWorlds.close(); await runtime.close(); },
+    close() {
+      // Consume this instance's handle before awaiting; an old repeated close
+      // must never remove a later instance's route at the same path.
+      const unregister = unregisterRoute;
+      unregisterRoute = undefined;
+      unregister?.();
+      return closing ??= (async () => {
+        await localWorlds.close(); await runtime.close();
+      })().catch(error => { closing = undefined; throw error; });
+    },
     status() {
       return {
         component: name,
@@ -236,6 +246,7 @@ export function apply(ctx, config = {}) {
       };
     },
   };
+  ctx.effect(() => () => service.close());
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV4', worldAdapter);
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsWorldAdapterV5', worldAdapterV5);
   if (typeof ctx.provide === 'function') ctx.provide('hanaworldsLuantiLocalWorlds', localWorlds.port);
@@ -245,8 +256,7 @@ export function apply(ctx, config = {}) {
     ctx.provide('hanaworldsSessionAuthorizationV1', sessionAuthorization);
   if (typeof ctx.provide === 'function')
     ctx.provide('hanaworldsLuantiNativeFacts', runtime.nativeFacts);
-  if (typeof ctx.on === 'function') ctx.on('dispose', () => service.close());
-  ctx.webServer.register({
+  unregisterRoute = ctx.webServer.register({
     kind: 'prefix',
     path: '/api-hanaworlds-luanti',
     async handler(req, res) {

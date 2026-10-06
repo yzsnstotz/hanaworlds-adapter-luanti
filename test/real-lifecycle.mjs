@@ -82,7 +82,7 @@ const config = join(root, 'luanti.conf');
 await writeFile(config, `bind_address = 127.0.0.1\nport = ${serverPort}\nserver_announce = false\nsecure.enable_security = true\nsecure.http_mods = hanaworlds_adapter\n`);
 const operatorAuthority = { verify: async ({ worldPath, action }) =>
   ({ current: true, worldPath, action, worldStopped: true }) };
-const service = apply({ webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
+const service = apply({ effect(run) { run(); }, webServer: { register() {} }, hanaworldsOperatorAuthority: operatorAuthority });
 const sourcePayloadDigest = await payloadDigest();
 const first = await service.provisionLocal(world, transportPort);
 assert.equal(first.payloadDigest, sourcePayloadDigest);

@@ -15,7 +15,7 @@ function response() {
 test('DSH host registers loopback status and a fail-closed v4 provider', async () => {
   let route;
   const provided = new Map();
-  const ctx = { webServer: { register(value) { route = value; } },
+  const ctx = { effect(run) { run(); }, webServer: { register(value) { route = value; } },
     provide(name, value) { provided.set(name, value); } };
   const service = apply(ctx, {});
   assert.equal(name, 'hanaworlds-adapter-luanti');
@@ -53,6 +53,7 @@ test('DSH host registers loopback status and a fail-closed v4 provider', async (
 
 test('DSH context can load without unprovided optional HanaWorlds services', () => {
   const context = new Proxy({
+    effect(run) { run(); },
     webServer: { register() {} },
     get: () => undefined,
     provide() {},
@@ -79,7 +80,7 @@ test('DSH source seam assembles its own journal backend after remote loaded-byte
   const digest = await payloadDigest();
   let storageCalls = 0;
   let shown = 0;
-  const ctx = { webServer: { register() {} }, provide() {},
+  const ctx = { effect(run) { run(); }, webServer: { register() {} }, provide() {},
     hanaworldsOperatorAuthority: { verify: async () => ({ current: true, ...profile }) },
     hanaworldsRemoteTunnelFactory: { open: async () => ({
       async request(command) {
