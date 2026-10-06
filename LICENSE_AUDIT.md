@@ -110,3 +110,16 @@ old admitted contract bytes; scripts/contracts-pin.mjs and the vendored manifest
 carry the exact revision/hash/20 entries. Separately installed WorldEdit remains
 an external runtime input under its own AGPL terms. This is a source/package
 update, not publication or a new combined-work license conclusion.
+
+## Flat-world 0.6.0 update (2026-10-07)
+
+`src/flat-world.mjs` and its tests are new MIT origin code; no production dependency
+is added and nothing is bundled. The mapgen parameters follow Luanti's documented
+world format (`map_meta.txt`) and flat mapgen settings; no Luanti source is copied.
+Gate-only external inputs, not redistributed:
+- VoxeLibre (formerly MineClone2) · 0.92.3 (commit a523240fb89713ffa6302696e8275bbd7de3bd49) ·
+  code GPL-3.0-or-later, media CC-BY-SA-4.0 · https://content.luanti.org/packages/Wuzzy/mineclone2/
+  (zip SHA256 51ea9242aabb1f29575abbfb599c79bcde9435616ea097c0582e11ac1b2b279d) · the real game
+  installed into the gate's own Luanti user path; its `mcl_superflat_classic` setting is read by name only.
+- WorldEdit · 62ffafe3bcb386600c431ef3840d91c3c8f85639 · AGPL-3.0 · as recorded above · per-cell StateProfile in the gate profile.
+- @deepseek-ai/cordis · 4.0.4 · as recorded for earlier gates · gate host fixture only.

@@ -1,11 +1,12 @@
-# HanaWorlds Luanti Adapter 0.5.0 (region I/O line, payload 0.5.0)
+# HanaWorlds Luanti Adapter 0.6.0 (flat-world creation + region I/O, payload 0.5.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
 pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
 The text-line package 0.3.1/payload 0.3.0 and the image-material package
 0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
-I/O and does not migrate worlds provisioned with an older payload.
+I/O and does not migrate worlds provisioned with an older payload. 0.6.0 adds
+new flat local world creation on the same payload 0.5.0 bytes (see below).
 There is no player account, username/password, grant, AUTO mode, administrator
 approval or protection-region permission path in this package. Canvas owns
 transaction, affected-object and durable history decisions.
@@ -159,6 +160,48 @@ makes the reply too large is read one mapblock at a time.
 rejections and per-chunk facts. `test/real-region-io.mjs` is the real-Luanti
 reproduction (explicit component fixture game `hw_region_fixture`, public Host and
 Canvas peer fixtures, independent `hw_probe` node/light/metadata/write-counter reads).
+
+## New flat local world (0.6.0)
+
+`hanaworldsLuantiLocalWorlds` also creates a new local single-player world that is
+flat by default and immediately bindable:
+
+- `describeFlatWorldCreation({requesterRef, userPath})` returns, without creating
+  anything, the configured world roots, the games installed in
+  `<userPath>/games` (gameId, title, version, game.conf SHA256, whether the game
+  allows the `flat` mapgen, and the game's own declared flat option), the mapgen
+  parameters that will be written, the per-cell mod found in `<userPath>/mods`, and
+  `ready`/`missing[]` naming each missing prerequisite (`WORLD_ROOT`, `GAME`, `MOD`).
+- `createFlatWorld({requesterRef, userPath, root?, gameId?, worldName?})` stages
+  a new world directory, fsyncs it and renames it into the world root. The new
+  world carries `world.mt` (gameid, world_name, sqlite3 backends,
+  `load_mod_worldedit = true`), `map_meta.txt` with the flat mapgen, and
+  `worldmods/hanaworlds_adapter` with a fresh world identity and courier key.
+  The result is `{created, connectionRef, worldPath, worldName, worldRef,
+  payloadVersion, payloadDigest, game, mapgen, perCellMod, nextAction:'BIND_RUNNING_WORLD'}`;
+  its `connectionRef` is exactly what `discover()` reports for that world, so the
+  Host continues with `acquire({..., action:'BIND_RUNNING_WORLD'})` and `pair`.
+  No `PROVISION_PAYLOAD` start/stop cycle is needed for a world created here.
+
+Mapgen (written into the new world only, so no global Luanti setting, Host
+config or other world is read for it or changed): Luanti's own `flat` mapgen,
+`chunksize=5`, `water_level=1`, `mapgen_limit=31000`,
+`mg_flags=nocaves,nodungeons,light,nodecorations,biomes,ores`,
+`mgflat_spflags=nolakes,nohills,nocaverns`, `mgflat_ground_level=8`, a fresh
+random 64-bit `seed`. When the chosen game's `settingtypes.txt` declares the game's
+own flat option `mcl_superflat_classic` (VoxeLibre/MineClone2), it is set to
+`true`: VoxeLibre then generates its classic superflat (grass at y=8, dirt y=7..6,
+bedrock y=5). Every applied value is returned in `mapgen`.
+
+Choices are never guessed: with no `gameId`, exactly one installed game that
+allows `flat` is used, otherwise `GAME_SELECTION_REQUIRED`/`GAME_NOT_INSTALLED`
+with `details.choices`; a game that disallows `flat` is `MAPGEN_NOT_SUPPORTED`;
+with several roots and no `root`, `WORLD_ROOT_REQUIRED` with the choices. The
+per-cell StateProfile needs WorldEdit; without it creation fails
+`PREREQUISITE_MISSING` naming the mod and where it is looked for. An existing
+name is `WORLD_EXISTS` and is never overwritten; with no `worldName` a new
+`hanaworlds-flat-<UTC>-<hex>` name is used. On any failure the staging directory
+is removed and no world is created or selected. Existing worlds are not migrated.
 
 ## Validation and retained history
 

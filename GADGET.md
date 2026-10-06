@@ -1,6 +1,10 @@
 # HanaWorlds Luanti Adapter
 
-Version0.5.0 implements fresh local `world-adapter/v6` with payload0.5.0 and
+Version0.6.0 adds new flat local world creation (`createFlatWorld`,
+`describeFlatWorldCreation` on `hanaworldsLuantiLocalWorlds`: Luanti flat mapgen
+written into the new world's map_meta.txt, payload pre-installed, explicit
+missing-prerequisite and game-choice errors, never overwriting a world). It
+implements fresh local `world-adapter/v6` with payload0.5.0 and
 contracts0.5.0, keeping the readonly `readMaterialSources(worldRef)` fact and adding
 the Canvas-only `world-adapter-region/v1` port `hanaworldsWorldAdapterRegionV1`
 (Luanti emerge_area + VoxelManip mapblock batches, per-chunk KNOWN/UNKNOWN,
