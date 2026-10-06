@@ -112,11 +112,14 @@ function M.new(core, world_ref, world_name)
       .. 'label[0.5,5.2;Status: ' .. (has_grant and 'Authorized' or 'Not authorized') .. ']'
     if self:mode().enabled then
       pending[name] = nil
-      spec = spec .. 'label[0.5,6;World automatic authorization is enabled.]'
+      spec = spec .. 'label[0.5,5.7;World automatic authorization is enabled.]'
     elseif has_grant then
       spec = spec .. 'button_exit[0.5,6;4,0.8;hw_grant_revoke;Revoke authorization]'
     elseif can_build(online_player(name)) then
       spec = spec .. 'button_exit[0.5,6;4,0.8;hw_grant_confirm;Authorize this world]'
+    end
+    if can_manage(name) then
+      spec = spec .. 'button[5,6;4.5,0.8;hw_auto_open;Automatic authorization]'
     end
     core.show_formspec(name, FORM, spec)
   end
@@ -156,7 +159,8 @@ function M.new(core, world_ref, world_name)
     -- are observed before offering the player's first confirmation.
     core.after(0, function()
       local current = online_player(name)
-      if current and can_build(current) and not self:verify(name).current then show(name) end
+      if current and (can_manage(name)
+        or (can_build(current) and not self:verify(name).current)) then show(name) end
     end)
   end)
 
@@ -180,6 +184,11 @@ function M.new(core, world_ref, world_name)
     if (formname ~= FORM and formname ~= AUTO_FORM) or not player then return end
     local name = player:get_player_name()
     if online_player(name) ~= player then return end
+    if formname == FORM and fields.hw_auto_open then
+      pending[name] = nil
+      if can_manage(name) then show_auto(name) end
+      return
+    end
     if formname == AUTO_FORM then
       local expected = pending_auto[name]
       pending_auto[name] = nil

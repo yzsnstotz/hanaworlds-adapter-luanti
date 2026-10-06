@@ -172,7 +172,7 @@ async function adapterFor(courier, worldRef, journalDir) {
     },
     verifyService: async () => true, capacity: { check: async () => ({ allowed: true }) },
     catalogue: { read: async () => catalogue },
-    executionRevision: `hanaworlds-adapter-luanti@0.2.6+payload.${await v2.payloadDigest()}` });
+    executionRevision: `hanaworlds-adapter-luanti@0.2.7+payload.${await v2.payloadDigest()}` });
   return new v2.WorldAdapterV4({ authority: {
     verify: async request => ({ current: true, sessionRef: request.sessionRef,
       authorizationRef: request.authorizationRef, worldRef, domainOwner: 'hanaworlds-canvas' }),
