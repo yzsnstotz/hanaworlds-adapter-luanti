@@ -28,7 +28,8 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => () => service.close());
   ctx.provide('hanaworldsWorldAdapterV6', runtime.port);
   ctx.provide('hanaworldsLuantiLocalWorlds', local.port);
-  ctx.provide('hanaworldsLuantiNativeFacts', { readScopedState: runtime.readScopedState, readCatalogue: runtime.readCatalogue });
+  ctx.provide('hanaworldsLuantiNativeFacts', { readScopedState: runtime.readScopedState, readCatalogue: runtime.readCatalogue,
+    readMaterialSources: runtime.readMaterialSources });
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)) { res.statusCode = 403; res.end(); return; }

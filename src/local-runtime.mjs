@@ -6,6 +6,7 @@ import { LocalRecords } from './local-records.mjs';
 import { LocalTransactions, cellDigest, readbackView } from './local-transactions.mjs';
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
+import { resolveMaterialSources } from './material-sources.mjs';
 const WIRE = 'world-adapter/v6';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
@@ -49,6 +50,30 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         await inspectConnection(row.connectionRef);
         if(closed || row.engine.closed || rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
         return catalogue;
+      });
+      serial=work.catch(()=>{});return work;
+    },
+    readMaterialSources(worldRef) {
+      const work=serial.then(async()=>{
+        if(closed) fail('ADAPTER_UNAVAILABLE');
+        if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+        const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
+        if(matches.length!==1) fail('WORLD_NOT_BOUND');
+        const row=matches[0];
+        const check=async()=>{
+          await inspectConnection(row.connectionRef);
+          if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
+        };
+        await check();
+        const connection={worldRef:row.worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation};
+        const first=await row.engine.materialMetadata();
+        const result=await resolveMaterialSources(first,connection);
+        const last=await row.engine.materialMetadata();
+        if(canonicalJSON(first)!==canonicalJSON(last)) fail('CURRENT_WORLD_MISMATCH');
+        const confirmed=await resolveMaterialSources(last,connection);
+        if(result.snapshot.sourceRevision!==confirmed.snapshot.sourceRevision) fail('CURRENT_WORLD_MISMATCH');
+        await check();
+        return confirmed;
       });
       serial=work.catch(()=>{});return work;
     },
