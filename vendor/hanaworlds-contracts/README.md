@@ -1,10 +1,10 @@
-# HanaWorlds Contracts 0.4.0
+# HanaWorlds Contracts 0.4.2
 
 Pure public contracts for the single-user local-world MVP. Import from `hanaworlds-contracts`. This is a fresh-install protocol replacement. No prior exports, peer compatibility, state migration, or permission bridge ships in this package. Earlier source and evidence remain in Git and their original run directories.
 
 `spec/local-world/profile.json` is the authored schema and operation source. `src/local/` owns pure relation/geometry validation. `npm run build` generates `dist/local`, `types/local`, `schemas/local`, and current fixtures. Never edit those outputs directly.
 
-Current wires: `session/v3`, `canvas/v5`, `world-adapter/v6`, `painter/v4`, `BUILD/V3`, `ReferenceBrief/v3`, `interaction-surface/v4`; compiled operations `operations/v3`; target facts `target-facts/v4`; safety profile `safety-profile/v3`. Every digest uses the new `HanaWorlds|contracts@0.4.0|` domain. Exact package handshake is mandatory. Old digests are not reused.
+Current wires: `session/v3`, `canvas/v5`, `world-adapter/v6`, `painter/v4`, `BUILD/V3`, `ReferenceBrief/v3`, `interaction-surface/v4`; compiled operations `operations/v3`; target facts `target-facts/v4`; safety profile `safety-profile/v3`. Existing projections retain the `HanaWorlds|contracts@0.4.0|` domain; the new `material-sources` projection uses `HanaWorlds|contracts@0.4.2|material-sources|`. Exact package handshake is mandatory. Old digests are not reused.
 
 ## Local association and dispatch
 
@@ -25,7 +25,7 @@ The Host binds internal ports: model → Workshop proposal tool → Painter → 
 
 ## Consumer replacement map
 
-All five origins pin this exact 0.4.0 tarball and import the root API. No consumer source is changed here.
+The following table describes the local-world migration originally shipped in 0.4.0. The six origins in the image composition must pin the final 0.4.2 tarball and import the root API; the fixed 0.4.0 text composition remains separate. No consumer source is changed here.
 
 | Origin | Required change |
 |---|---|
@@ -46,3 +46,29 @@ Shell management consumers also render `placementSettingDescriptors`, `placement
 The existing Adapter lifecycle `acquire` port now has the shared `LocalWorldAcquireInput` shape `{connectionRef, requesterRef, userPath, action}`; neither username nor password is accepted. `LocalWorldQuery` and `LocalWorldObservation` describe its inspect handle and actual current process/world result. `worldRef` may be null before payload provisioning. `LocalWorldLifecycleAction` selects provisioning or connection work, not a permission. `leaseRef` is a finite process-operation handle, not a grant or an Adapter mutation credential.
 
 The existing Host control service is described by `NativeControlInput` `{requesterRef,worldPath,userPath,operationRef}`, `NativeControlLease` `{controlRef,worldPath}`, `NativeControlQuery` `{controlRef,requesterRef,worldPath,operationRef}` and `NativeControlEvidence` `{state,worldPath,processId,operationRef}`. `LocalEngineControlPort` declares its acquire/inspect/withStoppedWorld methods. These match the observed Desktop no-credential source shape; no username, password or engineActorName is supplied or read. Paths must be canonicalized by the owning runtime, and CURRENT/STOPPED facts must come from its actual child lifecycle, with STOPPED valid only inside its callback. Adapter must remove facts.username equality and engineActorName from observations, and correlate the actual process/world/operation instead. No new wire, tool or lifecycle implementation is introduced here. After pairing, actual transport incarnation is read through ReadLocalConnection.
+
+## 0.4.1 image proposal correction
+
+`BuildProposalContext.referenceBrief.media` and `ValidateBuildProposalRequest.referenceBrief.media` retain the complete, already-verified MediaBinding array. The text-only empty-array rule is removed. Fields, wire versions, geometry, ownership and digest projection definitions are unchanged; their 0.4.0 digest domain remains the current schema domain, not a compatibility adapter. That fix shipped in 0.4.1 and remains in 0.4.2; current package discovery advertises **hanaworlds-contracts@0.4.2** and rejects mixed package versions.
+
+Workshop/Host must read the actual attachment bytes, recompute storedBytesDigest, check media type/dimensions and associate the attachment with the current Session before supplying sourceContext/currentContext. The pure contracts package has no attachment store and cannot establish this provenance from caller JSON. It verifies the complete media-bearing brief digest, intent linkage, current Session/turn/world, source/current context equality and paired projected-byte fields. A client changing the stored digest and rehashing its own brief still cannot replace the provider's current verified brief. Keep media in the same skill model channel and in the public context; do not strip it to reach Painter. Painter remains a pure geometry validator/assembler, not an image-planning model.
+
+For the image assembly, all five origins pin the exact new tar: Workshop preserves verified media in source/current context; Desktop preserves the media channel and supplies current verified facts; Painter consumes nonempty media with the same validators; Canvas and Adapter change only the image assembly's contract pin/handshake, with no transaction/transport field change. Brush likewise uses the exact image-assembly package. Keep the fixed text build on its existing 0.4.0 pins until separately coordinated. No palette/texture protocol is added.
+
+Focused reproduction: `tools/gate-image-proposal.sh <full-source-sha> <absolute-evidence-dir>`. It runs only the affected image/text proposal checks and core media/Session/world boundaries, actual npm pack/install and a typed image consumer; it does not rerun the previous 16-case local-world suite. The former gate and tests remain source history and are not this image delivery's evidence.
+
+## Readonly material sources (0.4.2)
+
+`MaterialSourceFactsPort.readMaterialSources(worldRef)` is an additive in-process method of the existing `hanaworldsLuantiNativeFacts` service. It returns `{snapshot, textures}`. `snapshot` is strict JSON, `textures` is a list of `{bytesDigest, bytes: Uint8Array}` containing exactly one blob per distinct KNOWN digest. It is not a model argument, MediaBinding, Resource or mutating wire. No wire operations changed.
+
+Host calls `validateMaterialSources(response, freshCatalogue, freshConnection)`; `freshConnection` has exactly worldRef, connectionRef and connectionIncarnationRef, projected from its current selection. The pure check binds the Catalogue digest/game identity, exact node name/definitionRevision/legal param2, sourceRevision, raw SHA256 and byte length. It cannot attest a runtime provider, decode an image or establish currentness by itself. Adapter must inspect the actual paired world/incarnation before and after its read, resolve the actual server game/mod texture source, and return a coherent snapshot or fail on connection/source changes. Host must recheck current selection and fresh Catalogue before consuming or caching the result. A persisted JSON snapshot alone is insufficient.
+
+`sourceRevision = digestValue('material-sources', projection).sha256`, where projection is the snapshot with only sourceRevision removed. Rows are sorted by UTF-16 nodeName then numeric param2, with null first; duplicate keys are invalid. The digest includes source paths/names and actual byte digests, so changed bytes invalidate the revision even when the node registry revision stays constant. `sourceRef` is the resolved logical game/mod origin (for example `fixture-mod/textures/fixture_stone.png`), never a credential or public URL. Shared identical bytes may serve multiple rows. Omitted nodes have no known material source and must not be guessed.
+
+KNOWN means the provider has verified an identical, unmodified, non-animated texture on all rendered faces, resolved source precedence and no appearance-changing animation, tint, palette, overlay or modifier. The source basis is explicitly SERVER_ASSET_ONLY: no claim about client texture packs or personalized rendered appearance. Any unverified source, override or effect is UNKNOWN with a reason and null texture; unknown legal param2 and definitionRevision remain null, never guessed as zero or a registry fallback. A non-null param2 always belongs to Catalogue.allowedParam2. PNG/JPEG/WebP byte formats still require Painter decoding. Unsupported rendering stays UNKNOWN; no renderer or RGB values are supplied here.
+
+KNOWN describes texture provenance only. It never fills unknown static capability fields or authorizes a build. Painter must still run `validateStaticMaterials` on candidates; Canvas and Brush retain their existing validation. UNKNOWN/no usable static candidate produces an explicit unavailable result, not a fixture alias, default color or external game match. Adapter supplies actual bytes; Painter reuses its existing pure measurement; Desktop connects current facts; Workshop preserves media and confirmed material inputs. Canvas/Brush only update the exact shared image pin/handshake. No peer imports or peer code changes ship here.
+
+Validation returns frozen JSON/records and owned copies of the byte arrays. Typed array elements remain mutable: decode those copies or revalidate after editing them; do not treat the returned wrapper as immutable pixel storage. JSON serialization is only for the snapshot, never the byte envelope.
+
+Run `npm run test:materials`, `npm run typecheck:materials`, and `npm run verify:source` after build. `tools/gate-material-sources.sh FULL_SOURCE_SHA ABSOLUTE_EVIDENCE_DIR` verifies a clean archived source, deterministic generation, an actual tarball and an independently installed typed consumer. This is SOURCE/FIXTURE evidence; actual Adapter/Luanti and product UI gates belong to their writers.

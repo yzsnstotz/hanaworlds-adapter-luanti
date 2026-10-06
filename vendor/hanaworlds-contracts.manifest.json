@@ -1,10 +1,10 @@
 {
  "name": "hanaworlds-contracts",
- "version": "0.4.0",
- "revision": "8cfb18f8e13aa33d7a942f230ec6117914322cdd",
- "sha256": "d7b22e76de5e161abe7525596df608b3f00445fb4237808941cb5ef8328e9bc4",
- "entryCount": 20,
- "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/8cfb18f8e13aa33d7a942f230ec6117914322cdd",
+ "version": "0.4.2",
+ "revision": "aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777",
+ "sha256": "c3528a4fc3f0cdf94245c4d2d8b1cfa5d28db96d1cd00ae74737bdbdfcd26ec6",
+ "entryCount": 21,
+ "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/aad7c0ea2a4a9a93dfb13555c46cd98b9b5da777",
  "note": "Every entry of the admitted package; only `vendored` paths are bundled, byte-identical to their entry.",
  "vendored": [
   "LICENSE",
@@ -16,6 +16,7 @@
   "dist/local/domain.mjs",
   "dist/local/generated/contracts.mjs",
   "dist/local/index.mjs",
+  "dist/local/material-sources.mjs",
   "dist/local/runtime.mjs",
   "dist/local/schema-validator.mjs",
   "dist/names.mjs",
@@ -36,8 +37,8 @@
   },
   {
    "path": "README.md",
-   "size": 9807,
-   "sha256": "cab5f6a985b9c40d0e6a5151d9101add519d91caa6081efe9221104819c392ea"
+   "size": 16343,
+   "sha256": "e3a5c39f0a27a2883825af7d2f0df01a4fa4ab1c16fdbb4785ab3ec0fb88ebaf"
   },
   {
    "path": "dist/errors.mjs",
@@ -56,23 +57,28 @@
   },
   {
    "path": "dist/local/domain.mjs",
-   "size": 13609,
-   "sha256": "0896b7110da608a0b4449c96dd7e5a06961af36052be833fdf2ed79b01a4b216"
+   "size": 13460,
+   "sha256": "8b59f0e0b1c30b50164a60a9b5d64ecf10d38e389bedbb3524d9da9c3688bd30"
   },
   {
    "path": "dist/local/generated/contracts.mjs",
-   "size": 165470,
-   "sha256": "14b621564408e41976661b4b9699321423d26ba7429d2bd99c8a6e18a04922ad"
+   "size": 169325,
+   "sha256": "2a80118ffc0b7cc44bc61334a1f9597e79924743cbfac5e1a4811efd78a5b4e4"
   },
   {
    "path": "dist/local/index.mjs",
-   "size": 69,
-   "sha256": "f4bf154668267ca3aed6733e1da2334474cf401d992a95d56b469d5dc685e6ec"
+   "size": 133,
+   "sha256": "db63c45d5939458a11bf13984e4f8873c5fcfcca228b0aefa204a7b5f8cbfee5"
+  },
+  {
+   "path": "dist/local/material-sources.mjs",
+   "size": 4513,
+   "sha256": "6430dd73bbce6317eed79ebb4d4fafee047398d62538f87c4b1062b0ea692f7b"
   },
   {
    "path": "dist/local/public.d.ts",
-   "size": 7930,
-   "sha256": "a1148e9ffc52369ba542bc0fdb63398ad0ecc870326c6f1148b8ba63e68adaf3"
+   "size": 9146,
+   "sha256": "8c01dc0abd6a56a30b89d35336a4ef6b437db1a9ee290f541edba89e6e41c55b"
   },
   {
    "path": "dist/local/runtime.mjs",
@@ -101,28 +107,28 @@
   },
   {
    "path": "package.json",
-   "size": 1247,
-   "sha256": "c1e761eb82163dc30b4ec91e0d505025c96e63d7d5357890d2e78e789f3f00dc"
+   "size": 1506,
+   "sha256": "3fc0fa749d6f21dee8a0334c96225b36516bb3ac33c9a523c48503bf7918922b"
   },
   {
    "path": "schemas/local/contracts.schema.json",
-   "size": 238719,
-   "sha256": "28cf8553e612d372978d6f93c82e2f7ac87c5a48f3152610908bbd1334ffbf7f"
+   "size": 244652,
+   "sha256": "4dbb23c20cb8f3ca12b26be8e4cac175e57904343335c274580db0beee4a0fc3"
   },
   {
    "path": "schemas/local/profile.json",
-   "size": 262627,
-   "sha256": "69b78f86e35a6dbd83971375001a629f5bd430ae4a2fccb30552b2b2da64976d"
+   "size": 268706,
+   "sha256": "eecb72402f1081fe379f46626aa607885f3283efd5784cfa94c6f379579750f5"
   },
   {
    "path": "types/local/contracts.d.ts",
-   "size": 87161,
-   "sha256": "5fc8b2a32017a9176033cb0dbed0f5f93a0f2ddf9a3936d76d7c2e5de61fe058"
+   "size": 89448,
+   "sha256": "396a9900b2dc0dac3cf00ea6882669ccbf97385ffed09ec4aa20cede00b7bc6f"
   },
   {
    "path": "types/local/index.d.ts",
-   "size": 7930,
-   "sha256": "a1148e9ffc52369ba542bc0fdb63398ad0ecc870326c6f1148b8ba63e68adaf3"
+   "size": 9146,
+   "sha256": "8c01dc0abd6a56a30b89d35336a4ef6b437db1a9ee290f541edba89e6e41c55b"
   }
  ]
 }

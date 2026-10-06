@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-contracts",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Pure current-local-world contracts. Fresh state only; strict decoding, business correlation, Canvas transactions and same-transaction history.",
   "type": "module",
   "private": true,
@@ -36,7 +36,11 @@
     "build": "node tools/build-local.mjs",
     "test": "node test/local-world.mjs",
     "typecheck": "tsc --project consumer/local/tsconfig.json",
-    "verify:source": "node tools/verify-local.mjs"
+    "verify:source": "node tools/verify-local.mjs",
+    "test:image": "node test/image-proposal.mjs",
+    "typecheck:image": "tsc --project consumer/image/tsconfig.json",
+    "test:materials": "node test/material-sources.mjs",
+    "typecheck:materials": "tsc --project consumer/material-sources/tsconfig.json"
   },
   "dependencies": {
     "canonicalize": "5.1.0"
