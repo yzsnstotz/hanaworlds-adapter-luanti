@@ -1,6 +1,6 @@
 # HanaWorlds Luanti Adapter
 
-Version0.3.0 implements fresh local `world-adapter/v6` with payload0.3.0 and
+Version0.3.1 implements fresh local `world-adapter/v6` with payload0.3.0 and
 contracts0.4.0. The visible Host management facts include current world,
 connection incarnation, actual native PID, payload digest and the non-switchable
 Adapter placement invariants. It requires no player permission approval.
@@ -20,3 +20,7 @@ Component SOURCE/FIXTURE and own local REAL_RUNTIME are distinct from formal
 App/GUI/model/Shell Undo and owner ACCEPTED. Historical authorization, AUTO,
 remote and compatibility inputs stay archived or deferred; they are not active
 features of this current package.
+
+The public read-only NativeFacts.readCatalogue(worldRef) supplies the complete
+loaded-engine Catalogue for the actual current world. Unknown fields remain
+explicit; Host may wire Workshop Catalogue.read to this method.

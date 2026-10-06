@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -54,7 +54,8 @@
     "test:lua": "lua test/local-world-region.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
     "verify:contracts:source": "node scripts/verify-contracts-pin.mjs --source",
-    "vendor:contracts": "node scripts/vendor-contracts.mjs"
+    "vendor:contracts": "node scripts/vendor-contracts.mjs",
+    "test:catalogue": "node --test test/local-catalogue.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0"

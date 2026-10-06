@@ -34,6 +34,24 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           connectionIncarnationRef: row.incarnation, payloadVersion: world.payloadVersion, payloadDigest: world.payloadDigest };
       } catch (error) { await engine.close(); throw error; }
     },
+    readCatalogue(worldRef) {
+      // A read-only Host supplier. The requested world must be the actual paired
+      // connection, before and after reading the loaded Luanti node registry.
+      const work=serial.then(async()=>{
+        if(closed) fail('ADAPTER_UNAVAILABLE');
+        if(typeof worldRef!=='string' || !worldRef) fail('SCHEMA_INVALID');
+        const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
+        if(matches.length!==1) fail('WORLD_NOT_BOUND');
+        const row=matches[0];
+        await inspectConnection(row.connectionRef);
+        if(row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
+        const catalogue=validateType('Catalogue',await row.engine.catalogue());
+        await inspectConnection(row.connectionRef);
+        if(closed || row.engine.closed || rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
+        return catalogue;
+      });
+      serial=work.catch(()=>{});return work;
+    },
     async readScopedState(connectionRef, positions) {
       const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
       await inspectConnection(connectionRef);

@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.3.0
+# HanaWorlds Luanti Adapter 0.3.1
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.4.0` (source `8cfb18f8e13aa33d7a942f230ec6117914322cdd`,
@@ -12,6 +12,18 @@ transaction, affected-object and durable history decisions.
 The plugin publishes `hanaworldsWorldAdapterV6.call(operation, request)`,
 `hanaworldsLuantiLocalWorlds` and
 `hanaworldsLuantiNativeFacts.readScopedState(connectionRef, positions)`.
+`hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` returns the complete
+contracts0.4.0 `Catalogue` directly (no digest-only or custom envelope). It
+accepts the exact currently paired worldRef and rechecks the actual Host
+process/world/connection before and after reading Luanti's loaded
+`registered_nodes`, `get_game_info` and `get_modnames` through the private
+courier. Unbound/wrong/stopped worlds fail closed. It includes registered
+materials that are not placed in the inspected region. Unknown capabilities
+remain null with exact `unknownFields`; they are never inferred from a hash,
+placed nodes, model output or defaults. Host may bind the Workshop public
+`hanaworldsCatalogue.read(worldRef)` to this supplier. Host cannot inspect
+Adapter engine/rows directly and supplies no invented capacity result.
+
 The V6 port carries the exact bundled handshake. Mutating calls require the
 actual active Cordis caller fiber for the Host Loader's `hanaworlds-canvas`
 entry in the same root; caller JSON cannot assert this provenance. The only
@@ -71,6 +83,12 @@ transaction and verifies the restored readback. It does not infer an inverse
 from a new build or delete a bounding box.
 
 ## Validation and retained history
+
+The 0.3.1-only read seam reproduction is `test/real-catalogue.mjs`, using fresh
+source and extracted-package profiles. Its `HW_LOCAL_*` inputs match the core
+script and it needs only a public Host lifecycle fixture, no Canvas fixture.
+`npm run test:catalogue` covers unbound/invalid/closed reads. Payload0.3.0 bytes
+and the protected eleven-core-check 0.3.0 evidence remain unchanged.
 
 Use Node24.13.1, an isolated npm cache, `npm ci --ignore-scripts`, `npm run build`,
 `npm test`, `npm run test:lua` and `npm run verify:contracts`. The current core
