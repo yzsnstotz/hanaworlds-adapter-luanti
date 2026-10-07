@@ -20,6 +20,16 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
   const runtime = {
     setLocalRoots() {},
+    retireLocal(connectionRef) {
+      const work = serial.then(async () => {
+        if (closed) fail('ADAPTER_UNAVAILABLE');
+        const row = rows.get(connectionRef);
+        if (!row) fail('WORLD_NOT_BOUND');
+        rows.delete(connectionRef);
+        await row.engine.close();
+      });
+      serial = work.catch(() => {}); return work;
+    },
     async pairLocal(world) {
       if (closed || rows.size) fail('CURRENT_WORLD_MISMATCH');
       const engine = await LocalCourier.open(world);
@@ -100,12 +110,18 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial=work.catch(()=>{});return work;
     },
-    async readScopedState(connectionRef, positions) {
-      const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
-      await inspectConnection(connectionRef);
-      const image = await row.backend.snapshot(positions);
-      return { worldRef: row.worldRef, stateProfile: row.profile, cells: image.records.map(record => ({
-        position: record.position, availability: 'KNOWN', stateDigest: cellDigest(row.profile, record) })) };
+    readScopedState(connectionRef, positions) {
+      const work = serial.then(async () => {
+        if (closed) fail('ADAPTER_UNAVAILABLE');
+        const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
+        await inspectConnection(connectionRef);
+        const image = await row.backend.snapshot(positions);
+        await inspectConnection(connectionRef);
+        if (row.engine.closed || rows.get(connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
+        return { worldRef: row.worldRef, stateProfile: row.profile, cells: image.records.map(record => ({
+          position: record.position, availability: 'KNOWN', stateDigest: cellDigest(row.profile, record) })) };
+      });
+      serial = work.catch(() => {}); return work;
     },
     async close() { closed = true; await serial.catch(() => {}); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
   };
@@ -139,10 +155,13 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (name === 'ReadLocalConnection') return validateType('LocalConnectionReadback', {
       connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
       payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
-    if (name === 'DiscoverConnections' || name === 'ListWorlds') return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
+    if (name === 'DiscoverConnections' || name === 'ListWorlds') {
+      for (const x of rows.values()) await inspectConnection(x.connectionRef);
+      return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
       connections: [...rows.values()].map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
         worldRef: x.worldRef, displayName: x.gameId, capabilityRevision: capabilities(x).capabilityRevision,
         payloadVersion: x.payloadVersion, readiness: 'READY', connectionIncarnationRef: x.incarnation })) };
+    }
     if (name === 'InspectWorld' || name === 'InspectRegion') return inspections(row, r, name);
     if (name === 'PrepareRecoverableTransaction') return b.prepare(r);
     if (name === 'ApplyCompiledTransaction') return b.apply(r);

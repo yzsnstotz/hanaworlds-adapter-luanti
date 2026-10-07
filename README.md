@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.7.0 (flat-world creation + write-path facts, payload 0.6.0)
+# HanaWorlds Luanti Adapter 0.7.1 (flat-world creation + write-path facts, payload 0.6.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
@@ -50,6 +50,43 @@ or old-wire compatibility. Acquire again with `BIND_RUNNING_WORLD`, then
 `pair(...)`. Pair verifies the actually loaded payload digest and creates a
 new connection incarnation. Every scoped request rechecks the actual Host
 process/world/operation association and the Canvas selection context.
+
+### Same-service second world (0.7.1)
+
+No new public fields or wire are required. After pairing A, the Host may stop
+its exact owned A process. Create independent B normally, then
+`acquire({connectionRef:B.connectionRef, requesterRef, userPath,
+action:'BIND_RUNNING_WORLD'})` and `pair({connectionRef:B.connectionRef,
+requesterRef, leaseRef:BLease.leaseRef})` on the same service. Pair returns the
+existing observation plus `paired:true`, B's world/payload identity and a fresh
+`connectionIncarnationRef`. It does not select a Canvas world or session.
+
+Before pairing B, Adapter invokes the original A control provider's existing
+`withStoppedWorld(AQuery, consume)` using its captured controlRef, requester,
+world path and operation. Host must retain that ownership record after A exits
+and supply its actual exited PID/world/operation inside a finite awaited callback.
+It may stop the owned process as part of this existing operation. A generic
+CURRENT-inspection error, a stopped fact outside the callback, a replaced
+provider, missing callback, unknown identity or mismatched PID is insufficient.
+Those cases reject pair B with `CURRENT_WORLD_MISMATCH`; B is not returned as
+paired, and Host owns cleanup of rejected native sessions. No restart/reinstall
+of Adapter, caller-held lifecycle facts, or guessed process identity is used.
+
+A's CURRENT reads fail as soon as Host inspection no longer verifies it. Its
+control query is retained solely for the stop callback, never as a current lease.
+After that callback verifies A's exact identity, all A leases are invalidated,
+serialized runtime work drains, the old courier closes, and A's runtime record
+is removed before pairing B. Old world/connection reads and lease reuse reject;
+connection inventory contains only B after success. If failure occurs after
+A retirement, A stays invalidated; no old binding is restored. Failed B does not
+become a current connection. Whole-service `close()` remains permanent disposal.
+
+Host implementations that discard A's control/exit record or cannot honor
+`withStoppedWorld` for that owned stopped process must supply that existing
+public lifecycle capability before consuming this sequence. Same-connection
+re-pair remains unsupported. Source and installed-package evidence exercises
+the public Host peer with real isolated Luanti children; Desktop integration,
+Canvas selection and product Enter game are separate gates.
 
 Canvas supplies `hanaworldsCanvasV5.call('ReadWorldSelectionContext', ...)`
 using the exact 0.4.0 `WorldSelectionContext.selection` envelope. Existing

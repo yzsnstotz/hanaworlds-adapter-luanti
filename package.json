@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -63,7 +63,8 @@
     "test:catalogue": "node --test test/local-catalogue.test.mjs",
     "test:region": "node --test test/local-region-io.test.mjs",
     "test:flat": "node --test test/local-flat-world.test.mjs",
-    "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs"
+    "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs",
+    "test:switch": "node --test test/local-world-switch.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0"
