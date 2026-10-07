@@ -1,11 +1,14 @@
-# HanaWorlds Luanti Adapter 0.5.0 (region I/O line, payload 0.5.0)
+# HanaWorlds Luanti Adapter 0.7.1 (flat-world creation + write-path facts, payload 0.6.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
-`hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
-pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
+`hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
+pack SHA256 `e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209`).
 The text-line package 0.3.1/payload 0.3.0 and the image-material package
 0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
-I/O and does not migrate worlds provisioned with an older payload.
+I/O and does not migrate worlds provisioned with an older payload. 0.6.0 adds
+new flat local world creation; 0.7.0/payload 0.6.0 publishes Catalogue facts
+and verifiable callback evidence under Contracts scope `write-path-init/v1`
+(see below). New worlds carry payload 0.6.0; older payload worlds are not adopted.
 There is no player account, username/password, grant, AUTO mode, administrator
 approval or protection-region permission path in this package. Canvas owns
 transaction, affected-object and durable history decisions.
@@ -16,7 +19,7 @@ The plugin publishes `hanaworldsWorldAdapterV6.call(operation, request)`,
 `hanaworldsLuantiLocalWorlds` and
 `hanaworldsLuantiNativeFacts.readScopedState(connectionRef, positions)`.
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` returns the complete
-contracts0.4.0 `Catalogue` directly (no digest-only or custom envelope). It
+public `Catalogue` directly (no digest-only or custom envelope). It
 accepts the exact currently paired worldRef and rechecks the actual Host
 process/world/connection before and after reading Luanti's loaded
 `registered_nodes`, `get_game_info` and `get_modnames` through the private
@@ -27,7 +30,11 @@ placed nodes, model output or defaults. Host may bind the Workshop public
 `hanaworldsCatalogue.read(worldRef)` to this supplier. Host cannot inspect
 Adapter engine/rows directly and supplies no invented capacity result.
 
-The V6 port carries the exact bundled handshake. Mutating calls require the
+The V6 port retains the exact bundled ContractHandshake and also publishes
+`protocolHandshake`: `world-adapter` major 6 minor 1 with
+`world-adapter/v6:callback-free-write` and `world-adapter/v6:write-path-state-facts`.
+K3 consumers use `checkProtocolCompatibility` with the required major/minor and
+capabilities; package versions and hashes are provenance, not compatibility. Mutating calls require the
 actual active Cordis caller fiber for the Host Loader's `hanaworlds-canvas`
 entry in the same root; caller JSON cannot assert this provenance. The only
 HTTP route is a loopback, read-only status route.
@@ -37,12 +44,49 @@ Local provisioning: discover the selected world, acquire with
 `provision({connectionRef, requesterRef, leaseRef})`. The Host's
 `hanaworldsNativeEngineControl` must supply actual native process facts and
 stop that process before invoking its finite stopped-world callback.
-Provisioning installs six payload files, a fresh world identity and a private
+Provisioning installs seven payload files, a fresh world identity and a private
 loopback courier key. Existing payload locations fail; there is no migration
 or old-wire compatibility. Acquire again with `BIND_RUNNING_WORLD`, then
 `pair(...)`. Pair verifies the actually loaded payload digest and creates a
 new connection incarnation. Every scoped request rechecks the actual Host
 process/world/operation association and the Canvas selection context.
+
+### Same-service second world (0.7.1)
+
+No new public fields or wire are required. After pairing A, the Host may stop
+its exact owned A process. Create independent B normally, then
+`acquire({connectionRef:B.connectionRef, requesterRef, userPath,
+action:'BIND_RUNNING_WORLD'})` and `pair({connectionRef:B.connectionRef,
+requesterRef, leaseRef:BLease.leaseRef})` on the same service. Pair returns the
+existing observation plus `paired:true`, B's world/payload identity and a fresh
+`connectionIncarnationRef`. It does not select a Canvas world or session.
+
+Before pairing B, Adapter invokes the original A control provider's existing
+`withStoppedWorld(AQuery, consume)` using its captured controlRef, requester,
+world path and operation. Host must retain that ownership record after A exits
+and supply its actual exited PID/world/operation inside a finite awaited callback.
+It may stop the owned process as part of this existing operation. A generic
+CURRENT-inspection error, a stopped fact outside the callback, a replaced
+provider, missing callback, unknown identity or mismatched PID is insufficient.
+Those cases reject pair B with `CURRENT_WORLD_MISMATCH`; B is not returned as
+paired, and Host owns cleanup of rejected native sessions. No restart/reinstall
+of Adapter, caller-held lifecycle facts, or guessed process identity is used.
+
+A's CURRENT reads fail as soon as Host inspection no longer verifies it. Its
+control query is retained solely for the stop callback, never as a current lease.
+After that callback verifies A's exact identity, all A leases are invalidated,
+serialized runtime work drains, the old courier closes, and A's runtime record
+is removed before pairing B. Old world/connection reads and lease reuse reject;
+connection inventory contains only B after success. If failure occurs after
+A retirement, A stays invalidated; no old binding is restored. Failed B does not
+become a current connection. Whole-service `close()` remains permanent disposal.
+
+Host implementations that discard A's control/exit record or cannot honor
+`withStoppedWorld` for that owned stopped process must supply that existing
+public lifecycle capability before consuming this sequence. Same-connection
+re-pair remains unsupported. Source and installed-package evidence exercises
+the public Host peer with real isolated Luanti children; Desktop integration,
+Canvas selection and product Enter game are separate gates.
 
 Canvas supplies `hanaworldsCanvasV5.call('ReadWorldSelectionContext', ...)`
 using the exact 0.4.0 `WorldSelectionContext.selection` envelope. Existing
@@ -105,11 +149,48 @@ user `textures/server` (reported UNRESOLVED_SOURCE, not a game/mod source), game
 `textures`, then mods in reverse load order; sub-directories starting with `_` or
 `.` are ignored, a duplicate inside the winning recursive root, an empty/oversized
 file, any symlink/unreadable media directory, an `override.txt` in game textures or
-a non-empty `texture_path` all give UNKNOWN. `hasPersistentState`/`collisionBoxes`
-remain unknown regardless of KNOWN textures. Metadata is read twice around the
+a non-empty `texture_path` all give UNKNOWN. `collisionBoxes` remains
+unknown regardless of KNOWN textures; `hasPersistentState` follows the rule below. Metadata is read twice around the
 byte resolution; any change of registry facts, bytes, connection or process rejects
 `CURRENT_WORLD_MISMATCH`. Source basis is SERVER_ASSET_ONLY: no client texture-pack
 or rendered-appearance claim, no RGB values, no cache.
+
+Catalogue `hasCallbacks` / `hasPersistentState` (payload 0.6.0) follow the
+Contracts 0.5.2 scope **`write-path-init/v1`**: the declared write/restore path
+and its initialization requirements. Per-cell writes/restores use separately
+installed WorldEdit `set` / `set_param2` (VoxelManip) plus `swap_node`; region
+writes/restores use VoxelManip. These node-data paths execute no node-definition
+callbacks. Full state (metadata, inventory, timers) is still read back and
+included in digests; Canvas retains transaction and Undo decisions.
+
+`hanaworldsLuantiNativeFacts.readWritePathEvidence(worldRef)` returns
+`{catalogue, evidence, check}` from one actual paired registry snapshot. The
+public `WritePathEvidence` lists each node's `definedCallbacks` field names
+and `definitionRevision`, the Catalogue digest, and `globalWriteCallbacks`
+(currently `registered_on_mapblocks_changed`). Before returning, the Adapter
+runs Contracts `validateCatalogueWritePathFacts`. Revisions fingerprint the
+loaded registry's public facts and callback names, not Lua function addresses
+or game/mod source-code revisions.
+
+- When the global write registry is missing/unreadable or has handlers, both
+  facts remain null for all nodes. A present handler is named
+  `register_on_mapblocks_changed` in the evidence.
+- Initialization/lifecycle hooks (`on_construct`, `after_place_node`,
+  `on_timer`, `on_destruct`, `after_destruct`) give `hasCallbacks: true` and
+  `hasPersistentState: null`. Metadata-inventory hooks, `on_receive_fields`
+  and `preserve_metadata` also keep persistent state unknown.
+- With a known empty global write registry and none of those hooks, both
+  facts are false. `ignore` stays null (stricter than the public derivation)
+  because it is an unloaded placeholder and must never become writable.
+- Player callbacks, ABM/LBM and independent world dynamics are outside this
+  scope; their later effects are not claimed absent. Complete readback digests
+  detect state changes, and same-origin Undo refuses a changed after-state.
+
+The public static-material validators are unchanged: true or null still
+rejects. Real VoxeLibre air/stone have only out-of-scope player hooks and can
+be admitted when the actual global write registry is empty; furnace/chest
+initialization hooks remain rejected before mutation. Grass still has unknown
+param2=color and initialization hooks; this update does not make it writable.
 
 `npm run test:materials` covers the Lua projection and resolver (FIXTURE).
 `test/real-material-sources.mjs` is the focused real-Luanti reproduction with an
@@ -117,11 +198,11 @@ explicit component fixture game; it does not represent the product game.
 
 ## Region I/O — world-adapter-region/v1 (0.5.0)
 
-Consumes `hanaworlds-contracts@0.5.0` (source `c006a839a6e6c2c63d57a14b72e4e6b26fa717f1`,
-pack SHA256 `7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e`).
+Consumes `hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
+pack SHA256 `e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209`).
 `ctx.get('hanaworldsWorldAdapterRegionV1')` exposes `call('ReadRegion' | 'WriteRegion',
-request)`, `protocolHandshake` (protocol `world-adapter-region` major 1 minor 0 and the
-five `world-adapter-region/v1:*` capabilities; provenance is a record only) and
+request)`, `protocolHandshake` (protocol `world-adapter-region` major 1 minor 1, the five existing capabilities
+and `world-adapter-region/v1:callback-free-write`; provenance is a record only) and
 `lastFacts()` (engine batch/emerge facts of the last call, evidence only). Only the
 `hanaworlds-canvas` caller fiber is admitted; every call checks the current paired
 connection/incarnation and the Canvas `ReadWorldSelectionContext` like the per-cell
@@ -160,6 +241,48 @@ rejections and per-chunk facts. `test/real-region-io.mjs` is the real-Luanti
 reproduction (explicit component fixture game `hw_region_fixture`, public Host and
 Canvas peer fixtures, independent `hw_probe` node/light/metadata/write-counter reads).
 
+## New flat local world (0.6.0)
+
+`hanaworldsLuantiLocalWorlds` also creates a new local single-player world that is
+flat by default and immediately bindable:
+
+- `describeFlatWorldCreation({requesterRef, userPath})` returns, without creating
+  anything, the configured world roots, the games installed in
+  `<userPath>/games` (gameId, title, version, game.conf SHA256, whether the game
+  allows the `flat` mapgen, and the game's own declared flat option), the mapgen
+  parameters that will be written, the per-cell mod found in `<userPath>/mods`, and
+  `ready`/`missing[]` naming each missing prerequisite (`WORLD_ROOT`, `GAME`, `MOD`).
+- `createFlatWorld({requesterRef, userPath, root?, gameId?, worldName?})` stages
+  a new world directory, fsyncs it and renames it into the world root. The new
+  world carries `world.mt` (gameid, world_name, sqlite3 backends,
+  `load_mod_worldedit = true`), `map_meta.txt` with the flat mapgen, and
+  `worldmods/hanaworlds_adapter` with a fresh world identity and courier key.
+  The result is `{created, connectionRef, worldPath, worldName, worldRef,
+  payloadVersion, payloadDigest, game, mapgen, perCellMod, nextAction:'BIND_RUNNING_WORLD'}`;
+  its `connectionRef` is exactly what `discover()` reports for that world, so the
+  Host continues with `acquire({..., action:'BIND_RUNNING_WORLD'})` and `pair`.
+  No `PROVISION_PAYLOAD` start/stop cycle is needed for a world created here.
+
+Mapgen (written into the new world only, so no global Luanti setting, Host
+config or other world is read for it or changed): Luanti's own `flat` mapgen,
+`chunksize=5`, `water_level=1`, `mapgen_limit=31000`,
+`mg_flags=nocaves,nodungeons,light,nodecorations,biomes,ores`,
+`mgflat_spflags=nolakes,nohills,nocaverns`, `mgflat_ground_level=8`, a fresh
+random 64-bit `seed`. When the chosen game's `settingtypes.txt` declares the game's
+own flat option `mcl_superflat_classic` (VoxeLibre/MineClone2), it is set to
+`true`: VoxeLibre then generates its classic superflat (grass at y=8, dirt y=7..6,
+bedrock y=5). Every applied value is returned in `mapgen`.
+
+Choices are never guessed: with no `gameId`, exactly one installed game that
+allows `flat` is used, otherwise `GAME_SELECTION_REQUIRED`/`GAME_NOT_INSTALLED`
+with `details.choices`; a game that disallows `flat` is `MAPGEN_NOT_SUPPORTED`;
+with several roots and no `root`, `WORLD_ROOT_REQUIRED` with the choices. The
+per-cell StateProfile needs WorldEdit; without it creation fails
+`PREREQUISITE_MISSING` naming the mod and where it is looked for. An existing
+name is `WORLD_EXISTS` and is never overwritten; with no `worldName` a new
+`hanaworlds-flat-<UTC>-<hex>` name is used. On any failure the staging directory
+is removed and no world is created or selected. Existing worlds are not migrated.
+
 ## Validation and retained history
 
 The 0.3.1-only read seam reproduction is `test/real-catalogue.mjs`, using fresh
@@ -183,3 +306,11 @@ historical inputs. Legacy modules and grant.lua are excluded from this package's
 explicit file list. Old tests are retained; old protocol tests and the larger
 reentry/replay/concurrency/remote matrix are DEFERRED, not deleted or counted as
 current passes. See `DEFERRED-LOCAL-WORLD.md`.
+
+The focused final gate is `bash scripts/final-gate-flat-world.sh <commit> <fresh-E>`.
+It requires Node 24.13.1 and the pinned real-game/WorldEdit/Cordis inputs listed
+in the script, records source and installed-package runs, compares package bytes
+with the commit, and refuses reused evidence/work directories. Existing failed
+runs remain archived under this card's `_evidence/`. This is a component gate;
+Desktop UI, model/skill selection, real Canvas transactions and product Undo
+remain separate independent gates.

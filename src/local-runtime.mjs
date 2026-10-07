@@ -1,13 +1,13 @@
 import { join } from 'node:path';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
-  validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition } from '#contracts';
+  validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
 import { LocalCourier } from './local-courier.mjs';
 import { LocalRecords } from './local-records.mjs';
 import { LocalTransactions, cellDigest, readbackView } from './local-transactions.mjs';
 import { nativeJournalDirectory } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
-import { readRegion, writeRegion, protocolHandshake, RegionFault } from './region-io.mjs';
+import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
 const WIRE = 'world-adapter/v6';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
@@ -20,6 +20,16 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
   const runtime = {
     setLocalRoots() {},
+    retireLocal(connectionRef) {
+      const work = serial.then(async () => {
+        if (closed) fail('ADAPTER_UNAVAILABLE');
+        const row = rows.get(connectionRef);
+        if (!row) fail('WORLD_NOT_BOUND');
+        rows.delete(connectionRef);
+        await row.engine.close();
+      });
+      serial = work.catch(() => {}); return work;
+    },
     async pairLocal(world) {
       if (closed || rows.size) fail('CURRENT_WORLD_MISMATCH');
       const engine = await LocalCourier.open(world);
@@ -54,6 +64,28 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial=work.catch(()=>{});return work;
     },
+    /** Catalogue and its write-path-init/v1 WritePathEvidence from one registry snapshot,
+     * checked with the public validateCatalogueWritePathFacts before it is returned. */
+    readWritePathEvidence(worldRef) {
+      const work=serial.then(async()=>{
+        if(closed) fail('ADAPTER_UNAVAILABLE');
+        if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+        const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
+        if(matches.length!==1) fail('WORLD_NOT_BOUND');
+        const row=matches[0];
+        await inspectConnection(row.connectionRef);
+        if(row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
+        const raw=await row.engine.writePath();
+        const catalogue=validateType('Catalogue',raw?.catalogue);
+        const nodes=[...(raw?.evidence?.nodes??[])].sort((a,b)=>a.nodeName<b.nodeName?-1:a.nodeName>b.nodeName?1:0);
+        const evidence=validateType('WritePathEvidence',{...raw?.evidence,nodes,catalogueDigest:digestValue('catalogue',catalogue).sha256});
+        const check=validateCatalogueWritePathFacts(catalogue,evidence);
+        await inspectConnection(row.connectionRef);
+        if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
+        return {catalogue,evidence,check};
+      });
+      serial=work.catch(()=>{});return work;
+    },
     readMaterialSources(worldRef) {
       const work=serial.then(async()=>{
         if(closed) fail('ADAPTER_UNAVAILABLE');
@@ -78,12 +110,18 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial=work.catch(()=>{});return work;
     },
-    async readScopedState(connectionRef, positions) {
-      const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
-      await inspectConnection(connectionRef);
-      const image = await row.backend.snapshot(positions);
-      return { worldRef: row.worldRef, stateProfile: row.profile, cells: image.records.map(record => ({
-        position: record.position, availability: 'KNOWN', stateDigest: cellDigest(row.profile, record) })) };
+    readScopedState(connectionRef, positions) {
+      const work = serial.then(async () => {
+        if (closed) fail('ADAPTER_UNAVAILABLE');
+        const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
+        await inspectConnection(connectionRef);
+        const image = await row.backend.snapshot(positions);
+        await inspectConnection(connectionRef);
+        if (row.engine.closed || rows.get(connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
+        return { worldRef: row.worldRef, stateProfile: row.profile, cells: image.records.map(record => ({
+          position: record.position, availability: 'KNOWN', stateDigest: cellDigest(row.profile, record) })) };
+      });
+      serial = work.catch(() => {}); return work;
     },
     async close() { closed = true; await serial.catch(() => {}); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
   };
@@ -117,10 +155,13 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (name === 'ReadLocalConnection') return validateType('LocalConnectionReadback', {
       connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
       payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
-    if (name === 'DiscoverConnections' || name === 'ListWorlds') return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
+    if (name === 'DiscoverConnections' || name === 'ListWorlds') {
+      for (const x of rows.values()) await inspectConnection(x.connectionRef);
+      return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
       connections: [...rows.values()].map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
         worldRef: x.worldRef, displayName: x.gameId, capabilityRevision: capabilities(x).capabilityRevision,
         payloadVersion: x.payloadVersion, readiness: 'READY', connectionIncarnationRef: x.incarnation })) };
+    }
     if (name === 'InspectWorld' || name === 'InspectRegion') return inspections(row, r, name);
     if (name === 'PrepareRecoverableTransaction') return b.prepare(r);
     if (name === 'ApplyCompiledTransaction') return b.apply(r);
@@ -247,6 +288,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     ctx,
     [Symbol.for('cordis.tracker')]: { property: 'ctx' },
     contractHandshake,
+    protocolHandshake: worldAdapterProtocolHandshake,
     contractVersion: WIRE,
     call(name, raw) {
       const caller = this.ctx;

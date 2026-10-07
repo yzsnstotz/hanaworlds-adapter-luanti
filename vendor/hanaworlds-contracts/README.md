@@ -1,10 +1,23 @@
-# HanaWorlds Contracts 0.5.0
+# HanaWorlds Contracts 0.5.2
 
 Pure public contracts for the single-user local-world MVP. Import from `hanaworlds-contracts`. This is a fresh-install protocol replacement. No prior exports, peer compatibility, state migration, or permission bridge ships in this package. Earlier source and evidence remain in Git and their original run directories.
 
 `spec/local-world/profile.json` is the authored schema and operation source. `src/local/` owns pure relation/geometry validation. `npm run build` generates `dist/local`, `types/local`, `schemas/local`, and current fixtures. Never edit those outputs directly.
 
 Current wires: `session/v3`, `canvas/v5`, `world-adapter/v6`, `painter/v4`, `BUILD/V3`, `ReferenceBrief/v3`, `interaction-surface/v4`; compiled operations `operations/v3`; target facts `target-facts/v4`; safety profile `safety-profile/v3`. Existing projections retain the `HanaWorlds|contracts@0.4.0|` domain; the new `material-sources` projection uses `HanaWorlds|contracts@0.4.2|material-sources|`. The existing `checkContractHandshake` stays exact-package for the fixed K1/K2 compositions. Region v1 (0.5.0, below) adds `region-build/v1`, `painter-region/v1`, `world-adapter-region/v1`, `canvas-region/v1` and decides compatibility by protocol major + capabilities. Old digests are not reused.
+
+## Material fact scope on the write path · G3 (0.5.1–0.5.2)
+
+0.5.0 required `hasCallbacks === false && hasPersistentState === false` (via `validateStaticMaterials`) without saying what those facts cover, so a careful Adapter had to assume every future player/ABM/LBM path and could prove nothing but `air`. 0.5.1 fixes the scope as **`write-path-init/v1`** (`writePathStateScope`). The validators are unchanged: `false` admits, `true` or `null` rejects, UNKNOWN is never defaulted to false.
+
+- **Declared path `CALLBACK_FREE_NODE_DATA`.** Per-cell and region writes/restores set node name and param2 as bulk node data (Luanti VoxelManip `set_data`/`write_to_map`; param1 is recomputed light). The engine runs no node-definition callback and creates no metadata/inventory/timer on this path. The Adapter declares this with `world-adapter/v6:callback-free-write` and `world-adapter-region/v1:callback-free-write`, and that its Catalogue facts follow this scope with `world-adapter/v6:write-path-state-facts` (`world-adapter` and `world-adapter-region` minors are now 1).
+- **Verifiable basis.** `WritePathEvidence` (`write-path-evidence/v1`) is the inventory a registry reader can actually observe: per node the names of callback fields defined on the registered definition (`definedCallbacks`, null if unknown) and `globalWriteCallbacks`, the engine global registries that fire on this path and have handlers (e.g. `register_on_mapblocks_changed`; null if unknown). `writePathStateFacts(evidence)` derives the facts mechanically:
+  - `initializationCallbacks` (`on_construct`, `after_place_node`, `on_timer`, `on_destruct`, `after_destruct`): the node relies on lifecycle code this path skips → `hasCallbacks: true`, `hasPersistentState: null`.
+  - `stateIndicatorCallbacks` (`allow_/on_metadata_inventory_*`, `on_receive_fields`, `preserve_metadata`): the node uses cell state → `hasPersistentState: null`.
+  - otherwise `false/false`. Unknown definition inventory or revision, or a non-empty/unknown `globalWriteCallbacks`, makes every node `null/null`. Never `true` for persistent state from opaque Lua bodies.
+  - `validateCatalogueWritePathFacts(catalogue, evidence)` binds the evidence to the Catalogue digest and definition revisions and refuses a Catalogue that is looser than the derivation (`CATALOGUE_MISMATCH`); stricter `null`/`true` is allowed and reported.
+- **Out of scope, not claimed absent.** Player-triggered callbacks (punch/dig/rightclick/after_dig_node, global punch/dig handlers), ABM/LBM and other independent world dynamics, mod-private custom fields, and external effects of a replaced node's skipped destruct callbacks. Such later changes are caught by the complete `RegionState` readback (node, param2, extras) and its summary digest, and by same-transaction Undo rejecting with `UNDO_CONFLICT/EXTERNAL_EDIT_CONFLICT`. Canvas still decides every transaction.
+- **Handshakes (0.5.2).** The G3 scope changes no handshake. `checkContractHandshake`/`checkBuildProposalHandshake` stay exact-package (0.5.1's same-0.MINOR-line acceptance is withdrawn: a package line proves no protocol or capability). Runtime interop between components on different package patches is decided only by `checkProtocolCompatibility` over each peer's `ProtocolHandshake` (wire major + required capabilities, e.g. `BUILD/V3` + `BUILD/V3:per-cell-compile`); package version, source and hash stay provenance.
 
 ## Region voxel block + palette v1 (0.5.0)
 

@@ -50,6 +50,25 @@ local core = {
   write_json = json,
 }
 local mode = arg and arg[1]
+if mode == 'state' or mode == 'state-global' or mode == 'state-unknown' then
+  -- write-path-init/v1: only initialization/state-indicator callbacks and the
+  -- write-path global registry decide; player hooks/ABM/LBM are out of scope.
+  local hook = function() end
+  core.registered_nodes = {
+    ['air'] = node({drawtype = 'airlike', walkable = false, pointable = false, on_punch = hook, on_dig = hook}),
+    ['ignore'] = node({drawtype = 'airlike', walkable = false, pointable = false}),
+    ['fx:stone'] = node({tiles = {'fx_plain.png'}, after_dig_node = hook, on_punch = hook, on_dig = hook, on_blast = hook}),
+    ['fx:chest'] = node({tiles = {'fx_plain.png'}, on_construct = hook, on_metadata_inventory_put = hook}),
+    ['fx:timer'] = node({tiles = {'fx_plain.png'}, on_timer = hook}),
+    ['fx:form'] = node({tiles = {'fx_plain.png'}, on_receive_fields = hook}),
+    ['fx:keep'] = node({tiles = {'fx_plain.png'}, preserve_metadata = hook}),
+  }
+  core.registered_abms = {{nodenames = {'group:opaque'}}}
+  core.registered_on_mapblocks_changed = mode == 'state-global' and {hook} or {}
+  if mode == 'state-unknown' then core.registered_on_mapblocks_changed = nil end
+  if arg[2] == 'write_path' then print(assert(facts.write_path(core)).raw_json) return end
+  print(assert(facts.catalogue(core)).raw_json) return
+end
 if mode == 'catalogue' then print(assert(facts.catalogue(core)).raw_json) return end
 if mode == 'nopath' then core.get_user_path = nil end
 local result, code = facts.material_metadata(core)

@@ -1,10 +1,10 @@
 {
  "name": "hanaworlds-contracts",
- "version": "0.5.0",
- "revision": "c006a839a6e6c2c63d57a14b72e4e6b26fa717f1",
- "sha256": "7fb42f1eaaf4988730f6cf254faecb84bbbb1d84e293558b66727c470181b31e",
- "entryCount": 24,
- "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/c006a839a6e6c2c63d57a14b72e4e6b26fa717f1",
+ "version": "0.5.2",
+ "revision": "6185622e977ef5136e9ef12219e0ba89dbba29db",
+ "sha256": "e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209",
+ "entryCount": 25,
+ "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/6185622e977ef5136e9ef12219e0ba89dbba29db",
  "note": "Every entry of the admitted package; only `vendored` paths are bundled, byte-identical to their entry.",
  "vendored": [
   "LICENSE",
@@ -21,6 +21,7 @@
   "dist/local/region.mjs",
   "dist/local/runtime.mjs",
   "dist/local/schema-validator.mjs",
+  "dist/local/write-path.mjs",
   "dist/names.mjs",
   "dist/strict-json.mjs",
   "fixtures/local/main.json",
@@ -40,8 +41,8 @@
   },
   {
    "path": "README.md",
-   "size": 25222,
-   "sha256": "17fc91643a90b74659f8119c065e01bacc6db8b046d5fb8a811d25ec7ce91921"
+   "size": 28638,
+   "sha256": "65fdddb051b95bbc135888d05052c6e532552d5191b5410d942138e32ef5bb73"
   },
   {
    "path": "dist/errors.mjs",
@@ -60,18 +61,18 @@
   },
   {
    "path": "dist/local/domain.mjs",
-   "size": 13877,
-   "sha256": "dccaf4525726dd183d473d1193b1a16272b12a6c30bb90b93baba58b7cee5992"
+   "size": 13976,
+   "sha256": "f5ed3cb4f10da258d683cb32b5603f5f8bc74c64719d463c8cb7747e6ff21044"
   },
   {
    "path": "dist/local/generated/contracts.mjs",
-   "size": 200730,
-   "sha256": "3f46f1d28c0b14f0ef2b2b43032183fa740bf212edd4c6db74e1f4c3658bca32"
+   "size": 205734,
+   "sha256": "dec33cfc0567adebda9f6de6f1fc899d8a33292eaf8f68d08331b3c15493ef40"
   },
   {
    "path": "dist/local/index.mjs",
-   "size": 163,
-   "sha256": "cd4e65527145afae2d556260ea07be8ef35169c914ce95749720234b1f73ed4b"
+   "size": 197,
+   "sha256": "a4eef67c52b8c55500c6f902e1962ceac3d21fc68a3064762196d0631aa9b7cc"
   },
   {
    "path": "dist/local/material-sources.mjs",
@@ -80,8 +81,8 @@
   },
   {
    "path": "dist/local/public.d.ts",
-   "size": 13045,
-   "sha256": "d14d15bc9584e37545513d48764591413e494958a40f81b454201e3e682f0727"
+   "size": 14356,
+   "sha256": "3799e231db9bf184b322a5e551c6c0d2ce0a83088b014c2aa0bbef2daaee56fc"
   },
   {
    "path": "dist/local/region-domain.mjs",
@@ -102,6 +103,11 @@
    "path": "dist/local/schema-validator.mjs",
    "size": 4706,
    "sha256": "63f818b74fb957cdec34b3f551d7626a92a770302adcdf2a5882d67d2f3302fe"
+  },
+  {
+   "path": "dist/local/write-path.mjs",
+   "size": 3153,
+   "sha256": "962c36240125d8b80491ecf805b9eb302c9dbcb338c2e2019b85c77bc61bc00f"
   },
   {
    "path": "dist/names.mjs",
@@ -125,28 +131,28 @@
   },
   {
    "path": "package.json",
-   "size": 1690,
-   "sha256": "391786730d0aad1cbcdae967ed35f087985c3b4945482f047ca5470f6d2febaf"
+   "size": 1736,
+   "sha256": "60ea142df8b17be1cce6f3347dc8cebda948cc349fb16013a33d9ba6b3854ee1"
   },
   {
    "path": "schemas/local/contracts.schema.json",
-   "size": 282159,
-   "sha256": "014909c164af20789412a430c9cc9779ab5933a79fb87076e87c59a7b2a17650"
+   "size": 284120,
+   "sha256": "572edb46ea2307af5d54cbb39a3dac48a0a14d8b85e7224931d6c3eed637f09d"
   },
   {
    "path": "schemas/local/profile.json",
-   "size": 314458,
-   "sha256": "74dff5489b07089f35fde2c0a4caf4eaa1c2261389323220f81c52d1826fe078"
+   "size": 320613,
+   "sha256": "2b4aa60e8715ab7cefac32ca2a41dc7a0e73905327dbcf5a5f005b468011960b"
   },
   {
    "path": "types/local/contracts.d.ts",
-   "size": 103469,
-   "sha256": "8ce0b9d032b3cb11df497de281dcb3b557d7ccb2d7db84b1207e5eed37a4bab8"
+   "size": 104126,
+   "sha256": "5031bcf31d7e5acd7023ff510ffc417331c28016cd0f4d5f3d75edfbd5e9997a"
   },
   {
    "path": "types/local/index.d.ts",
-   "size": 13045,
-   "sha256": "d14d15bc9584e37545513d48764591413e494958a40f81b454201e3e682f0727"
+   "size": 14356,
+   "sha256": "3799e231db9bf184b322a5e551c6c0d2ce0a83088b014c2aa0bbef2daaee56fc"
   }
  ]
 }

@@ -4,6 +4,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
+import { createFlatWorld, describeFlatWorldCreation } from './flat-world.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
 function deny(code = 'CURRENT_WORLD_MISMATCH') { throw new Error(code); }
@@ -25,9 +26,11 @@ async function freePort() {
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
 export function createLocalWorldPort({ roots = [], resolveControl, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
-  const leases = new Map(), running = new Map(), managed = new Set(), pending = new Set();
+  const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
+  let lifecycle = Promise.resolve();
   function track(run) {
-    const work = Promise.resolve().then(() => { if (closed) deny('ADAPTER_UNAVAILABLE'); return run(); });
+    const work = lifecycle.then(() => { if (closed) deny('ADAPTER_UNAVAILABLE'); return run(); });
+    lifecycle = work.catch(() => {});
     pending.add(work);
     void work.then(() => pending.delete(work), () => pending.delete(work));
     return work;
@@ -67,6 +70,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     let phase = 'PROVIDER';
     try {
       const host = provider(row);
+      if (row.retired) deny();
       phase = 'WORLD_IDENTITY';
       if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
       phase = 'NATIVE_INSPECT';
@@ -99,6 +103,31 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         await row.host.withStoppedWorld({ ...row.nativeQuery }, async () => undefined);
     } catch { /* Host owns cleanup of rejected or dead native sessions */ }
     forget(row);
+  }
+  // Keep the original Host query even after CURRENT inspection fails. A failure
+  // revokes a lease, but cannot prove that its native process has stopped.
+  async function retireBinding(row) {
+    const host = provider(row);
+    let active = true, used = false;
+    try {
+      await host.withStoppedWorld({ ...row.nativeQuery }, async facts => {
+        if (!active || used || !factsMatch(row, facts, 'STOPPED')) deny();
+        used = true; provider(row);
+        if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
+        if (!active || !factsMatch(row, facts, 'STOPPED')) deny();
+        provider(row);
+        row.retired = true;
+        for (const lease of leases.values()) {
+          if (lease.world.connectionRef === row.world.connectionRef) { lease.retired = true; forget(lease); }
+        }
+        forget(row);
+        await runtime.retireLocal(row.world.connectionRef);
+        provider(row);
+        if (!active) deny();
+        bindings.delete(row.world.connectionRef);
+      });
+      if (!used) deny();
+    } finally { active = false; }
   }
   const port = {
     async setRoots(input) {
@@ -179,6 +208,31 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         } finally { callbackActive = false; forget(row); }
       });
     },
+    /** What a new flat world would use (roots, installed games, mapgen) and what is missing. */
+    async describeFlatWorldCreation(input) {
+      const q = fields(input, ['requesterRef', 'userPath']);
+      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath)) return Promise.reject(new Error('SCHEMA_INVALID'));
+      return track(() => describeFlatWorldCreation({ roots: rootPaths, userPath: resolve(q.userPath) }));
+    },
+    /** Creates a new local single-player world, flat by default, with this Adapter's payload
+     * already installed. The result names only that new world; on any failure nothing is
+     * selected, created or overwritten. The next step is BIND_RUNNING_WORLD on its connectionRef. */
+    async createFlatWorld(input) {
+      const q = fields(input, ['requesterRef', 'userPath', 'root', 'gameId', 'worldName'], ['requesterRef', 'userPath']);
+      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath) ||
+          ['root', 'gameId', 'worldName'].some(k => k in q && !text(q[k])) || ('root' in q && !isAbsolute(q.root)))
+        return Promise.reject(new Error('SCHEMA_INVALID'));
+      return track(async () => {
+        const made = await createFlatWorld({ roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
+          gameId: q.gameId, worldName: q.worldName, transportPort: await freePort() });
+        const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
+        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('WORLD_NOT_FOUND'); }
+        log('info', `LOCAL_FLAT_WORLD_CREATED ${rows[0].connectionRef}`);
+        return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
+          worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
+          game: made.game, mapgen: made.mapgen, perCellMod: made.perCellMod, nextAction: 'BIND_RUNNING_WORLD' };
+      });
+    },
     async pair(input) {
       const { row } = query(input);
       if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
@@ -186,9 +240,15 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       return track(async () => {
         try {
           await inspectRow(row);
+          for (const previous of bindings.values()) {
+            if (previous.world.connectionRef === row.world.connectionRef) deny();
+            await retireBinding(previous);
+          }
+          await inspectRow(row); // stopping A must not invalidate the acquired B
           if (running.has(row.world.worldPath)) deny();
           running.set(row.world.worldPath, row);
           const loaded = await runtime.pairLocal(row.world);
+          bindings.set(row.world.connectionRef, row);
           const facts = await inspectRow(row);
           return { ...observations(row, facts), ...loaded, paired: true };
         } catch { await stopUnused(row); deny(); }
@@ -206,7 +266,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
     async close() {
       closed = true; await Promise.allSettled([...pending]);
       await Promise.all([...leases.values()].map(stopUnused));
-      leases.clear(); running.clear();
+      leases.clear(); running.clear(); bindings.clear();
     },
   };
 }

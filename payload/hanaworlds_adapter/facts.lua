@@ -40,12 +40,6 @@ function M.capacity(core, cell_count, body_bytes)
     source = 'PAIRED_COURIER_RESPONSE_BYTES'}
 end
 
-local callbacks = {'on_construct', 'on_destruct', 'after_destruct',
-  'after_place_node', 'on_timer', 'on_metadata_inventory_move',
-  'on_metadata_inventory_put', 'on_metadata_inventory_take',
-  'allow_metadata_inventory_move', 'allow_metadata_inventory_put',
-  'allow_metadata_inventory_take'}
-
 -- Legal param2 values are derived only where the engine semantics are
 -- verified (Luanti 5.17 lua_api.md "Nodes"/paramtype2, builtin item_place_node):
 -- facedir stores one of 24 rotations; none is engine-unused mod data, so only
@@ -64,6 +58,34 @@ local function legal_param2(def)
     end
   end
   return nil
+end
+
+-- Catalogue hasCallbacks/hasPersistentState follow Contracts scope write-path-init/v1:
+-- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (VoxelManip
+-- node data via WorldEdit set/set_param2 and this payload's region writer, swap_node
+-- for restores), on which the engine runs no node-definition callback. Player
+-- callbacks, ABM/LBM and other later world dynamics are out of that scope and are
+-- caught by full-state readback digests, not claimed absent.
+-- Engine-documented node-definition callback fields (Luanti 5.17 lua_api.md,
+-- "Node definition"); definedCallbacks lists those present on a definition.
+local node_callbacks = {'after_destruct', 'after_dig_node', 'after_place_node',
+  'allow_metadata_inventory_move', 'allow_metadata_inventory_put', 'allow_metadata_inventory_take',
+  'can_dig', 'on_blast', 'on_construct', 'on_destruct', 'on_dig', 'on_flood',
+  'on_metadata_inventory_move', 'on_metadata_inventory_put', 'on_metadata_inventory_take',
+  'on_punch', 'on_receive_fields', 'on_rightclick', 'on_timer', 'preserve_metadata'}
+local initialization = {after_destruct = true, after_place_node = true, on_construct = true,
+  on_destruct = true, on_timer = true}
+local state_indicator = {allow_metadata_inventory_move = true, allow_metadata_inventory_put = true,
+  allow_metadata_inventory_take = true, on_metadata_inventory_move = true,
+  on_metadata_inventory_put = true, on_metadata_inventory_take = true,
+  on_receive_fields = true, preserve_metadata = true}
+-- Engine global registries that fire on this write path (map modification events of
+-- VoxelManip write_to_map and swap_node). nil = registry not readable = unknown.
+local function global_write_callbacks(core)
+  local list = core.registered_on_mapblocks_changed
+  if type(list) ~= 'table' then return nil end
+  if #list > 0 then return {'register_on_mapblocks_changed'} end
+  return {}
 end
 
 -- Catalogue revisions fingerprint the currently loaded engine registry. They
@@ -92,17 +114,27 @@ local function catalogue(core)
   table.sort(mod_names)
   if #names == 0 then return nil, 'CAPABILITY_UNAVAILABLE' end
   local function json(value) return assert(core.write_json(value)) end
-  local node_json, registry_parts = {}, {}
+  local globals = global_write_callbacks(core)
+  local clean = globals ~= nil and #globals == 0
+  local node_json, registry_parts, evidence_json = {}, {}, {}
   for _, name in ipairs(names) do
     local def = core.registered_nodes[name]
     if type(def) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
-    local has_callbacks = false
-    local callback_parts = {}
-    for _, key in ipairs(callbacks) do
+    -- Defined callback names only: a function's identity is not stable across runs.
+    local defined, has_init, has_state = {}, false, false
+    for _, key in ipairs(node_callbacks) do
       if def[key] ~= nil then
-        has_callbacks = true
-        callback_parts[#callback_parts + 1] = key .. '=' .. tostring(def[key])
+        defined[#defined + 1] = key
+        has_init = has_init or initialization[key] == true
+        has_state = has_state or state_indicator[key] == true
       end
+    end
+    local has_callbacks, persistent = nil, nil
+    -- 'ignore' is the engine's not-loaded placeholder, never a cell's node: kept
+    -- unknown (stricter than the derivation) so it can never become writable.
+    if clean and name ~= 'ignore' then
+      has_callbacks = has_init
+      if not has_init and not has_state then persistent = false end
     end
     local known = {
       walkable = def.walkable,
@@ -115,17 +147,18 @@ local function catalogue(core)
       param2Type = type(def.paramtype2) == 'string' and def.paramtype2 ~= ''
         and def.paramtype2 or nil,
       hasCallbacks = has_callbacks,
+      hasPersistentState = persistent,
     }
     local allowed = legal_param2(def)
     local fields = {'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
       'lightSource', 'param2Type', 'allowedParam2', 'hasCallbacks', 'hasPersistentState',
       'definitionRevision'}
-    local unknown = {'collisionBoxes', 'hasPersistentState'}
+    local unknown = {'collisionBoxes'}
     if allowed == nil then unknown[#unknown + 1] = 'allowedParam2' end
     local scalar = {}
     if type(known.walkable) ~= 'boolean' then known.walkable = nil end
     for _, field in ipairs({'walkable', 'liquidType', 'damagePerSecond', 'lightSource',
-      'param2Type', 'hasCallbacks'}) do
+      'param2Type', 'hasCallbacks', 'hasPersistentState'}) do
       if known[field] == nil then unknown[#unknown + 1] = field end
       scalar[#scalar + 1] = field .. '=' .. tostring(known[field])
     end
@@ -138,7 +171,7 @@ local function catalogue(core)
     scalar[#scalar + 1] = 'allowedParam2=' .. allowed_json
     table.sort(unknown)
     local rev = core.sha256(name .. '|' .. table.concat(scalar, '|') .. '|'
-      .. table.concat(callback_parts, '|'))
+      .. table.concat(defined, '|'))
     if type(rev) ~= 'string' or rev == '' then return nil, 'CAPABILITY_UNAVAILABLE' end
     local properties = {}
     for _, field in ipairs(fields) do
@@ -152,6 +185,10 @@ local function catalogue(core)
     properties[#properties + 1] = '"unknownFields":[' .. table.concat(unknown_json, ',') .. ']'
     node_json[#node_json + 1] = json(name) .. ':{' .. table.concat(properties, ',') .. '}'
     registry_parts[#registry_parts + 1] = name .. '=' .. rev
+    local defined_json = {}
+    for i, key in ipairs(defined) do defined_json[i] = json(key) end
+    evidence_json[#evidence_json + 1] = '{"nodeName":' .. json(name) .. ',"definitionRevision":'
+      .. json(rev) .. ',"definedCallbacks":[' .. table.concat(defined_json, ',') .. ']}'
   end
   local registry = core.sha256(info.id .. '|' .. table.concat(mod_names, '|') .. '|'
     .. table.concat(registry_parts, '|'))
@@ -163,13 +200,30 @@ local function catalogue(core)
     .. json('luanti-runtime-registry') .. ',"gameId":' .. json(info.id)
     .. ',"gameRevision":' .. json(registry) .. ',"modRevisions":{'
     .. table.concat(mod_json, ',') .. '},"nodes":{'
-    .. table.concat(node_json, ',') .. '}}', names, info
+    .. table.concat(node_json, ',') .. '}}', names, info, evidence_json, globals
 end
 
 function M.catalogue(core)
   local raw, code = catalogue(core)
   if not raw then return nil, code end
   return {raw_json = raw}
+end
+
+-- One registry snapshot: the Catalogue and its write-path-init/v1 inventory
+-- (WritePathEvidence without catalogueDigest, which the host computes).
+function M.write_path(core)
+  local raw, names, _, evidence, globals = catalogue(core)
+  if not raw then return nil, names end
+  local function json(value) return assert(core.write_json(value)) end
+  local globals_json = 'null'
+  if globals then
+    local parts = {}
+    for i, name in ipairs(globals) do parts[i] = json(name) end
+    globals_json = '[' .. table.concat(parts, ',') .. ']'
+  end
+  return {raw_json = '{"catalogue":' .. raw .. ',"evidence":{"profileVersion":"write-path-evidence/v1",'
+    .. '"scope":"write-path-init/v1","writePath":"CALLBACK_FREE_NODE_DATA","globalWriteCallbacks":'
+    .. globals_json .. ',"nodes":[' .. table.concat(evidence, ',') .. ']}}'}
 end
 
 -- Appearance support is deliberately narrow: an opaque "normal" cube whose

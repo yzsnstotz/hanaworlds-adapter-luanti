@@ -13,17 +13,17 @@ async function realDirectory(path, code) {
   const stat = await lstat(path).catch(() => null);
   if (!stat?.isDirectory() || stat.isSymbolicLink()) throw fault(code);
 }
-async function syncFile(path, content) {
+export async function syncFile(path, content) {
   const handle = await open(path, 'wx', 0o600);
   try { await handle.writeFile(content); await handle.sync(); }
   finally { await handle.close(); }
 }
-async function syncDirectory(path) {
+export async function syncDirectory(path) {
   const handle = await open(path, 'r');
   try { await handle.sync(); }
   finally { await handle.close(); }
 }
-function worldSettings(raw) {
+export function worldSettings(raw) {
   const match = /^\s*gameid\s*=\s*([^\r\n#]+)\s*$/m.exec(raw);
   return match?.[1]?.trim() || null;
 }
@@ -87,20 +87,10 @@ export async function provisionLocalPayload(world, { stoppedWorld, transportPort
   // Installation is only for an empty current payload location. No identity,
   // pairing or bytes are adopted from an existing installation.
   if (targetStat) throw fault('PAYLOAD_VERSION_MISMATCH');
-  const worldRef = `luanti:${randomUUID()}`;
-  const payloadVersion = PAYLOAD_VERSION;
-  const digest = await payloadDigest();
   const staging = join(mods, `.hanaworlds-adapter-${randomUUID()}`);
   await mkdir(staging, { mode: 0o700 });
   try {
-    for (const name of payloadFiles) await syncFile(join(staging, name), await readFile(join(payloadDir, name)));
-    const identity = { worldRef, payloadVersion, payloadDigest: digest };
-    await syncFile(join(staging, manifestName), `${JSON.stringify(identity)}\n`);
-    if (transportPort !== null) {
-      await syncFile(join(staging, 'transport.json'), `${JSON.stringify({
-        worldRef, port: transportPort, token: randomBytes(32).toString('hex') })}\n`);
-    }
-    await syncDirectory(staging);
+    const identity = await writePayload(staging, { transportPort });
     await rename(staging, target);
     await syncDirectory(mods);
     return identity;
@@ -108,6 +98,21 @@ export async function provisionLocalPayload(world, { stoppedWorld, transportPort
     await rm(staging, { recursive: true, force: true });
     throw error;
   }
+}
+
+/** Writes a fresh payload identity into an empty, caller-owned directory and fsyncs it.
+ * Used for an existing stopped world (above) and for a world this Adapter creates. */
+export async function writePayload(directory, { transportPort = null } = {}) {
+  const worldRef = `luanti:${randomUUID()}`;
+  const identity = { worldRef, payloadVersion: PAYLOAD_VERSION, payloadDigest: await payloadDigest() };
+  for (const name of payloadFiles) await syncFile(join(directory, name), await readFile(join(payloadDir, name)));
+  await syncFile(join(directory, manifestName), `${JSON.stringify(identity)}\n`);
+  if (transportPort !== null) {
+    await syncFile(join(directory, 'transport.json'), `${JSON.stringify({
+      worldRef, port: transportPort, token: randomBytes(32).toString('hex') })}\n`);
+  }
+  await syncDirectory(directory);
+  return identity;
 }
 
 export async function payloadDigest() {

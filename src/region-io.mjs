@@ -21,11 +21,22 @@ export class RegionFault extends Error {
 
 export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter-region', major: 1, minor: 0 }],
-  capabilities: ['world-adapter-region/v1:chunked-read', 'world-adapter-region/v1:chunked-write',
-    'world-adapter-region/v1:lighting-complete', 'world-adapter-region/v1:load-then-know',
-    'world-adapter-region/v1:restore-state'],
+  protocols: [{ protocol: 'world-adapter-region', major: 1, minor: 1 }],
+  // callback-free-write: region writes and restores are VoxelManip node data (voxel.lua).
+  capabilities: ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-read',
+    'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
+    'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state'],
   // Provenance is a record only; an installed package cannot know its own tar digest.
+  provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
+}));
+
+/** world-adapter/v6 runtime protocol (minor 1, write-path-init/v1): per-cell writes and
+ * restores are WorldEdit set/set_param2 (VoxelManip) plus swap_node, and the Catalogue
+ * publishes hasCallbacks/hasPersistentState under that scope. */
+export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
+  profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
+  protocols: [{ protocol: 'world-adapter', major: 6, minor: 1 }],
+  capabilities: ['world-adapter/v6:callback-free-write', 'world-adapter/v6:write-path-state-facts'],
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 

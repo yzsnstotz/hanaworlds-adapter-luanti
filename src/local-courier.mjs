@@ -71,6 +71,7 @@ export class LocalCourier {
   prepareCheck(positions) { return this.dispatch('prepare_check', { positions }); }
   profile() { return this.dispatch('fact_profile'); }
   catalogue() { return this.dispatch('fact_catalogue'); }
+  writePath() { return this.dispatch('fact_write_path'); }
   materialMetadata() { return this.dispatch('fact_material_metadata'); }
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
   regionLimits() { return this.dispatch('region_limits'); }

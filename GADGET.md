@@ -1,13 +1,27 @@
 # HanaWorlds Luanti Adapter
 
-Version0.5.0 implements fresh local `world-adapter/v6` with payload0.5.0 and
-contracts0.5.0, keeping the readonly `readMaterialSources(worldRef)` fact and adding
-the Canvas-only `world-adapter-region/v1` port `hanaworldsWorldAdapterRegionV1`
-(Luanti emerge_area + VoxelManip mapblock batches, per-chunk KNOWN/UNKNOWN,
-expectedCurrentDigest, APPLY/RESTORE, lighting fact, ProtocolHandshake major 1);
-never a commit: Canvas restores its BEFORE_IMAGE states. The visible Host management facts include current world,
-connection incarnation, actual native PID, payload digest and the non-switchable
-Adapter placement invariants. It requires no player permission approval.
+Version0.7.0 (payload0.6.0, contracts0.5.2) publishes Catalogue facts under
+`write-path-init/v1`, with `NativeFacts.readWritePathEvidence(worldRef)` returning
+the actual callback inventory and public validation result. Only a known empty
+write-path global registry and nodes without initialization/state hooks can yield
+false/false. UNKNOWN stays null; `ignore` and initialization-path nodes remain
+rejected. Independent later player/ABM/LBM changes are detected by full-state
+readback and same-origin Undo conflict checks, not declared absent.
+
+`hanaworldsWorldAdapterV6.protocolHandshake` advertises world-adapter 6.1 with
+callback-free-write and write-path-state-facts; `hanaworldsWorldAdapterRegionV1`
+advertises region 1.1 with callback-free-write plus its existing read/write,
+load, lighting and restore capabilities. K3 consumers check protocol major,
+minor and required capabilities; provenance hashes do not decide compatibility.
+
+New flat-world creation remains `createFlatWorld` / `describeFlatWorldCreation`
+on `hanaworldsLuantiLocalWorlds`: Luanti flat mapgen in the new world's own
+map_meta.txt, current payload pre-installed, explicit prerequisite/game-choice
+errors, never overwriting a world. Region I/O uses emerge_area + VoxelManip
+mapblock batches and per-chunk KNOWN/UNKNOWN, expectedCurrentDigest and lighting
+facts. Canvas decides commits and restores its BEFORE_IMAGE states. Host-visible
+facts include the current world, connection incarnation, actual native PID,
+payload digest and non-switchable placement invariants. No player approval path.
 
 The Adapter transports Canvas's compiled effects and saved history state.
 Canvas decides transactions and history; Painter does not write the world,
