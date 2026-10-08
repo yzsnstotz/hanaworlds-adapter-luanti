@@ -33,3 +33,10 @@ If an SDK-only extension is sufficient, record its provider and value contracts 
 - Start only the registered own 47612 instance after a fresh availability check and deliver a real first-step screenshot/at-most-six-step checklist. No service or screenshot currently exists for this request.
 
 Current state: PARTIAL, phase-1 production capability/UI/REAL_RUNTIME/REAL_UI NOT_RUN. No owner action, credentials, funds, deployment, new tag or test replay is requested.
+
+
+## I-K2 public assembly clarification (2026-10-09; documentation only)
+
+The public request at integration `a56c172dd7d559763d7671e4cbc2bf2c00722d41`, `composition/k2-text/formal053/public-assembly-request.json`, is answered for existing Adapter 0.7.5 in [PUBLIC_ASSEMBLY_075.md](PUBLIC_ASSEMBLY_075.md). Formal v0.5.3 already publishes NativeControlInput/Lease/Query/Evidence and LocalEngineControlPort; these do not require a new wire/tag. Adapter plugin config is localWorldRoots:string[], and its exact shipped Loader patch contains only id/name; existing public setRoots is an alternative once the plugin is loaded.
+
+Please confirm the pinned official Loader/provider recipe and the authoritative owning-origin public supplier for the consumed hanaworldsWorldRevisionOracle.read(worldRef) and hanaworldsLuantiInspectionContext.read(InspectWorldRequest) result {current:true,worldRef,worldRevision,objectRef,objectRevision}. These existing structural checks are not a named SDK declaration or permission to invent a Host snapshot from request JSON/private Canvas maps. Preserve Canvas selection/world/object revision authority and known-Session identity; if an existing typed SDK route suffices, identify it rather than preselecting a new protocol. Session binding implementation stays PAUSED; I-K2 World UNBOUND/history NO_SESSION and transactions/Undo/Luanti/UI NOT_RUN remain as recorded in its public request. No extra capability or runtime authority is requested by this documentation handoff.
