@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 const root=process.env.HW_MATERIAL_PACKAGE;
 const load=p=>import(root?pathToFileURL(join(root,p)):new URL('../'+p,import.meta.url));
-const C=await load('vendor/hanaworlds-contracts/dist/local/index.mjs');
+const C=await import('#contracts');
 const {apply}=await load('src/index.mjs');
 const connection={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:'fixture-incarnation'};
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==','base64');

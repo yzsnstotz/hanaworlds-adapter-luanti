@@ -399,3 +399,37 @@ with the commit, and refuses reused evidence/work directories. Existing failed
 runs remain archived under this card's `_evidence/`. This is a component gate;
 Desktop UI, model/skill selection, real Canvas transactions and product Undo
 remain separate independent gates.
+
+
+## Independent world manager (Adapter 0.7.4)
+
+`dev/world-manage/` is a development-only consumer of this Adapter's public ports,
+listening on loopback port 47607 at `/worlds`. It creates new isolated flat worlds,
+switches existing worlds without recreating them, starts a real Luanti game client,
+and previews/cancels/confirms safe deletion with directory/list absence readback.
+The page prominently labels session bindings as contract-shaped fixtures. The worlds,
+server child/exit records, external-process checks and game window are real.
+
+Start with Node 24.13.1: `bash dev/world-manage/start.sh <own-state> <cordis-module>`.
+Copy the separately licensed VoxeLibre game and WorldEdit into that state's
+`profile/games/mineclone2` and `profile/mods/worldedit` first. Missing prerequisites
+are reported by the Adapter; the service does not install or reuse a product profile.
+The service remains detached, and supports localhost, 127.0.0.1 and query parameters.
+The existing readback service on 47606 is unaffected.
+
+New public `hanaworldsLuantiLocalWorlds.stopWorld({requesterRef, connectionRef, worldRef})`
+stops exactly the caller's current world using its original Host STOPPED callback and
+retires its runtime binding. It retains the Adapter service and world directory for
+later reconnect. Wrong identities/requesters are refused. Host child exit records are
+retained for repeated stopped-world callbacks when switching back or deleting.
+
+Deletion confirmations are one-shot and fixed to one exact world. The independent
+consumer checks all fixture session bindings and external process/open-file observations
+again at confirmation, before the public Adapter rechecks ownership, world identity,
+leases, runtime activity and journal safety. Cancel has no world mutation. Product App,
+profile and old worlds are outside this service's root and never used.
+
+`node scripts/test-contracts-candidate.mjs <pack> <sha256> <fresh-own-run>` checks pack
+bytes and installs only in a fresh isolated test copy, selecting the current 13-file
+conformance suite and exact-package advertisement. It leaves source pins/vendor intact.
+A candidate is not a published version; the formal tag repin/validation gate is separate.

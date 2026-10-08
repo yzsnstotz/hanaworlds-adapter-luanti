@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HanaWorlds · 世界管理</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f3ec;color:#26352d;font:16px/1.6 system-ui,sans-serif}main{max-width:1060px;margin:auto;padding:36px 28px}h1{font-size:32px;margin:0}h2{font-size:22px;margin:0 0 16px}.eyebrow{letter-spacing:.14em;color:#5e7063;font-size:12px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.banner{padding:16px 20px;background:#fff2ca;border:1px solid #d4bc79;border-radius:12px;margin-bottom:24px}.muted{color:#69736b;font-size:14px}button{font:inherit;cursor:pointer;border:1px solid #a5b0a3;border-radius:8px;background:white;color:#26352d;padding:9px 15px}button.primary{background:#285841;color:white;border-color:#285841}button.danger{color:#9a302a;border-color:#bb7973}button:disabled{opacity:.5;cursor:default}.actions{display:flex;gap:9px;flex-wrap:wrap}.card{padding:22px;border:1px solid #d7dcd1;background:#fff;border-radius:12px;margin:15px 0}.card.current{border:2px solid #4c8463}.name{font-weight:650;font-size:18px;overflow-wrap:anywhere}.badge{display:inline-block;background:#e7f1e8;color:#285841;font-size:12px;padding:3px 10px;border-radius:20px}.row{display:flex;justify-content:space-between;gap:16px;align-items:center}.small{font-size:13px}details{margin-top:16px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:#f5f7f2;padding:12px}#notice{min-height:28px;margin:12px 0}#notice.error{color:#a12e26}dialog{border:1px solid #a5b0a3;border-radius:14px;max-width:570px;padding:28px}dialog::backdrop{background:#1e352c88}#loss{padding:16px;background:#fff1e9;border-radius:8px}canvas{max-width:100%;image-rendering:pixelated;border:1px solid #d7dcd1;border-radius:8px}label{display:block;margin-top:10px}.top-actions{margin:20px 0}footer{border-top:1px solid #d7dcd1;margin-top:32px;padding-top:16px}@media(max-width:650px){main{padding:20px 15px}.row,header{display:block}.actions{margin-top:14px}.name{font-size:16px}}
+</style>
+<main>
+<header><div><div class="eyebrow">HANAWORLDS / ADAPTER</div><h1>世界管理</h1></div><span id="version" class="muted"></span></header>
+<div class="banner"><strong>独立试用 · 会话绑定是示例（fixture）</strong><br>本页的世界、Luanti 服务和游戏窗口是真实隔离运行。会话绑定用合约形状的示例表示；这里管理自己创建的世界。</div>
+<div class="actions top-actions"><button class="primary" id="create">新建平地世界</button><button id="refresh">刷新列表</button><button id="enter">进入当前世界游戏</button><button id="stop">停止当前世界</button></div>
+<div class="muted">切换会保留原世界。游戏打开时，请先从游戏菜单退出，再切换或停止。</div>
+<div id="notice" role="status" aria-live="polite"></div><div id="prerequisites"></div>
+<section aria-label="世界列表" id="worlds"></section>
+<section class="card"><div class="row"><h2>当前世界俯视图</h2><button id="readback">读取当前地表</button></div><p class="muted">通过 Adapter 只读能力读取真实地表；不会修改世界。</p><canvas id="surface" width="392" height="392" hidden></canvas><p id="surface-info" class="small"></p></section>
+<details><summary>运行详情与示例会话绑定</summary><pre id="details"></pre></details>
+<footer class="muted">候选阶段 · 正式合约版本门尚未完成，当前结果不等于 owner 验收。</footer>
+</main>
+<dialog id="deletion"><h2>删除世界</h2><p class="name" id="delete-name"></p><p id="category"></p><div id="loss"></div><p id="blockers"></p><div class="actions"><button id="cancel">取消</button><button class="danger" id="confirm">确认永久删除</button></div></dialog>
+<script>
+const $=id=>document.getElementById(id);let state,preview,busy=false;
+const say=(text,error=false)=>{$('notice').textContent=text;$('notice').className=error?'error':''};
+async function call(path,input={}){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});const d=await r.json();if(!d.ok){const e=Error(d.error.code);e.details=d.error.details;throw e}return d.result}
+const reasons={LIVE_SESSION_BINDING:'仍有示例会话绑定',EXTERNAL_NATIVE_PROCESS:'其他进程仍在使用世界',LIFECYCLE_LEASE_OPEN:'世界运行中',ADAPTER_CONNECTION_BOUND:'当前世界已连接',RUNTIME_CONNECTION_OPEN:'当前世界已连接',GAME_CLIENT_RUNNING:'请先从游戏菜单退出',CREATION_MARKER_LOCATION_MISMATCH:'归属标记与目录不匹配'};
+function errorText(e){const bs=e.details?.blockers??[];return `${e.message}${bs.length?'：'+bs.map(b=>reasons[b.reason]??b.reason??b.code).join('；'):''}`}
+function locks(){document.querySelectorAll('button').forEach(b=>b.disabled=busy||b.dataset.blocked==='true');if(!busy){$('enter').disabled=!state?.current||state.gameRunning;$('stop').disabled=!state?.current||state.gameRunning;$('create').disabled=!!state?.gameRunning||state?.prerequisites?.ready===false;$('readback').disabled=!state?.current;$('confirm').disabled=!preview?.deletable}}
+async function run(fn){if(busy)return;busy=true;locks();try{await fn()}catch(e){say(errorText(e),true)}finally{busy=false;locks()}}
+async function refresh(){state=await(await fetch('/api/state')).json();$('version').textContent=`Adapter ${state.adapterVersion}`;$('details').textContent=JSON.stringify({pid:state.pid,current:state.current,fixtureBindings:state.fixtureBindings},null,2);$('worlds').replaceChildren();
+  $('prerequisites').textContent=state.prerequisites.ready?'':`缺少前置：${JSON.stringify(state.prerequisites.missing??state.prerequisites)}`;
+  if(state.currentError)say(`当前世界检查失败：${state.currentError}`,true);
+  if(!state.worlds.length){const p=document.createElement('p');p.textContent='还没有世界。点击“新建平地世界”开始。';$('worlds').append(p)}
+  for(const w of state.worlds){const card=document.createElement('article');card.className='card'+(w.current?' current':'');const row=document.createElement('div');row.className='row';const title=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=w.worldName;title.append(name);const sub=document.createElement('div');sub.className='muted';sub.textContent=w.current?'当前世界 · 已连接 · 示例会话已绑定':'已保存的本地世界';title.append(sub);row.append(title);const actions=document.createElement('div');actions.className='actions';
+    const sw=document.createElement('button');sw.textContent=w.current?'当前世界':'切换到此世界';sw.dataset.blocked=String(w.current||state.gameRunning);sw.disabled=w.current||state.gameRunning;sw.onclick=()=>run(async()=>{await call('/api/connect',{connectionRef:w.connectionRef});$('surface').hidden=true;$('surface-info').textContent='';await refresh();say('已切换到 '+w.worldName)});
+    const del=document.createElement('button');del.className='danger';del.textContent='删除世界';del.onclick=()=>run(async()=>{preview=await call('/api/preview-delete',{connectionRef:w.connectionRef});$('delete-name').textContent=preview.worldName;$('category').textContent='类别：'+preview.category;$('loss').textContent=`将永久删除整个世界目录：${preview.dataLoss.files} 个文件、${preview.dataLoss.bytes} 字节，包括地图、玩家、设置和模组数据；无法撤销。`;$('blockers').textContent=preview.deletable?'已检查：世界未运行、没有任何示例会话绑定，且归属本插件。':`不能删除：${preview.blockers.map(b=>reasons[b.reason]??b.reason??b.code).join('；')}`;$('deletion').showModal()});actions.append(sw,del);row.append(actions);card.append(row);
+    const label=document.createElement('label');label.className='muted small';const check=document.createElement('input');check.type='checkbox';check.checked=w.fixtureHeld;check.onchange=()=>run(async()=>{await call('/api/fixture-binding',{connectionRef:w.connectionRef,enabled:check.checked});await refresh();say('额外示例会话绑定已更新')});label.append(check,document.createTextNode(' 保留额外示例会话绑定（fixture，开启后禁止删除）'));card.append(label);$('worlds').append(card)}locks();
+}
+$('create').onclick=()=>run(async()=>{say('正在创建并连接真实平地世界…');const r=await call('/api/create');$('surface').hidden=true;await refresh();say('已创建并连接：'+r.worldName)});
+$('refresh').onclick=()=>run(async()=>{await refresh();say('世界列表已刷新')});
+$('enter').onclick=()=>run(async()=>{const r=await call('/api/enter');await refresh();say('游戏已打开，请在 Luanti 窗口查看当前世界；退出后刷新列表。')});
+$('stop').onclick=()=>run(async()=>{await call('/api/stop');$('surface').hidden=true;await refresh();say('当前世界已停止并解除示例会话绑定，世界数据保留。')});
+$('cancel').onclick=()=>run(async()=>{await call('/api/cancel-delete',{confirmationRef:preview.confirmationRef});preview=null;$('deletion').close();await refresh();say('已取消删除，世界保留。')});
+$('deletion').addEventListener('cancel',e=>{e.preventDefault();$('cancel').click()});
+$('confirm').onclick=()=>run(async()=>{const name=preview.worldName;try{await call('/api/confirm-delete',{confirmationRef:preview.confirmationRef});preview=null;$('deletion').close();await refresh();say('已删除 '+name+'；目录与列表均已读回不存在。')}catch(e){preview=null;$('deletion').close();await refresh();throw e}});
+$('readback').onclick=()=>run(async()=>{say('正在读取真实地表…');const r=await call('/api/readback');const c=$('surface'),ctx=c.getContext('2d');for(const v of r.surface.columns){ctx.fillStyle=v.status!=='KNOWN'?'#888':v.nodeName==='mcl_core:dirt_with_grass'?'#75a655':'#a49b87';ctx.fillRect((v.x+24)*8,(v.z+24)*8,8,8)}c.hidden=false;$('surface-info').textContent=`${JSON.stringify(r.surface.materials)} · ${JSON.stringify(r.surface.counts)}`;say('地表读回完成')});
+refresh().catch(e=>say(e.message,true));
+</script></html>

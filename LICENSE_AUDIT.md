@@ -152,3 +152,19 @@ AGPL-3.0 · https://github.com/Uberi/Minetest-WorldEdit · per-cell mod required
 createFlatWorld; Google Chrome 154 (installed app, proprietary/BSD Chromium base) · evidence
 screenshots over the DevTools protocol only. The spawn note reads VoxeLibre mcl_spawn
 behaviour from its source (mods/PLAYER/mcl_spawn/init.lua); no game code is copied.
+
+
+### F-AD-WORLD-MANAGE-01 / 0.7.4 development runtime
+
+New manager/Host/server/page, public stopWorld and tests are original Adapter source
+under this repository's MIT license. No third-party implementations are committed.
+Development copies only: Luanti 5.17.0 · LGPL-2.1-or-later · official local
+`/Applications/luanti.app` · real server and game; VoxeLibre 0.92.3 · GPL-3.0
+(code; included asset notices retained) · existing public Adapter readback supply,
+original upstream VoxeLibre/VoxeLibre · isolated flat-world game;
+WorldEdit 62ffafe · AGPL-3.0 · existing public Adapter readback supply,
+original upstream Uberi/Minetest-WorldEdit · world editing API;
+`@deepseek-ai/cordis` 4.0.4 · MIT · npm registry · independent plugin container;
+`canonicalize` 5.1.0 · Apache-2.0 · byte-preserved local installed package from
+public Adapter readback source, original npm registry · canonical JSON dependency.
+These copies stay in this card's ignored run directory, with original licenses.

@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const cwd = process.env.HW_MATERIAL_PACKAGE ?? fileURLToPath(new URL('..', import.meta.url));
 const script = fileURLToPath(new URL('./support/material-facts.lua', import.meta.url));
 const run = (...a) => JSON.parse(execFileSync('lua', [script, ...a], { cwd, encoding: 'utf8' }));
-const C = await import(pathToFileURL(join(cwd, 'vendor/hanaworlds-contracts/dist/local/index.mjs')));
+const C = await import('#contracts');
 
 test('one native snapshot carries Catalogue, actual paths, load-ordered mods and appearance', () => {
   const m = run();

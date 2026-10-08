@@ -61,5 +61,15 @@ test('same service retires A only inside exact Host stopped callback, then pairs
     await assert.rejects(local.port.inspect(query(la)), /CURRENT_WORLD_MISMATCH/);
     await assert.rejects(local.inspectConnection(a.connectionRef), /WORLD_NOT_BOUND/);
     assert.equal((await local.port.inspect(query(lb))).current, true);
+    assert.equal(typeof local.port.stopWorld, 'function', 'public stopped-world retirement is missing');
+    await assert.rejects(local.port.stopWorld({requesterRef:'other', connectionRef:b.connectionRef, worldRef:b.worldRef}), /CURRENT_WORLD_MISMATCH/);
+    const stopped = await local.port.stopWorld({requesterRef:'host', connectionRef:b.connectionRef, worldRef:b.worldRef});
+    assert.equal(stopped.stopped, true);
+    assert.equal(stopped.worldRef, b.worldRef);
+    assert.equal(bound, undefined);
+    await assert.rejects(local.inspectConnection(b.connectionRef), /WORLD_NOT_BOUND/);
+    const la2 = await acquire(a); await local.port.pair(query(la2));
+    assert.equal(bound.connectionRef, a.connectionRef, 'stopping does not close the reusable Adapter service');
+
   } finally { await local.close(); await rm(root, { recursive: true, force: true }); }
 });

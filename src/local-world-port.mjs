@@ -319,6 +319,20 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
           nativeStop: f.nativeStop, readback: { listed: false, pathExists: false } };
       });
     },
+    /** Stop one exact current world through its original Host callback and retire the binding.
+     * The Adapter service remains open; no stopped evidence is accepted from caller JSON. */
+    async stopWorld(input) {
+      let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
+      return track(async () => {
+        const selected = await world(q.connectionRef);
+        if (selected.worldRef !== q.worldRef) deny('CURRENT_WORLD_MISMATCH');
+        const row = bindings.get(q.connectionRef);
+        if (!row) deny('WORLD_NOT_BOUND');
+        if (row.requesterRef !== q.requesterRef || !sameWorld(row.world, selected)) deny();
+        await retireBinding(row);
+        return { stopped: true, connectionRef: q.connectionRef, worldRef: q.worldRef };
+      });
+    },
     async pair(input) {
       const { row } = query(input);
       if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
