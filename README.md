@@ -468,3 +468,35 @@ New implementation continuation: native exit removes its connection from availab
 Adapter 0.7.7 keeps payload 0.6.0 and pins exact hanaworlds-contracts@0.5.4. Published tag v0.5.4 (annotated b3721db855ffe08dfa524e6eea6a5da4eed4c220, peeled 85687fc3811e4c8ee6e69410d46d8026e19d2c75) supplies 157837 bytes, SHA256 b920097dee8bf57ef44cc9ca964829e568b14c9e1b15a77bf4599f69391062ec, 26 canonical members. The rc.1-to-formal supplier change is identity/derived identity/README only; no candidate or older business gate is replayed. Offline member verification and exact handshake describe this package identity only.
 
 The existing 47612 TO_TEST instance remains Adapter 0.7.6 / contracts 0.5.4-rc.1 with its original source, SDK, service and worlds. This formal package does not replace or restart it and has no new UI/Core/model/Luanti/product acceptance claim. Native Host and Inspection recipes above retain their historical node semantics; production Host export supply is a separate change.
+
+
+## Public mechanical Host supply (Adapter 0.7.8 / formal contracts 0.5.4)
+
+This node supersedes the earlier development-only export limitation. The business tar exports `hanaworlds-adapter-luanti/host` (`createNativeHost`, `NativeHostOptions`, `OwnedNativeHost`) and `hanaworlds-adapter-luanti/inspection-context` (`createInspectionContext`, `CanvasReadPort`, `WorldRevisionOracle`, `InspectionContextOptions`, `SingularInspectionFacts`). Consumers import these package subpaths; no peer development file copying/import is needed. The original own implementations were relocated byte-for-byte; development entry files now re-export them. No contracts, Canvas state, Session state, native PID truth or transaction authority is added.
+
+```js
+import * as C from 'hanaworlds-contracts'; // exact 0.5.4 in the same installation
+import { createNativeHost } from 'hanaworlds-adapter-luanti/host';
+import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';
+const owned = createNativeHost({ C, state: OWN_STATE, profile: OWN_PROFILE,
+  worlds: OWN_CANONICAL_WORLD_ROOT, luanti: OWN_LUANTI_BINARY, event: appendOwnEvent });
+root.provide('hanaworldsNativeEngineControl', owned.host);
+root.provide('hanaworldsLuantiInspectionContext', createInspectionContext({
+  resolveCanvas: () => root.get('hanaworldsCanvasV5'),
+  resolveOracle: () => root.get('hanaworldsWorldRevisionOracle'),
+}));
+// Load the Adapter exactly once via the fixed official Loader EntryOptions row:
+// {id:'hanaworlds-luanti-adapter', name:'hanaworlds-adapter-luanti',
+//  config:{localWorldRoots:[OWN_CANONICAL_WORLD_ROOT]}}
+// Required existing same-root supplies: webServer, dshHomePath.
+// Canvas and the world oracle must be supplied by their owning origins.
+// On shutdown: close/dispose the Adapter first; then await owned.shutdown().
+```
+
+All state/profile/worlds/logs/tmp paths are new canonical own-attempt paths; the caller creates empty directories before assembly. `luanti` and optional `luantiClient` are absolute executable paths; `event(kind,facts)` is the caller's synchronous evidence sink. Configuration fields are the same original NativeHost inputs, not new Adapter settings. Constructing either factory neither launches a child nor creates a world. Native acquire is an explicit later write/engine operation; it is not permitted by a read-only assembly run. Unknown leases reject `CURRENT_WORLD_MISMATCH`, and no supplied PID becomes trusted.
+
+The provider's `host` is the published `LocalEngineControlPort`; the exact acquire/inspect/withStoppedWorld types come from contracts 0.5.4. Child/exit ownership and repeated finite STOPPED callbacks retain the original implementation and local policy. The inspection factory forwards the existing Canvas R1→ListObjects→R2 route and authoritative oracle, rejects absent/replaced/inconsistent suppliers and zero/multiple selection, and never invents object/world/Session revisions. `CanvasReadPort` is a local TypeScript description of the two existing public Canvas operations, not a new contract wire or authority.
+
+`test/public-host-packed-assembly.mjs` is a read-only consumption entry: it loads both factories from the actual installed business tar, registers them in the real pinned official Cordis/Loader root, reads empty connection/world inventories, rejects an unknown native lease, and closes the Adapter before native shutdown. Its webServer registration is explicitly a fixture; this is not a complete DSH Host or product entry. The engine path is explicitly a nonexecuted fixture and no acquire is called. Source tests cover only new exports and lazy empty providers. Packed TypeScript consumption checks the shipped declarations. Positive real-child/PID/STOPPED/Luanti/selected-object/Core/model/transaction/UI/owner gates are NOT_RUN in this node, and prior candidate gates are not replayed.
+
+47612 remains the protected candidate 0.7.6 / contracts 0.5.4-rc.1 service; the 0.7.7 identity-only tar and this separate 0.7.8 Host-supply tar do not replace it. Exact branch/commit/tar bytes/SHA and provider-config packet are advertised in the card REPORT and the new public supply JSON, not inferred from the old candidate packet.
