@@ -185,6 +185,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         return Promise.reject(new Error('SCHEMA_INVALID'));
       return track(async () => {
         const selected = await world(request.connectionRef);
+        if (bindings.has(selected.connectionRef) || running.has(selected.worldPath)) deny();
         if (request.action === 'BIND_RUNNING_WORLD' && !selected.worldRef) deny('WORLD_NOT_BOUND');
         const host = resolveControl();
         if (![host?.acquire, host?.inspect, host?.withStoppedWorld].every(f => typeof f === 'function')) deny();
@@ -338,20 +339,26 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
       row.paired = true;
       return track(async () => {
+        let runtimePaired = false;
         try {
           await inspectRow(row);
-          for (const previous of bindings.values()) {
-            if (previous.world.connectionRef === row.world.connectionRef) deny();
-            await retireBinding(previous);
-          }
-          await inspectRow(row); // stopping A must not invalidate the acquired B
+          // Native connections are independent. Canvas owns which Session selects each world.
+          // Pairing B must never retire A: another Session may still select A.
+          if (bindings.has(row.world.connectionRef)) deny();
           if (running.has(row.world.worldPath)) deny();
           running.set(row.world.worldPath, row);
           const loaded = await runtime.pairLocal(row.world);
+          runtimePaired = true;
           bindings.set(row.world.connectionRef, row);
           const facts = await inspectRow(row);
           return { ...observations(row, facts), ...loaded, paired: true };
-        } catch { await stopUnused(row); deny(); }
+        } catch {
+          // A late inspection failure owns only this new row, never another world's runtime.
+          try {
+            if (runtimePaired) { bindings.delete(row.world.connectionRef); await runtime.retireLocal(row.world.connectionRef); }
+          } finally { await stopUnused(row); }
+          deny();
+        }
       });
     },
 

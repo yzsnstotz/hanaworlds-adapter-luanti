@@ -148,3 +148,8 @@ For material/catalogue consumers, the existing public read-only forwarder can us
 Public information supplied: exact Adapter root config and shipped Loader row; safe existing setRoots route; complete already published native types/method signatures with owned PID/exit semantics; complete inspection request and consumed-result fields; public read-only selection mapping; existing external pins and minimal isolated layout.
 
 PARTIAL: official Loader/provider recipe and authoritative inspection/Session snapshot route require owning SDK/seam confirmation; this handoff implements neither. Production source, versions, package, schema, contracts and peer origins are unchanged. No install/start/restart/stop, game/EULA change, old test replay, new probe, transaction, Undo, UI screenshot or Core runtime claim. Accepted services 47610/47607/47606 and their source/world/profile/evidence remain protected. PM may route these public gaps to C-SESSION-WORLD-SEAM-01 while I-K2 consumes only already authorized existing capabilities.
+
+
+## Stage B follow-up (2026-10-09)
+
+The fixed official Loader/provider/native ownership recipe is now supplied in [PUBLIC_HOST_RECIPE.md](PUBLIC_HOST_RECIPE.md), using pinned official Loader1.0.5/Cordis4.0.4 and the existing own-origin native Host source. The earlier Loader field uncertainty is resolved by its actual public EntryOptions declaration and new SOURCE/FIXTURE check; other historical 0.7.5 supply statements remain unchanged. Canvas selected-object snapshots and the exact new candidate remain owning-origin inputs.

@@ -36,7 +36,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       return { bound, journal: await readJournalActivity(homePath, worldRef) };
     },
     async pairLocal(world) {
-      if (closed || rows.size) fail('CURRENT_WORLD_MISMATCH');
+      if (closed || rows.has(world.connectionRef) || [...rows.values()].some(row =>
+        row.worldRef === world.worldRef || row.worldPath === world.worldPath)) fail('CURRENT_WORLD_MISMATCH');
       const engine = await LocalCourier.open(world);
       try {
         await engine.handshake();
@@ -187,7 +188,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (name === 'DiscoverConnections' || name === 'ListWorlds') {
       for (const x of rows.values()) await inspectConnection(x.connectionRef);
       return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
-      connections: [...rows.values()].map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
+      connections: [...rows.values()].sort((a,b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0).map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
         worldRef: x.worldRef, displayName: x.gameId, capabilityRevision: capabilities(x).capabilityRevision,
         payloadVersion: x.payloadVersion, readiness: 'READY', connectionIncarnationRef: x.incarnation })) };
     }
