@@ -16,7 +16,8 @@ const profile = join(state, 'profile'), worlds = join(profile, 'worlds'), home =
 for (const p of [worlds, home, join(profile, 'games'), join(profile, 'mods'), join(state, 'logs'), join(state, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });
 const event = (kind, facts) => appendFileSync(join(state, 'events.jsonl'), JSON.stringify({ at: new Date().toISOString(), kind, ...facts }) + '\n', { mode: 0o600 });
 const owned = createNativeHost({ C, state, profile, worlds,
-  luanti: process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti', event });
+  luanti: process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti',
+  luantiClient: process.env.HW_LUANTI_CLIENT ?? process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti', event });
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const ctx = new Context();
 ctx.provide('webServer', { register() { return () => {}; } });

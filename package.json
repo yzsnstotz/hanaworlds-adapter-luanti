@@ -68,7 +68,7 @@
     "test:switch": "node --test test/local-world-switch.test.mjs",
     "test:delete": "node --test test/local-world-delete.test.mjs",
     "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs",
-    "test:world-manage": "node --test test/world-manage.test.mjs test/local-world-switch.test.mjs"
+    "test:world-manage": "node --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0"

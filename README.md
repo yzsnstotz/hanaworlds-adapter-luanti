@@ -433,3 +433,9 @@ profile and old worlds are outside this service's root and never used.
 bytes and installs only in a fresh isolated test copy, selecting the current 13-file
 conformance suite and exact-package advertisement. It leaves source pins/vendor intact.
 A candidate is not a published version; the formal tag repin/validation gate is separate.
+
+For shared macOS installations, `HW_LUANTI_CLIENT` may name the executable in this
+card's private copy of the official Luanti app. This gives the native window
+a unique application path without changing the server binary or any other app.
+Set it before starting this independent development service; it is not a
+product profile, new engine implementation or authentication input.

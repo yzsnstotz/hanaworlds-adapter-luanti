@@ -14,7 +14,7 @@ async function port() {
 }
 // Real process owner for this isolated development environment. No product profile is used.
 // Native STOPPED truth is from our child exit event, retained for repeated exact callbacks.
-export function createNativeHost({ C, state, profile, worlds, luanti, event }) {
+export function createNativeHost({ C, state, profile, worlds, luanti, luantiClient = luanti, event }) {
   const records = new Map(); let client = null;
   const environment = { ...process.env, HOME: profile, LUANTI_USER_PATH: profile,
     XDG_CACHE_HOME: join(profile, 'cache'), TMPDIR: join(state, 'tmp') };
@@ -96,7 +96,7 @@ export function createNativeHost({ C, state, profile, worlds, luanti, event }) {
       const r = [...records.values()].find(r => !r.exit && r.child.pid === current.nativeProcessId && r.input.worldPath === current.worldPath);
       if (!r) fail('CURRENT_WORLD_MISMATCH');
       const logfile = join(state, 'logs', `client-${randomUUID()}.log`);
-      const child = spawn(luanti, ['--go', '--address', '127.0.0.1', '--port', String(r.serverPort), '--name', 'world-manager', '--logfile', logfile],
+      const child = spawn(luantiClient, ['--go', '--address', '127.0.0.1', '--port', String(r.serverPort), '--name', 'world-manager', '--logfile', logfile],
         { env: environment, stdio: 'ignore' });
       client = { child, exit: null, worldPath: current.worldPath, logfile }; const owned = client;
       child.once('error', error => { owned.exit = { error: error.message }; });
