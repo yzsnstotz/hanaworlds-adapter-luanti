@@ -86,3 +86,10 @@ C3 implementation impact: current DiscoverConnections/ListWorlds inspect every r
 ## Session page continuation
 
 New `dev/world-manage/session-server.mjs` uses this exact pinned Loader recipe with a fresh profile, own native Host, actual Adapter tar entry and explicit contract Canvas/Workshop fixtures. It registers oracle and `createInspectionContext` forwarding providers in the same root. `HW_BIND_STATE`, `HW_BIND_SDK_ROOT`, `HW_BIND_LUANTI` and (for exact tar consumption) `HW_BIND_ADAPTER_MODULE` are mandatory own paths; declared loopback port is 47612. No accepted root/profile or credentials are inputs. Source consumers and tar supply are reported by the current card REPORT; formal 0.5.4 is still HOLD.
+
+
+### Current candidate continuation: reentrant inventory and explicit reconnect
+
+Adapter 0.7.6, contracts exact 0.5.4-rc.1: `DiscoverConnections` / `ListWorlds` run as read-only native projections independently of the transaction/Inspection queue. A Canvas current-context read or a Host Inspection provider may call those existing operations while handling Adapter Inspection. Each row must still be current, open, and the identical registered runtime row after native readiness returns; unavailable rows are omitted and other READY connections survive. This adds no wire or authority. Provider identity and world-revision checks remain inside the actual Adapter, before returning Inspection facts.
+
+In the independent development manager, a cached owned connection rejected with CURRENT_WORLD_MISMATCH or WORLD_NOT_BOUND is explicitly retired through its original Host's finite STOPPED callback before acquiring a fresh connection. Missing inventory is never itself STOPPED evidence. Canvas retains last non-null selection until its own public Unselect/Select operation changes it. The dev diagnostic `/api/inspection` forwards actual public InspectWorld using the fixture Canvas context and oracle; zero selected objects must return TARGET_FACTS_INCOMPLETE, without hanging. Canvas/Workshop fixtures are visibly labelled; this is not production Core assembly.

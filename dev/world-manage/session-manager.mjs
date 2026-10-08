@@ -14,7 +14,7 @@ export function createSessionManager({local,adapter,fixture,requesterRef,userPat
  const consumer=createSessionSelectionConsumer({resolveCanvas:()=>fixture.canvas,ensureConnection:async(sessionRef,connectionRef)=>{
   await fixture.readIdentity(sessionRef);const row=await world(connectionRef);
   try{return await adapterCall('ReadLocalConnection',{sessionRef,connectionRef});}catch(e){
-   if(e.message==='CURRENT_WORLD_MISMATCH'&&native.has(connectionRef)){
+   if(['CURRENT_WORLD_MISMATCH','WORLD_NOT_BOUND'].includes(e.message)&&native.has(connectionRef)){
     // Invalid CURRENT cannot prove exit. Reconnect only after original Host finite STOPPED callback.
     await local.stopWorld(query(row));native.delete(connectionRef);
    }else if(e.message!=='CONNECTION_NOT_FOUND')throw e;
@@ -35,6 +35,7 @@ export function createSessionManager({local,adapter,fixture,requesterRef,userPat
   create:worldName=>serial(async()=>{const row=await local.createFlatWorld({requesterRef,userPath,...(worldName?{worldName}:{})});fixture.registerWorld(row);return row;}),
   select:(sessionRef,connectionRef)=>serial(async()=>{await fixture.readIdentity(sessionRef);const row=await world(connectionRef);const result=await consumer.select({sessionRef,connectionRef,worldRef:row.worldRef,expectedRevision:fixture.precondition(sessionRef)});chosenSession=sessionRef;return result;}),
   unselect:sessionRef=>serial(async()=>{await fixture.readIdentity(sessionRef);const selection=await readSession(sessionRef,await rows());if(selection.selection.status!=='BOUND')fail('CURRENT_WORLD_MISMATCH');return consumer.unselect({sessionRef,worldRef:selection.selection.context.activeWorldRef,expectedRevision:fixture.precondition(sessionRef)});}),
+  inspect:sessionRef=>serial(async()=>{await fixture.readIdentity(sessionRef);const r=await readSession(sessionRef,await rows());if(r.selection.status!=='BOUND')fail('WORLD_NOT_BOUND');const context=r.selection.context;return adapter.call('InspectWorld',{contractVersion:'world-adapter/v6',requestId:randomUUID(),sessionRef,worldRef:context.activeWorldRef,localContext:context.localContext,expectedWorldRevision:await fixture.oracle.read(context.activeWorldRef),sampledBounds:{min:[0,0,0],max:[0,0,0]}});}),
   stop:connectionRef=>serial(async()=>{const row=await world(connectionRef);if(game.running())fail('WORLD_IN_USE');const r=await local.stopWorld(query(row));native.delete(connectionRef);return r;}),
   enter:connectionRef=>serial(async()=>{const record=native.get(connectionRef);if(!record)fail('WORLD_NOT_BOUND');await local.inspect(record.lease);return game.enter(record);}),
   preview:connectionRef=>serial(async()=>{const row=await world(connectionRef),preview=await previewFacts(row),confirmationRef=randomUUID();confirmations.set(confirmationRef,{row,preview});return {...preview,confirmationRef};}),

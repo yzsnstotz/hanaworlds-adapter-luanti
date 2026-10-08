@@ -190,10 +190,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
     if (name === 'DiscoverConnections' || name === 'ListWorlds') {
       const ready = [];
-      for (const row of rows.values()) {
+      for (const row of [...rows.values()]) {
         // A failed CURRENT check means unavailable, never proof of STOPPED.
         // Keep ownership/runtime records for explicit finite Host retirement.
-        try { await inspectConnection(row.connectionRef); if (!row.engine.closed) ready.push(row); }
+        try { await inspectConnection(row.connectionRef); if (!closed && !row.engine.closed && rows.get(row.connectionRef) === row) ready.push(row); }
         catch { /* exclude invalid native readiness, preserve other connections */ }
       }
       const connections = ready.sort((a,b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0)
@@ -342,7 +342,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     call(name, raw) {
       const caller = this.ctx;
       const r = typeof raw === 'string' || raw instanceof Uint8Array ? admitRequest(WIRE, name, raw) : validateBoundRequest(WIRE, name, raw);
-      const work = serial.then(async () => {
+      // Inventory is a read-only native projection. Canvas/Inspection may read it
+      // during this Adapter call; queuing it behind that caller deadlocks.
+      const inventoryRead = name === 'DiscoverConnections' || name === 'ListWorlds';
+      const execute = async () => {
         if (closed) fail('ADAPTER_UNAVAILABLE');
         try {
           if (mutators.has(name)) canvasCaller(caller);
@@ -370,8 +373,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
             error: { code, phase: mutationState==='UNKNOWN'?'apply':'validate', retryability: 'NEVER', mutationState,
               transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } });
         }
-      });
-      serial = work.catch(() => {}); return work;
+      };
+      const work = inventoryRead ? execute() : serial.then(execute);
+      if (!inventoryRead) serial = work.catch(() => {});
+      return work;
     },
   };
   return { ...runtime, port, regionIO };
