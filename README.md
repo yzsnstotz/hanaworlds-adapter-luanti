@@ -1,8 +1,9 @@
-# HanaWorlds Luanti Adapter 0.7.2 (flat-world creation + write-path facts + read-only region state, payload 0.6.0)
+# HanaWorlds Luanti Adapter 0.7.5 (flat-world creation + write-path facts + read-only region state, payload 0.6.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
-`hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
-pack SHA256 `e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209`).
+`hanaworlds-contracts@0.5.3` (published tag `v0.5.3`, source
+`3457493da209178f815d6950e323e1dc462e8d6c`, pack SHA256
+`7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241`).
 The text-line package 0.3.1/payload 0.3.0 and the image-material package
 0.4.0/payload 0.4.0 stay separate fixed artifacts; this 0.5.0 line adds region
 I/O and does not migrate worlds provisioned with an older payload. 0.6.0 adds
@@ -230,8 +231,9 @@ explicit component fixture game; it does not represent the product game.
 
 ## Region I/O — world-adapter-region/v1 (0.5.0)
 
-Consumes `hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
-pack SHA256 `e6c50766ffc821ca90e07c38f473456952ef650e8a321f676dc44ce7d7d72209`).
+Consumes `hanaworlds-contracts@0.5.3` (published tag `v0.5.3`, source
+`3457493da209178f815d6950e323e1dc462e8d6c`, pack SHA256
+`7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241`).
 `ctx.get('hanaworldsWorldAdapterRegionV1')` exposes `call('ReadRegion' | 'WriteRegion',
 request)`, `protocolHandshake` (protocol `world-adapter-region` major 1 minor 1, the five existing capabilities
 and `world-adapter-region/v1:callback-free-write`; provenance is a record only) and
@@ -401,7 +403,7 @@ Desktop UI, model/skill selection, real Canvas transactions and product Undo
 remain separate independent gates.
 
 
-## Independent world manager (Adapter 0.7.4)
+## Independent world manager (Adapter 0.7.5)
 
 `dev/world-manage/` is a development-only consumer of this Adapter's public ports,
 listening on loopback port 47607 at `/worlds`. It creates new isolated flat worlds,
@@ -439,3 +441,17 @@ card's private copy of the official Luanti app. This gives the native window
 a unique application path without changing the server binary or any other app.
 Set it before starting this independent development service; it is not a
 product profile, new engine implementation or authentication input.
+
+## Formal contracts dependency (Adapter 0.7.5)
+
+Install with Node 24.13.1 and `npm ci --ignore-scripts`. `#contracts` resolves the
+installed package; there is no contracts vendor copy. The dependency names the
+published `v0.5.3` tag, and package-lock.json pins the downloaded archive integrity.
+`npm run verify:contracts` checks the exact package, tag reference, lock and all
+25 admitted npm-pack entry digests. With TMPDIR set to an own-card run directory,
+`npm run verify:contracts:source` also checks the annotated and peeled remote tag
+and requires repacking the installed source to reproduce the formal 146045-byte
+archive above. `npm run test:contracts` includes byte/missing-module/tag refusal.
+Existing 0.7.4 / contracts0.5.2 trial services retain their own source and profile;
+this dependency update does not upgrade or restart them. Historical gate scripts
+for earlier cards and contracts versions are not current formal-product gates.

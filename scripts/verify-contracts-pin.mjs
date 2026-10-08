@@ -1,68 +1,62 @@
-// Verifies the bundled hanaworlds-contracts subset against the admitted
-// contracts@0.4.0 artifact. Offline (default): the manifest
-// names the admitted digest and all package entries; every bundled file must be a
-// manifest entry with identical bytes, nothing else may be bundled, and the
-// static import closure of the #contracts entries must be bundled.
-// --source [tarball]: additionally re-derive the admitted pack from public
-// source (codeload at the pinned revision, or a given source tarball) with
-// `npm pack`, require the pinned sha256 and that the manifest equals it.
+// Verify installed formal dependency offline; --source also verifies public tag
+// objects and repacks its installed source to the exact admitted npm artifact.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
-import { PINNED, RUNTIME_ENTRIES, VENDOR_DIR, MANIFEST } from './contracts-pin.mjs';
-import { extractPack, importClosure, sha256 } from './contracts-pack.mjs';
-
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PINNED, MANIFEST, RUNTIME_ENTRIES } from './contracts-pin.mjs';
+import { importClosure, sha256 } from './contracts-pack.mjs';
+const root = fileURLToPath(new URL('..', import.meta.url));
 const problems = [];
-const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
-for (const key of ['name', 'version', 'revision', 'sha256', 'entryCount'])
-  if (manifest[key] !== PINNED[key]) problems.push(`manifest ${key} ${manifest[key]} != ${PINNED[key]}`);
-if (manifest.entries.length !== PINNED.entryCount) problems.push(`manifest lists ${manifest.entries.length} entries`);
-const byPath = new Map(manifest.entries.map(e => [e.path, e]));
-const bundled = [];
-const walk = d => { for (const name of readdirSync(d)) {
-  const p = join(d, name);
-  if (statSync(p).isDirectory()) walk(p); else bundled.push(relative(VENDOR_DIR, p));
-} };
-walk(VENDOR_DIR);
-bundled.sort();
-if (JSON.stringify(bundled) !== JSON.stringify(manifest.vendored)) problems.push('bundled files differ from manifest.vendored');
-for (const path of bundled) {
-  const entry = byPath.get(path);
-  const bytes = readFileSync(join(VENDOR_DIR, path));
-  if (!entry) problems.push(`${path} is not an admitted package entry`);
-  else if (entry.size !== bytes.length || entry.sha256 !== sha256(bytes)) problems.push(`${path} bytes differ from the admitted entry`);
-}
-for (const path of importClosure(VENDOR_DIR, RUNTIME_ENTRIES))
-  if (!bundled.includes(path)) problems.push(`runtime module ${path} is not bundled`);
-
-let source = null;
-const at = process.argv.indexOf('--source');
-if (at >= 0) {
-  const work = mkdtempSync(join(tmpdir(), 'hw-contracts-source-'));
-  try {
-    let srcTarball = process.argv[at + 1];
-    if (!srcTarball || srcTarball.startsWith('--')) {
-      srcTarball = join(work, 'source.tgz');
-      const response = await fetch(PINNED.source);
-      if (!response.ok) throw new Error(`source fetch ${response.status}`);
-      writeFileSync(srcTarball, Buffer.from(await response.arrayBuffer()));
-    }
-    execFileSync('tar', ['-xzf', srcTarball, '-C', work]);
-    const srcDir = join(work, readdirSync(work).find(n => n.startsWith('hanaworlds-contracts')));
-    const out = JSON.parse(execFileSync('npm', ['pack', srcDir, '--ignore-scripts',
-      '--pack-destination', work, '--json'], { encoding: 'utf8' }));
-    const packed = join(work, out[0].filename);
-    const digest = sha256(readFileSync(packed));
-    const { dir, entries } = extractPack(packed);
-    rmSync(dir, { recursive: true, force: true });
-    const same = JSON.stringify(entries) === JSON.stringify(manifest.entries);
-    source = { sourceTarballSha256: sha256(readFileSync(srcTarball)), packSha256: digest, manifestMatchesPack: same };
-    if (digest !== PINNED.sha256) problems.push(`source pack sha256 ${digest} != ${PINNED.sha256}`);
-    if (!same) problems.push('manifest entries differ from the source pack');
-  } finally { rmSync(work, { recursive: true, force: true }); }
-}
+let installed = null, source = null;
+try {
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
+  const lock = JSON.parse(readFileSync(join(root, 'package-lock.json')));
+  const manifest = JSON.parse(readFileSync(join(root, MANIFEST)));
+  for (const [key, value] of Object.entries(PINNED))
+    if (manifest[key] !== value) problems.push(`manifest ${key} differs from formal pin`);
+  if (manifest.entries.length !== PINNED.entryCount) problems.push('wrong entry count');
+  if (pkg.imports?.['#contracts'] !== PINNED.name || pkg.dependencies?.[PINNED.name] !== PINNED.source)
+    problems.push('dependency/import does not name published tag');
+  const item = lock.packages?.[`node_modules/${PINNED.name}`];
+  if (lock.packages?.['']?.dependencies?.[PINNED.name] !== PINNED.source ||
+      item?.version !== PINNED.version || item?.resolved !== PINNED.source || !item?.integrity)
+    problems.push('lock does not pin exact tag dependency and integrity');
+  if (existsSync(join(root, 'vendor/hanaworlds-contracts'))) problems.push('contracts vendor copy is forbidden');
+  installed = dirname(fileURLToPath(import.meta.resolve('hanaworlds-contracts/package.json')));
+  const meta = JSON.parse(readFileSync(join(installed, 'package.json')));
+  if (meta.name !== PINNED.name || meta.version !== PINNED.version) problems.push('installed exact package differs');
+  const paths = new Set();
+  for (const entry of manifest.entries) {
+    if (paths.has(entry.path) || entry.path.startsWith('/') || entry.path.split('/').includes('..'))
+      throw Error('INVALID_MANIFEST_ENTRY');
+    paths.add(entry.path);
+    const path = join(installed, entry.path);
+    if (!existsSync(path)) { problems.push(`missing ${entry.path}`); continue; }
+    const bytes = readFileSync(path);
+    if (bytes.length !== entry.size || sha256(bytes) !== entry.sha256) problems.push(`changed ${entry.path}`);
+  }
+  for (const path of importClosure(installed, RUNTIME_ENTRIES))
+    if (!paths.has(path)) problems.push(`unadmitted runtime module ${path}`);
+  if (process.argv.includes('--source')) {
+    const refs = execFileSync('git', ['ls-remote', 'https://github.com/yzsnstotz/hanaworlds-contracts.git',
+      `refs/tags/${PINNED.tag}`, `refs/tags/${PINNED.tag}^{}`], { encoding: 'utf8' });
+    const pairs = new Map(refs.trim().split('\n').map(line => line.split(/\s+/).reverse()));
+    const tagMatches = pairs.get(`refs/tags/${PINNED.tag}`) === PINNED.tagObject &&
+      pairs.get(`refs/tags/${PINNED.tag}^{}`) === PINNED.revision;
+    if (!tagMatches) problems.push('public annotated/peeled tag differs');
+    const work = mkdtempSync(join(tmpdir(), 'hw-contracts-formal-'));
+    try {
+      const out = JSON.parse(execFileSync('npm', ['pack', installed, '--ignore-scripts',
+        '--pack-destination', work, '--json'], { encoding: 'utf8' }));
+      const bytes = readFileSync(join(work, out[0].filename));
+      source = { tagMatches, packSha256: sha256(bytes), packBytes: bytes.length };
+      if (source.packSha256 !== PINNED.sha256 || source.packBytes !== PINNED.bytes)
+        problems.push('installed tag repack differs from formal artifact');
+    } finally { rmSync(work, { recursive: true, force: true }); }
+  }
+} catch (error) { problems.push(error.message); }
 const ok = problems.length === 0;
-console.log(JSON.stringify({ version: PINNED.version, revision: PINNED.revision, sha256: PINNED.sha256,
-  bundledFiles: bundled.length, manifestEntries: manifest.entries.length, source, ok, problems }));
+console.log(JSON.stringify({ ...PINNED, installed, publishedSource: source, ok, problems }));
 if (!ok) process.exitCode = 1;

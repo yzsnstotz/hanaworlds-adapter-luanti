@@ -9,7 +9,7 @@ import { createServer, connect } from 'node:net';
 import { once } from 'node:events';
 const root = await realpath(process.env.HW_LOCAL_E), installed = process.env.HW_LOCAL_PACKAGE;
 const { apply, inject } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed, 'vendor/hanaworlds-contracts/dist/local/index.mjs')));
+const C = await import(pathToFileURL(join(installed, 'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const profile = join(root, 'profile'), worlds = join(profile, 'worlds'), home = join(root, 'home');
 for (const p of [worlds, home, join(profile, 'games'), join(profile, 'mods'), join(root, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });

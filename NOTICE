@@ -12,13 +12,12 @@ alone does not decide the combined-work question.
 
 The npm dependency canonicalize@5.1.0 is Apache-2.0, with its registry
 integrity pinned in package-lock.json; its source is not copied into this
-package. hanaworlds-contracts@0.4.0 (source revision
-8cfb18f8e13aa33d7a942f230ec6117914322cdd, MIT) is partly bundled under
-vendor/hanaworlds-contracts. All bundled entries are byte-identical to the
-admitted20-entry package (SHA256
- d7b22e76de5e161abe7525596df608b3f00445fb4237808941cb5ef8328e9bc4).
-Its LICENSE and NOTICE remain authoritative. The manifest records the complete
-admitted archive and exact bundled subset. Keep their license notices.
+package. hanaworlds-contracts@0.5.3 (MIT) is an installed dependency from the
+published v0.5.3 tag, peeled revision 3457493da209178f815d6950e323e1dc462e8d6c.
+Its formal npm pack SHA256 is
+7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241.
+No contracts implementation is bundled. Retain the dependency's LICENSE and
+NOTICE when distributing an installed combination.
 
 Luanti itself is installed separately and is not bundled. Real product
 readiness, registry publication and release have not been claimed.

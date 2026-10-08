@@ -23,7 +23,7 @@ const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_WORLDEDIT && process.env.HW_GAME,
   'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE, HW_WORLDEDIT and HW_GAME are required');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed, 'vendor/hanaworlds-contracts/dist/local/index.mjs')));
+const C = await import(pathToFileURL(join(installed, 'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const D = (kind, v) => C.digestValue(kind, v).sha256;
 const LUANTI = '/Applications/luanti.app/Contents/MacOS/luanti';

@@ -16,7 +16,7 @@ const root = await realpath(process.env.HW_LOCAL_E);
 const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_WORLDEDIT, 'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE and HW_WORLDEDIT are required');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed,'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed,'vendor/hanaworlds-contracts/dist/local/index.mjs')));
+const C = await import(pathToFileURL(join(installed,'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const sha256=b=>createHash('sha256').update(b).digest('hex'), sha1=b=>createHash('sha1').update(b).digest('hex');
 // Distinct valid 1x1 RGB PNG files (different colours) so each source is attributable.

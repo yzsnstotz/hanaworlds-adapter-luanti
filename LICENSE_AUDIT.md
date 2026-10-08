@@ -1,3 +1,14 @@
+# Current dependency declaration · Adapter 0.7.5 (2026-10-08)
+
+- hanaworlds-contracts · 0.5.3 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v0.5.3 (Git tag; no registry release claimed) · strict public schema/runtime validation. Annotated tag b3983bc5cde7791266758842a017458386d14283, peeled revision 3457493da209178f815d6950e323e1dc462e8d6c; formal pack 146045 bytes / SHA256 7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241. Installed tag dependency, no vendor implementation; its own LICENSE and NOTICE remain in the installed dependency.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · deterministic canonical JSON, existing lock integrity retained.
+- This update changes dependency delivery and Adapter package version only. Payload0.6.0 and real runtime inputs retain the versions and sources recorded below. No publication or runtime upgrade was performed.
+
+The following sections are historical provenance for their named releases;
+statements about bundled contracts do not describe Adapter0.7.5.
+
+---
+
 # Adapter 0.2.0 source and rights audit
 
 Date: 2026-10-01, updated 2026-10-02 for 0.2.0. Scope: files in this Git origin, before changing the

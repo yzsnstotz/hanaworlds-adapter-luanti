@@ -1,6 +1,6 @@
 # HanaWorlds Luanti Adapter
 
-Version0.7.2 (payload0.6.0, contracts0.5.2) publishes Catalogue facts under
+Version0.7.5 (payload0.6.0, contracts0.5.3) publishes Catalogue facts under
 `write-path-init/v1`, with `NativeFacts.readWritePathEvidence(worldRef)` returning
 the actual callback inventory and public validation result. Only a known empty
 write-path global registry and nodes without initialization/state hooks can yield

@@ -27,7 +27,7 @@ const REQUESTER = 'dev-readback-host';
 const RADIUS = 24;
 
 const adapter = await import(new URL('../../src/index.mjs', import.meta.url));
-const C = await import(new URL('../../vendor/hanaworlds-contracts/dist/local/index.mjs', import.meta.url));
+const C = await import('#contracts');
 const { Context } = await import(pathToFileURL(CORDIS));
 const profile = join(STATE, 'profile'), worlds = join(profile, 'worlds'), home = join(STATE, 'home');
 for (const p of [worlds, home, join(profile, 'games'), join(profile, 'mods'), join(STATE, 'logs'), join(STATE, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });

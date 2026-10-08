@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -16,7 +16,7 @@
     ".": "./src/index.mjs"
   },
   "imports": {
-    "#contracts": "./vendor/hanaworlds-contracts/dist/local/index.mjs"
+    "#contracts": "hanaworlds-contracts"
   },
   "files": [
     "src/index.mjs",
@@ -44,10 +44,7 @@
     "GADGET.md",
     "LICENSE_AUDIT.md",
     "NOTICE",
-    "vendor/hanaworlds-contracts",
-    "!vendor/hanaworlds-contracts/fixtures",
-    "DEFERRED-LOCAL-WORLD.md",
-    "vendor/hanaworlds-contracts.manifest.json"
+    "DEFERRED-LOCAL-WORLD.md"
   ],
   "dsh": {
     "bundle": {
@@ -60,7 +57,6 @@
     "test:lua": "lua test/local-world-region.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
     "verify:contracts:source": "node scripts/verify-contracts-pin.mjs --source",
-    "vendor:contracts": "node scripts/vendor-contracts.mjs",
     "test:catalogue": "node --test test/local-catalogue.test.mjs",
     "test:region": "node --test test/local-region-io.test.mjs",
     "test:flat": "node --test test/local-flat-world.test.mjs",
@@ -68,9 +64,11 @@
     "test:switch": "node --test test/local-world-switch.test.mjs",
     "test:delete": "node --test test/local-world-delete.test.mjs",
     "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs",
-    "test:world-manage": "node --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs"
+    "test:world-manage": "node --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs",
+    "test:contracts": "node --test test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs"
   },
   "dependencies": {
-    "canonicalize": "5.1.0"
+    "canonicalize": "5.1.0",
+    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.3"
   }
 }
