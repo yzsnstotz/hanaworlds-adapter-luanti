@@ -167,4 +167,7 @@ original upstream Uberi/Minetest-WorldEdit · world editing API;
 `@deepseek-ai/cordis` 4.0.4 · MIT · npm registry · independent plugin container;
 `canonicalize` 5.1.0 · Apache-2.0 · byte-preserved local installed package from
 public Adapter readback source, original npm registry · canonical JSON dependency.
-These copies stay in this card's ignored run directory, with original licenses.
+These copies stay in this card's ignored run directory and are not bundled.
+VoxeLibre and npm packages carry their included notices; the existing WorldEdit
+mod-only supply does not contain its repository-root license file. Its AGPL-3.0
+origin/license attribution is retained from the prior public Adapter supply.
