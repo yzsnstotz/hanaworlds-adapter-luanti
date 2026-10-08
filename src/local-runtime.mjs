@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
 import { LocalCourier } from './local-courier.mjs';
@@ -14,10 +15,12 @@ const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransact
 const fail = code => { throw new Error(code); };
 const D = (kind, value) => digestValue(kind, value).sha256;
 const sameContext = (a,b) => canonicalJSON(a) === canonicalJSON(b);
+const original = value => value?.[Symbol.for('cordis.original')] ?? value;
 
 /** All dependencies below are in-process ports, never caller JSON facts. */
 export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
+  let inventorySignature = null, inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`;
   const runtime = {
     setLocalRoots() {},
     retireLocal(connectionRef) {
@@ -186,11 +189,20 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
       payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
     if (name === 'DiscoverConnections' || name === 'ListWorlds') {
-      for (const x of rows.values()) await inspectConnection(x.connectionRef);
-      return { capabilityRevision: `adapter:${ADAPTER_VERSION}`,
-      connections: [...rows.values()].sort((a,b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0).map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
-        worldRef: x.worldRef, displayName: x.gameId, capabilityRevision: capabilities(x).capabilityRevision,
-        payloadVersion: x.payloadVersion, readiness: 'READY', connectionIncarnationRef: x.incarnation })) };
+      const ready = [];
+      for (const row of rows.values()) {
+        // A failed CURRENT check means unavailable, never proof of STOPPED.
+        // Keep ownership/runtime records for explicit finite Host retirement.
+        try { await inspectConnection(row.connectionRef); if (!row.engine.closed) ready.push(row); }
+        catch { /* exclude invalid native readiness, preserve other connections */ }
+      }
+      const connections = ready.sort((a,b) => a.connectionRef < b.connectionRef ? -1 : a.connectionRef > b.connectionRef ? 1 : 0)
+        .map(x => ({ adapterId: ADAPTER_ID, connectionRef: x.connectionRef,
+          worldRef: x.worldRef, displayName: x.gameId, capabilityRevision: capabilities(x).capabilityRevision,
+          payloadVersion: x.payloadVersion, readiness: 'READY', connectionIncarnationRef: x.incarnation }));
+      const signature = canonicalJSON(connections);
+      if (signature !== inventorySignature) { inventorySignature = signature; inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`; }
+      return { capabilityRevision: inventoryRevision, connections };
     }
     if (name === 'InspectWorld' || name === 'InspectRegion') return inspections(row, r, name);
     if (name === 'PrepareRecoverableTransaction') return b.prepare(r);
@@ -225,19 +237,22 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   async function inspections(row, r, name) {
     const oracle = resolveOracle();
     if (typeof oracle?.read !== 'function') fail('CAPABILITY_UNAVAILABLE');
-    const observed = await oracle.read(r.worldRef);
+    const oracleIdentity = original(oracle);
+    const checkOracle = () => { if (original(resolveOracle()) !== oracleIdentity) fail('CURRENT_WORLD_MISMATCH'); };
+    const observed = await oracle.read(r.worldRef); checkOracle();
     if (observed !== r.expectedWorldRevision) fail('STALE_REVISION');
     const catalogue = validateType('Catalogue', await row.engine.catalogue());
     const frame = { profileVersion:'frame/v2', frameId:`luanti-world-grid:${r.worldRef}`,
       origin:[0,0,0], axes:['+X','+Y','+Z'], handedness:'left',
       gridUnit:{name:'node',metersPerGridUnit:null},transformRevision:row.backend.revision };
-    let raw, bounds, positions, source, selection;
+    let raw, bounds, positions, source, selection, checkInspection = () => {};
     if (name === 'InspectRegion') {
       const fp=r.footprint, st=r.placementSettings;
       const count=BigInt(fp.widthCells)*BigInt(fp.depthCells)*BigInt(fp.heightCells+1);
       if(count>BigInt(Number.MAX_SAFE_INTEGER) || (await row.engine.capacity(Number(count)))?.allowed !== true) fail('LIMIT_EXCEEDED');
       raw=await row.engine.inspectRegion({sessionRef:r.sessionRef,anchor:r.anchor,footprint:fp,settings:st,
         walkable:Object.fromEntries(Object.entries(catalogue.nodes).map(([n,v])=>[n,v.walkable]))});
+      checkOracle();
       if(raw.kind==='CHOICE') return {outcome:'PLACEMENT_CHOICE_REQUIRED',choice:{anchorKind:r.anchor.kind,
         reasons:[...new Set(raw.reasons)].sort(),options:['PICK_WORLD_POINT'],placementSettings:st,observedWorldRevision:observed}};
       if(raw.kind!=='REGION' || !Array.isArray(raw.cells) || !raw.cells.length) fail('INSPECTION_FAILED');
@@ -248,7 +263,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         knownEmptyCells:raw.cells.filter(c=>c.state==='AIR').map(c=>c.position),unknownCells:[]};
     } else {
       const provider=resolveInspection(); if(typeof provider?.read!=='function') fail('CAPABILITY_UNAVAILABLE');
-      selection=await provider.read(r);
+      const identity = original(provider);
+      checkInspection = () => { if (original(resolveInspection()) !== identity) fail('CURRENT_WORLD_MISMATCH'); };
+      selection=await provider.read(r); checkInspection(); checkOracle();
       if(selection?.current!==true || selection.worldRef!==r.worldRef || selection.worldRevision!==observed ||
         typeof selection.objectRef!=='string' || typeof selection.objectRevision!=='string') fail('TARGET_FACTS_INCOMPLETE');
       bounds=r.sampledBounds;
@@ -264,7 +281,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       coverageDigest:D('coverage',{profileVersion:'coverage/v2',sampledBounds:bounds,sampledPositions:positions}),
       occupiedCells:raw.occupiedCells.sort((a,b)=>comparePosition(a.position,b.position)),knownEmptyCells:raw.knownEmptyCells.sort(comparePosition),
       unknownCells:raw.unknownCells,portals:[],usableVolume:raw.unknownCells.length?null:{emptyCellCount:raw.knownEmptyCells.length,physicalVolume:null,standingArea:null,unit:'node'}});
+    checkOracle(); checkInspection();
     if(await oracle.read(r.worldRef)!==observed) fail('STALE_REVISION');
+    checkOracle(); checkInspection();
     if(name==='InspectWorld') return targetFacts;
     return {outcome:'REGION_INSPECTED',inspection:{inspectionId:r.inspectionId,anchorKind:r.anchor.kind,targetFacts,
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},

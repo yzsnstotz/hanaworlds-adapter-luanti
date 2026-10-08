@@ -182,3 +182,7 @@ These copies stay in this card's ignored run directory and are not bundled.
 VoxeLibre and npm packages carry their included notices; the existing WorldEdit
 mod-only supply does not contain its repository-root license file. Its AGPL-3.0
 origin/license attribution is retained from the prior public Adapter supply.
+
+## F-AD-SESSION-WORLD-BIND-01 isolated inputs (2026-10-09)
+
+No game/engine/WorldEdit content is bundled in the Adapter npm artifact. Own runtime copied the installed official Luanti 5.17.0 app including its notices (LGPL-2.1-or-later); only own child processes/profile are used. VoxeLibre 0.92.3 source at a523240fb89713ffa6302696e8275bbd7de3bd49: official codeload ZIP, 85004136 bytes, SHA256 4c3b3cacdd745c870a4330df20672b3418ac3c22dd20909faa3af4d15d14f3f5, GPL-3.0-or-later code / media notices retained. WorldEdit 62ffafe3bcb386600c431ef3840d91c3c8f85639: official Uberi/Minetest-WorldEdit codeload ZIP, 138409 bytes, SHA256 79d9424d7f21f2c6362f726b95fc56f18889c4af8cdd868be43635a16479215e, AGPL-3.0, original license files retained. These new-source ZIP identities differ from historical distribution archives and are not substituted for them.

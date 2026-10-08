@@ -24,6 +24,15 @@ export function createSessionSelectionConsumer({ resolveCanvas, ensureConnection
   }
   return {
     read: input => serial(() => read(input)),
+    unselect: input => serial(async () => {
+      const {sessionRef,worldRef,expectedRevision}=input;
+      const before=await read({sessionRef,worldRef});
+      if(before.selection.status!=='BOUND'||before.selection.context.activeWorldRef!==worldRef)fail('CURRENT_WORLD_MISMATCH');
+      const context=await call('UnselectWorldConnection',{contractVersion:'canvas/v5',requestId:randomUUID(),sessionRef,worldRef,expectedRevision,expectedContext:before.selection.context.localContext});
+      if(context.activeWorldRef!==null||context.localContext!==null)fail('CURRENT_WORLD_MISMATCH');
+      const after=await read({sessionRef,worldRef});if(after.selection.status!=='UNBOUND')fail('CURRENT_WORLD_MISMATCH');
+      return context;
+    }),
     select: input => serial(async () => {
       const {sessionRef,worldRef,connectionRef,expectedRevision} = input;
       validateType('Revision', expectedRevision);
