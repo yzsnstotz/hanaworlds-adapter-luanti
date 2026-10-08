@@ -4,7 +4,7 @@
 <div class="fixture"><strong>合约 fixture 会话 · 真实隔离世界</strong><div id="fixture">Session / Canvas 为公开合约 fixture；Luanti 世界在本卡独立目录运行。真实 Core / 模型未启用。</div></div>
 <div class="status" id="message" role="status">选择会话不需要先连接世界。</div>
 <section aria-labelledby="session-heading"><h2 id="session-heading">Session 管理</h2><div class="muted">示例会话 S1 / S2 可共用一个世界，每个会话同时只有一个当前世界。持久删除能力未提供。</div><div id="sessions"></div></section>
-<section aria-labelledby="world-heading"><div class="row"><h2 id="world-heading">World 管理</h2><div class="actions"><label>世界名称 <input id="world-name" placeholder="例如：平地 A"></label><button class="primary" id="create">新建平地世界</button><button id="refresh">刷新</button></div></div><div class="muted" id="prerequisites"></div><div id="worlds"></div></section>
+<section aria-labelledby="world-heading"><div class="row"><h2 id="world-heading">World 管理</h2><div class="actions"><label>世界名称 <input id="world-name" placeholder="例如：flat-A（英文或数字）"></label><button class="primary" id="create">新建平地世界</button><button id="refresh">刷新</button></div></div><div class="muted" id="prerequisites"></div><div id="worlds"></div></section>
 <dialog id="deletion"><h2 id="delete-title">删除世界</h2><p id="loss"></p><p id="blockers"></p><div class="actions"><button id="cancel">取消</button><button class="danger" id="confirm">确认永久删除</button></div></dialog>
 <details><summary>本次运行信息</summary><pre id="details"></pre></details><footer>绑定与解绑均由 fixture Canvas 权威读回。停止连接不会替你解除 Session 选择；选择中的世界禁止删除。</footer>
 <script>
