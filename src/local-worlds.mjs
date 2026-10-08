@@ -44,7 +44,8 @@ export async function discoverLocalWorlds(configuredRoots) {
   for (const root of configuredRoots) {
     await realDirectory(root, 'CONNECTION_NOT_FOUND');
     for (const entry of await readdir(root, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      // Adapter staging (new world / deletion in progress) is never a world.
+      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith('.hanaworlds-')) continue;
       const world = join(root, entry.name);
       const worldMt = join(world, 'world.mt');
       const info = await lstat(worldMt).catch(() => null);

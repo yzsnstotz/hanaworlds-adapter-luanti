@@ -1,13 +1,14 @@
 import { validateType } from '#contracts';
 import { randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
 import { createFlatWorld, describeFlatWorldCreation } from './flat-world.mjs';
+import { readCreatedMarker, removeWorldDirectory, worldData } from './local-world-deletion.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
-function deny(code = 'CURRENT_WORLD_MISMATCH') { throw new Error(code); }
+function deny(code = 'CURRENT_WORLD_MISMATCH', details) { const error = new Error(code); if (details) error.details = details; throw error; }
 function text(value) { return typeof value === 'string' && value.length > 0; }
 function fields(value, allowed, required = allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -27,6 +28,9 @@ async function freePort() {
 export function createLocalWorldPort({ roots = [], resolveControl, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
   const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
+  // Latest Host control record per world path this service acquired; kept after the lease ends so a
+  // later deletion runs inside that Host's own stopped-world callback for the exact owned process.
+  const controls = new Map();
   let lifecycle = Promise.resolve();
   function track(run) {
     const work = lifecycle.then(() => { if (closed) deny('ADAPTER_UNAVAILABLE'); return run(); });
@@ -129,6 +133,37 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       if (!used) deny();
     } finally { active = false; }
   }
+  function deletionInput(input) {
+    const q = fields(input, ['requesterRef', 'connectionRef', 'worldRef']);
+    if (![q.requesterRef, q.connectionRef, q.worldRef].every(text)) deny('SCHEMA_INVALID');
+    return q;
+  }
+  // Every fact a deletion depends on, read now from the world, this service and the
+  // runtime journal. Blockers are named; nothing is mutated.
+  async function deletionFacts(q) {
+    const selected = await world(q.connectionRef);
+    if (selected.worldRef !== q.worldRef) deny('CURRENT_WORLD_MISMATCH');
+    if (!rootPaths.includes(dirname(selected.worldPath))) deny('CONNECTION_NOT_FOUND');
+    const blockers = [], ownership = await readCreatedMarker(selected);
+    if (!ownership.owned) blockers.push({ code: 'WORLD_OWNERSHIP_UNKNOWN', reason: ownership.reason });
+    const same = row => row.world.connectionRef === selected.connectionRef || row.world.worldPath === selected.worldPath;
+    if ([...leases.values()].some(same)) blockers.push({ code: 'WORLD_IN_USE', reason: 'LIFECYCLE_LEASE_OPEN' });
+    if ([...bindings.values()].some(same) || running.has(selected.worldPath))
+      blockers.push({ code: 'WORLD_IN_USE', reason: 'ADAPTER_CONNECTION_BOUND' });
+    if (typeof runtime.localWorldActivity !== 'function') blockers.push({ code: 'REQUIRED_FACT_UNKNOWN', reason: 'RUNTIME_ACTIVITY_UNAVAILABLE' });
+    else {
+      const activity = await runtime.localWorldActivity({ connectionRef: selected.connectionRef, worldRef: selected.worldRef });
+      if (activity.bound) blockers.push({ code: 'WORLD_IN_USE', reason: 'RUNTIME_CONNECTION_OPEN' });
+      if (activity.journal.state === 'UNKNOWN') blockers.push({ code: 'REQUIRED_FACT_UNKNOWN', reason: 'JOURNAL_UNREADABLE', detail: activity.journal.reason });
+      else if (activity.journal.state === 'PRESENT' && activity.journal.unsettled.length)
+        blockers.push({ code: 'WORLD_IN_USE', reason: 'TRANSACTION_IN_FLIGHT', transactions: activity.journal.unsettled });
+    }
+    const control = controls.get(selected.worldPath);
+    if (control && (resolveControl()?.[Symbol.for('cordis.original')] ?? resolveControl()) !== (control.host[Symbol.for('cordis.original')] ?? control.host))
+      blockers.push({ code: 'CURRENT_WORLD_MISMATCH', reason: 'NATIVE_CONTROL_PROVIDER_REPLACED' });
+    return { world: selected, marker: ownership.marker ?? null, blockers, control,
+      nativeStop: control ? 'HOST_STOPPED_CALLBACK' : 'NOT_LAUNCHED_BY_THIS_SERVICE', data: await worldData(selected.worldPath) };
+  }
   const port = {
     async setRoots(input) {
       const { roots: selected } = fields(input, ['roots']);
@@ -164,6 +199,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
             action: request.action, host,
             nativeQuery: { controlRef: lease.controlRef, requesterRef: request.requesterRef,
               operationRef, worldPath: selected.worldPath } };
+          controls.set(selected.worldPath, row);
           const facts = await inspectRow(row); row.processId = facts.processId;
           if (closed) deny();
           leases.set(row.leaseRef, row);
@@ -231,6 +267,56 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
           worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
           game: made.game, mapgen: made.mapgen, perCellMod: made.perCellMod, nextAction: 'BIND_RUNNING_WORLD' };
+      });
+    },
+    /** What deleting one exact world would remove and whether it is allowed now. Changes nothing. */
+    async describeWorldDeletion(input) {
+      let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
+      return track(async () => {
+        const f = await deletionFacts(q);
+        return { connectionRef: f.world.connectionRef, worldRef: f.world.worldRef, worldName: basename(f.world.worldPath),
+          worldPath: f.world.worldPath, root: dirname(f.world.worldPath), productCreated: !!f.marker,
+          createdAt: f.marker?.createdAt ?? null, dataLoss: { scope: 'ENTIRE_WORLD_DIRECTORY', ...f.data },
+          nativeStop: f.nativeStop, deletable: f.blockers.length === 0, blockers: f.blockers,
+          callerMustVerify: ['NO_LIVE_SESSION_BINDING'] };
+      });
+    },
+    /** Deletes one exact Adapter-created world that is not bound, leased or mid-transaction here,
+     * then reads back that discovery no longer lists it and its directory is gone. */
+    async deleteWorld(input) {
+      let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
+      return track(async () => {
+        const f = await deletionFacts(q);
+        if (f.blockers.length) { log('warn', `LOCAL_DELETE_REJECTED ${f.blockers.map(b => b.reason).join(',')}`); deny(f.blockers[0].code, { blockers: f.blockers }); }
+        const remove = async () => {
+          const again = await world(q.connectionRef);
+          if (again.worldRef !== f.world.worldRef || again.device !== f.world.device || again.inode !== f.world.inode) deny();
+          await removeWorldDirectory(f.world);
+        };
+        if (f.control) {
+          const control = f.control, host = provider(control);
+          let active = true, used = false;
+          try {
+            await host.withStoppedWorld({ ...control.nativeQuery }, async facts => {
+              if (!active || used || !factsMatch(control, facts, 'STOPPED')) deny();
+              used = true; provider(control);
+              await remove();
+            });
+            if (!used) deny();
+          } catch (error) {
+            log('warn', `LOCAL_DELETE_STOP_REJECTED ${error?.message}`);
+            if (error?.message === 'DELETE_INCOMPLETE') throw error;
+            deny();
+          } finally { active = false; }
+        } else await remove();
+        const listed = (await discover()).some(row => row.connectionRef === f.world.connectionRef || row.worldPath === f.world.worldPath);
+        const exists = !!await lstat(f.world.worldPath).catch(() => null);
+        if (listed || exists) deny('READBACK_MISMATCH', { listed, pathExists: exists });
+        managed.delete(f.world.worldPath); controls.delete(f.world.worldPath);
+        log('info', `LOCAL_WORLD_DELETED ${f.world.connectionRef}`);
+        return { deleted: true, connectionRef: f.world.connectionRef, worldRef: f.world.worldRef,
+          worldName: basename(f.world.worldPath), worldPath: f.world.worldPath, removed: f.data,
+          nativeStop: f.nativeStop, readback: { listed: false, pathExists: false } };
       });
     },
     async pair(input) {

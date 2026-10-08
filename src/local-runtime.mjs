@@ -4,7 +4,7 @@ import { validateRequest, validateResponse, validateRegionRead, validateRegionWr
 import { LocalCourier } from './local-courier.mjs';
 import { LocalRecords } from './local-records.mjs';
 import { LocalTransactions, cellDigest, readbackView } from './local-transactions.mjs';
-import { nativeJournalDirectory } from './native-storage.mjs';
+import { nativeJournalDirectory, readJournalActivity } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
@@ -29,6 +29,11 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         await row.engine.close();
       });
       serial = work.catch(() => {}); return work;
+    },
+    /** Whether this runtime still holds the world, and its journal's unsettled transactions. Read-only. */
+    async localWorldActivity({ connectionRef, worldRef }) {
+      const bound = [...rows.values()].some(row => row.connectionRef === connectionRef || row.worldRef === worldRef);
+      return { bound, journal: await readJournalActivity(homePath, worldRef) };
     },
     async pairLocal(world) {
       if (closed || rows.size) fail('CURRENT_WORLD_MISMATCH');

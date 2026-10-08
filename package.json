@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -32,6 +32,7 @@
     "src/region-io.mjs",
     "src/region-batches.mjs",
     "src/flat-world.mjs",
+    "src/local-world-deletion.mjs",
     "payload/hanaworlds_adapter/mod.conf",
     "payload/hanaworlds_adapter/init.lua",
     "payload/hanaworlds_adapter/engine.lua",
@@ -54,7 +55,7 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
     "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs",
     "test:lua": "lua test/local-world-region.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
@@ -65,6 +66,7 @@
     "test:flat": "node --test test/local-flat-world.test.mjs",
     "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs",
     "test:switch": "node --test test/local-world-switch.test.mjs",
+    "test:delete": "node --test test/local-world-delete.test.mjs",
     "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs"
   },
   "dependencies": {

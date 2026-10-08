@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { syncDirectory, syncFile, writePayload } from './local-worlds.mjs';
+import { CREATED_MARKER, createdMarker } from './local-world-deletion.mjs';
+import { ADAPTER_VERSION } from './version.mjs';
 
 // New local single-player world, generated flat by Luanti's own `flat` mapgen.
 // The mapgen parameters are written into the new world's map_meta.txt before its
@@ -131,6 +133,7 @@ export async function createFlatWorld({ roots, root, userPath, gameId, worldName
     const mods = join(staging, 'worldmods'), payload = join(mods, 'hanaworlds_adapter');
     await mkdir(mods, { mode: 0o700 }); await mkdir(payload, { mode: 0o700 });
     const identity = await writePayload(payload, { transportPort });
+    await syncFile(join(staging, CREATED_MARKER), createdMarker({ worldRef: identity.worldRef, worldName: name, root: base, adapterVersion: ADAPTER_VERSION }));
     await syncDirectory(mods); await syncDirectory(staging);
     if (await lstat(target).catch(() => null)) throw fault('WORLD_EXISTS', { worldPath: target });
     await rename(staging, target);

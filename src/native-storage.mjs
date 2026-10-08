@@ -108,3 +108,34 @@ async function bindWorld(directory, worldRef) {
   await rename(temporary, markerPath);
   await syncDirectory(directory);
 }
+
+// Transaction outcomes after which no world mutation is still in flight.
+const SETTLED = new Set(['VERIFIED', 'ROLLED_BACK', 'ABORTED_PREPARED']);
+/**
+ * Read-only view of one world's journal, without creating any directory:
+ * `{state:'NONE'}` when no journal was ever written, `{state:'PRESENT', unsettled:[...]}`
+ * listing transactions that are not settled, or `{state:'UNKNOWN', reason}` when it
+ * cannot be read exactly (fail closed for callers that need "no in-flight operation").
+ */
+export async function readJournalActivity(homePath, worldRef) {
+  try {
+    if (typeof homePath !== 'function') return { state: 'UNKNOWN', reason: 'dshHomePath not provided' };
+    const root = homePath();
+    if (typeof root !== 'string' || !isAbsolute(root) || resolve(root) !== root) return { state: 'UNKNOWN', reason: 'DSH home is not an absolute normalized path' };
+    const key = createHash('sha256').update(worldRef).digest('hex');
+    const directory = join(root, 'data', OWNER, 'journal', key);
+    const dir = await lstat(directory).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (!dir) return { state: 'NONE' };
+    if (!dir.isDirectory() || dir.isSymbolicLink()) return { state: 'UNKNOWN', reason: 'journal is not a real directory' };
+    const file = join(directory, 'local-world-state');
+    const info = await lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (!info) return { state: 'NONE' };
+    if (!info.isFile() || info.isSymbolicLink()) return { state: 'UNKNOWN', reason: 'journal state is not a regular file' };
+    const data = JSON.parse(await readFile(file, 'utf8'));
+    if (data?.worldRef !== worldRef || typeof data.transactions !== 'object' || data.transactions === null)
+      return { state: 'UNKNOWN', reason: 'journal names another world or is malformed' };
+    const unsettled = Object.values(data.transactions).filter(t => !SETTLED.has(t?.status))
+      .map(t => ({ transactionId: t?.transactionId ?? null, status: t?.status ?? null }));
+    return { state: 'PRESENT', unsettled };
+  } catch (error) { return { state: 'UNKNOWN', reason: `journal unreadable: ${error.code ?? error.message}` }; }
+}

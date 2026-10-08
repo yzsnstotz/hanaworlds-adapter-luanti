@@ -315,6 +315,59 @@ name is `WORLD_EXISTS` and is never overwritten; with no `worldName` a new
 `hanaworlds-flat-<UTC>-<hex>` name is used. On any failure the staging directory
 is removed and no world is created or selected. Existing worlds are not migrated.
 
+## Safe deletion of an Adapter-created world (0.7.3)
+
+`hanaworldsLuantiLocalWorlds` adds two methods. No Contracts type, wire, payload
+or other origin changes; payload stays 0.6.0.
+
+- `createFlatWorld` now also writes `hanaworlds-created-world.json` in the new
+  world's own directory (outside the payload): `{format:'hanaworlds-adapter-created-world/1',
+  createdBy:'hanaworlds-adapter-luanti', adapterVersion, worldRef, worldName, root, createdAt}`.
+  It is the only ownership proof. Worlds without it (user worlds, provisioned
+  worlds, worlds created by 0.7.2 or earlier), copies or moved worlds are
+  `WORLD_OWNERSHIP_UNKNOWN` and are never deleted.
+- `describeWorldDeletion({requesterRef, connectionRef, worldRef})` changes nothing and
+  returns `{connectionRef, worldRef, worldName, worldPath, root, productCreated,
+  createdAt, dataLoss:{scope:'ENTIRE_WORLD_DIRECTORY', files, bytes}, nativeStop,
+  deletable, blockers[], callerMustVerify:['NO_LIVE_SESSION_BINDING']}`.
+- `deleteWorld({requesterRef, connectionRef, worldRef})` rechecks every fact,
+  deletes, then reads back. Success: `{deleted:true, connectionRef, worldRef,
+  worldName, worldPath, removed:{files,bytes}, nativeStop, readback:{listed:false, pathExists:false}}`.
+
+Checks (service side, all at call time): `connectionRef` must be what `discover()`
+lists now in a configured root (else `CONNECTION_NOT_FOUND`; a world outside the
+current roots is unreachable); its realpath is unchanged and its payload worldRef
+equals `worldRef` (else `CURRENT_WORLD_MISMATCH`); the creation marker matches
+worldRef, name and root. Named blockers: `WORLD_IN_USE` with reason
+`LIFECYCLE_LEASE_OPEN` (any acquired lease, paired or not), `ADAPTER_CONNECTION_BOUND`,
+`RUNTIME_CONNECTION_OPEN`, `TRANSACTION_IN_FLIGHT` (the world's Adapter journal has
+a transaction not `VERIFIED`/`ROLLED_BACK`/`ABORTED_PREPARED`);
+`REQUIRED_FACT_UNKNOWN` (`JOURNAL_UNREADABLE`, `RUNTIME_ACTIVITY_UNAVAILABLE`);
+`CURRENT_WORLD_MISMATCH` (`NATIVE_CONTROL_PROVIDER_REPLACED`). A rejected deletion
+carries `error.details.blockers` and changes nothing.
+
+The current world cannot be deleted: switch to another world first (0.7.1
+sequence); the switched-away world then has no lease or binding. If this service
+ever acquired the world, deletion runs only inside the original Host's
+`withStoppedWorld(originalQuery, consume)` with exact STOPPED PID/world/operation
+facts (`nativeStop:'HOST_STOPPED_CALLBACK'`); a Host that refuses, has no record,
+gives other facts or was replaced rejects with `CURRENT_WORLD_MISMATCH` and the
+world is kept. Stopping a process is never deletion. A world this service never
+acquired reports `nativeStop:'NOT_LAUNCHED_BY_THIS_SERVICE'`: Adapter has no Host
+query for it and cannot observe a process that another component started.
+
+Removal renames the exact directory (same device/inode) to a hidden
+`.hanaworlds-deleting-*` name in the same root (discovery never lists
+`.hanaworlds-*` staging), then removes it. A removal failing after the rename is
+`DELETE_INCOMPLETE` with `details.residuePath`, never reported as deleted.
+Success requires `discover()` to no longer list it and the path to be absent
+(`READBACK_MISMATCH` otherwise). Deletion never touches Canvas transactions,
+other worlds or the Adapter journal of that worldRef (kept as is).
+
+Caller responsibilities (not observable by Adapter): no live conversation/Canvas
+session is bound to the world (`callerMustVerify`), the user confirmed the exact
+`worldName` and `dataLoss`, and Cancel simply does not call `deleteWorld`.
+
 ## Validation and retained history
 
 The 0.3.1-only read seam reproduction is `test/real-catalogue.mjs`, using fresh
