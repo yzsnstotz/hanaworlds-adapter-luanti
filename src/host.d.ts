@@ -7,6 +7,16 @@ export interface NativeHostOptions {
 }
 export interface OwnedNativeHost {
  readonly host: LocalEngineControlPort;
+ /** Retained own client state only; neither method proves a joined player.
+  * enter uses this Host's live server PID/path and returns a spawn attempt.
+  * An asynchronous client spawn error can leave pid undefined. */
+ readonly game: {
+  running(): boolean;
+  enter(current: { nativeProcessId: number; worldPath: string }): Promise<{
+   started: true; pid: number | undefined; serverPid: number; serverPort: number;
+   worldPath: string; logfile: string;
+  }>;
+ };
  foreignActivity(worldPath: string): Promise<Array<{pid: number; worldPath: string; source: 'PROCESS_ARGUMENTS' | 'OPEN_WORLD_FILE'}>>;
  shutdown(): Promise<void>;
 }
