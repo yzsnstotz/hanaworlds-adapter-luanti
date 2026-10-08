@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -70,6 +70,6 @@
   },
   "dependencies": {
     "canonicalize": "5.1.0",
-    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4-rc.1"
+    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4"
   }
 }

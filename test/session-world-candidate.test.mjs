@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as C from '#contracts';
 import fixture from 'hanaworlds-contracts/fixtures/session-world' with {type:'json'};
 test('candidate exact handshake accepts itself and rejects old exact package',()=>{
- assert.equal(C.contractHandshake.contracts,'hanaworlds-contracts@0.5.4-rc.1');
+ assert.equal(C.contractHandshake.contracts,'hanaworlds-contracts@0.5.4');
  assert.equal(C.checkContractHandshake(C.contractHandshake).result,'HANDSHAKE_VERSION_MATCH');
  assert.throws(()=>C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@0.5.3'}));
 });

@@ -1,13 +1,13 @@
 {
   "name": "hanaworlds-contracts",
-  "version": "0.5.4-rc.1",
-  "tag": "v0.5.4-rc.1",
-  "tagObject": "f2600bd84bbc6b53ae9b52a0baadeb5c1c8336ef",
-  "revision": "0beeff5774db476c0128683ca6107a28bdcdcbee",
-  "sha256": "51902797a167a222d812c344871bb1c0774ae775fb0026d70381edd4c08f17ed",
-  "bytes": 157755,
+  "version": "0.5.4",
+  "tag": "v0.5.4",
+  "tagObject": "b3721db855ffe08dfa524e6eea6a5da4eed4c220",
+  "revision": "85687fc3811e4c8ee6e69410d46d8026e19d2c75",
+  "sha256": "b920097dee8bf57ef44cc9ca964829e568b14c9e1b15a77bf4599f69391062ec",
+  "bytes": 157837,
   "entryCount": 26,
-  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4-rc.1",
+  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4",
   "entries": [
     {
       "path": "LICENSE",
@@ -20,9 +20,54 @@
       "sha256": "eb379fc4d7055a01aec0e0064ac5ad884aa662f1a7d16ce13ff14c609126f591"
     },
     {
+      "path": "schemas/local/contracts.schema.json",
+      "size": 298865,
+      "sha256": "5352473a326055ee888b5ea6ef1ae870e951b0d618b17dd6b19d623ea9e707f7"
+    },
+    {
+      "path": "fixtures/local/main.json",
+      "size": 28765,
+      "sha256": "dae8c5f3dc577c29809eb3367ffcca820de18ad3d78bf51d69f1940b47c75216"
+    },
+    {
+      "path": "package.json",
+      "size": 2054,
+      "sha256": "6b04b360c72fe5cd4204e0a2fe2674e03e6c397fa6899c4002cb726e3f9cb384"
+    },
+    {
+      "path": "schemas/local/profile.json",
+      "size": 343269,
+      "sha256": "1c947f01261792a49e0eeaa191167211395a9c153932fd1ec65726d5b6173a5a"
+    },
+    {
+      "path": "fixtures/local/region.json",
+      "size": 72135,
+      "sha256": "a8003d917cc6fd98e42139524fc257eae73beaa506cf6c0f9ddb9b0c058611b0"
+    },
+    {
+      "path": "fixtures/local/session-world.json",
+      "size": 19721,
+      "sha256": "7882edf432affbcfd447f5fa0896b3dee6a3d3c1fddcce4f8bd078486397564d"
+    },
+    {
       "path": "README.md",
-      "size": 35139,
-      "sha256": "fa5f7196cd63034808cea04bb58c90e8cd59fb79552bcefbd7d9f471b019e8cf"
+      "size": 35454,
+      "sha256": "22e2a4764badb31cc2c6e7c6ede1911ed021cc2236979228ad123502689af84e"
+    },
+    {
+      "path": "dist/local/build-proposal.mjs",
+      "size": 8273,
+      "sha256": "5e1ac2c07c1c916f501b0cbbd8522d6cf3dcad94e324d6861f754b86f52cfeba"
+    },
+    {
+      "path": "dist/local/generated/contracts.mjs",
+      "size": 222019,
+      "sha256": "0b4c4a8582a4876601751402e7f19dc29bf960080b275c7cbf10a661e484883a"
+    },
+    {
+      "path": "dist/local/domain.mjs",
+      "size": 14352,
+      "sha256": "b92b7e1bc0562cf02003a13d9d6e2f5dbd9287997b9399942ba8feb0184f208b"
     },
     {
       "path": "dist/errors.mjs",
@@ -35,21 +80,6 @@
       "sha256": "70dbd7a4e53f2de7922838bc762407319219fa5758d766e96773ff229d9c959b"
     },
     {
-      "path": "dist/local/build-proposal.mjs",
-      "size": 8273,
-      "sha256": "5e1ac2c07c1c916f501b0cbbd8522d6cf3dcad94e324d6861f754b86f52cfeba"
-    },
-    {
-      "path": "dist/local/domain.mjs",
-      "size": 14352,
-      "sha256": "b92b7e1bc0562cf02003a13d9d6e2f5dbd9287997b9399942ba8feb0184f208b"
-    },
-    {
-      "path": "dist/local/generated/contracts.mjs",
-      "size": 222034,
-      "sha256": "6d46078694abc3425943e77f9626bbf7fecebc145c9cef15d94d9dd9fedebb90"
-    },
-    {
       "path": "dist/local/index.mjs",
       "size": 197,
       "sha256": "a4eef67c52b8c55500c6f902e1962ceac3d21fc68a3064762196d0631aa9b7cc"
@@ -60,9 +90,9 @@
       "sha256": "6430dd73bbce6317eed79ebb4d4fafee047398d62538f87c4b1062b0ea692f7b"
     },
     {
-      "path": "dist/local/public.d.ts",
-      "size": 15383,
-      "sha256": "8db88745472da4176ccf38c00e43c704eee46df18eaad2ac4abe10a330963ff5"
+      "path": "dist/names.mjs",
+      "size": 2876,
+      "sha256": "56c760fa438181a44f37588dc33914ad9076175bc69b4fdf1354ede02a027dad"
     },
     {
       "path": "dist/local/region-domain.mjs",
@@ -85,49 +115,14 @@
       "sha256": "63f818b74fb957cdec34b3f551d7626a92a770302adcdf2a5882d67d2f3302fe"
     },
     {
-      "path": "dist/local/write-path.mjs",
-      "size": 3153,
-      "sha256": "962c36240125d8b80491ecf805b9eb302c9dbcb338c2e2019b85c77bc61bc00f"
-    },
-    {
-      "path": "dist/names.mjs",
-      "size": 2876,
-      "sha256": "56c760fa438181a44f37588dc33914ad9076175bc69b4fdf1354ede02a027dad"
-    },
-    {
       "path": "dist/strict-json.mjs",
       "size": 6937,
       "sha256": "d774f8119b2932af815df666059b4a5e90d65ec2cf181c0ca8803099f15a4c31"
     },
     {
-      "path": "fixtures/local/main.json",
-      "size": 28765,
-      "sha256": "dae8c5f3dc577c29809eb3367ffcca820de18ad3d78bf51d69f1940b47c75216"
-    },
-    {
-      "path": "fixtures/local/region.json",
-      "size": 72135,
-      "sha256": "a8003d917cc6fd98e42139524fc257eae73beaa506cf6c0f9ddb9b0c058611b0"
-    },
-    {
-      "path": "fixtures/local/session-world.json",
-      "size": 19721,
-      "sha256": "7882edf432affbcfd447f5fa0896b3dee6a3d3c1fddcce4f8bd078486397564d"
-    },
-    {
-      "path": "package.json",
-      "size": 2059,
-      "sha256": "95b8c285a3fb467094941fc161e68877cc40e2c82271089db08effdec9eeb0e3"
-    },
-    {
-      "path": "schemas/local/contracts.schema.json",
-      "size": 298870,
-      "sha256": "dd5913e01191cdd9dd52d78684735fdf9ced5dd289e1d44189e6bd9193f41b4f"
-    },
-    {
-      "path": "schemas/local/profile.json",
-      "size": 343274,
-      "sha256": "a0e8dbff5518679b0dc50a2b5434c8b0bb7854efaf1236738c2252b80c3da887"
+      "path": "dist/local/write-path.mjs",
+      "size": 3153,
+      "sha256": "962c36240125d8b80491ecf805b9eb302c9dbcb338c2e2019b85c77bc61bc00f"
     },
     {
       "path": "types/local/contracts.d.ts",
@@ -136,8 +131,13 @@
     },
     {
       "path": "types/local/index.d.ts",
-      "size": 15383,
-      "sha256": "8db88745472da4176ccf38c00e43c704eee46df18eaad2ac4abe10a330963ff5"
+      "size": 15378,
+      "sha256": "c549c054548a4e85c792ba6ae7478a0ea86a31556c1dd01d0f7b04d29a4db74c"
+    },
+    {
+      "path": "dist/local/public.d.ts",
+      "size": 15378,
+      "sha256": "c549c054548a4e85c792ba6ae7478a0ea86a31556c1dd01d0f7b04d29a4db74c"
     }
   ]
 }
