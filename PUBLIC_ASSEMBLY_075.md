@@ -153,3 +153,7 @@ PARTIAL: official Loader/provider recipe and authoritative inspection/Session sn
 ## Stage B follow-up (2026-10-09)
 
 The fixed official Loader/provider/native ownership recipe is now supplied in [PUBLIC_HOST_RECIPE.md](PUBLIC_HOST_RECIPE.md), using pinned official Loader1.0.5/Cordis4.0.4 and the existing own-origin native Host source. The earlier Loader field uncertainty is resolved by its actual public EntryOptions declaration and new SOURCE/FIXTURE check; other historical 0.7.5 supply statements remain unchanged. Canvas selected-object snapshots and the exact new candidate remain owning-origin inputs.
+
+## 2026-10-09 public packet supplement
+
+The original 0.7.5/0.5.3 observations above remain historical. Fixed official Loader/native ownership recipe: [PUBLIC_HOST_RECIPE.md](./PUBLIC_HOST_RECIPE.md). Current Inspection request/result, Canvas CAS zero/multiple selection mapping and revision/stale handling: [PUBLIC_INSPECTION_RECIPE.md](./PUBLIC_INSPECTION_RECIPE.md). Candidate source preparation does not replace the accepted 0.7.5 service or establish I-K2 assembly/product acceptance.

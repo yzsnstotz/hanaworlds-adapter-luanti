@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
 import { createFlatWorld, describeFlatWorldCreation } from './flat-world.mjs';
 import { readCreatedMarker, removeWorldDirectory, worldData } from './local-world-deletion.mjs';
+import { readWorldSelections, withWorldRetirement } from './world-retirement.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
 function deny(code = 'CURRENT_WORLD_MISMATCH', details) { const error = new Error(code); if (details) error.details = details; throw error; }
@@ -25,7 +26,7 @@ async function freePort() {
 
 /** In-process Host lifecycle port. Never accepts lifecycle facts from request JSON. Native process and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
-export function createLocalWorldPort({ roots = [], resolveControl, runtime, log = () => {} }) {
+export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
   const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
   // Latest Host control record per world path this service acquired; kept after the lease ends so a
@@ -275,6 +276,10 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
       let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
       return track(async () => {
         const f = await deletionFacts(q);
+        try {
+          const inventory = await readWorldSelections(resolveCanvas, q.worldRef);
+          if (inventory.sessionRefs.length || inventory.retirementReservationRef) f.blockers.push({code:'TRANSACTION_CONFLICT',reason:'LIVE_SESSION_BINDING_OR_RETIREMENT',sessions:inventory.sessionRefs});
+        } catch (error) { f.blockers.push({code:error.message,reason:'SELECTION_INVENTORY_UNAVAILABLE'}); }
         return { connectionRef: f.world.connectionRef, worldRef: f.world.worldRef, worldName: basename(f.world.worldPath),
           worldPath: f.world.worldPath, root: dirname(f.world.worldPath), productCreated: !!f.marker,
           createdAt: f.marker?.createdAt ?? null, dataLoss: { scope: 'ENTIRE_WORLD_DIRECTORY', ...f.data },
@@ -286,7 +291,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
      * then reads back that discovery no longer lists it and its directory is gone. */
     async deleteWorld(input) {
       let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
-      return track(async () => {
+      return track(() => withWorldRetirement(resolveCanvas, q.worldRef, async () => {
         const f = await deletionFacts(q);
         if (f.blockers.length) { log('warn', `LOCAL_DELETE_REJECTED ${f.blockers.map(b => b.reason).join(',')}`); deny(f.blockers[0].code, { blockers: f.blockers }); }
         const remove = async () => {
@@ -318,7 +323,7 @@ export function createLocalWorldPort({ roots = [], resolveControl, runtime, log 
         return { deleted: true, connectionRef: f.world.connectionRef, worldRef: f.world.worldRef,
           worldName: basename(f.world.worldPath), worldPath: f.world.worldPath, removed: f.data,
           nativeStop: f.nativeStop, readback: { listed: false, pathExists: false } };
-      });
+      }));
     },
     /** Stop one exact current world through its original Host callback and retire the binding.
      * The Adapter service remains open; no stopped evidence is accepted from caller JSON. */

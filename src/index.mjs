@@ -14,7 +14,7 @@ export function apply(ctx, config = {}) {
     resolveInspection: () => get('hanaworldsLuantiInspectionContext'),
     inspectConnection: ref => local.inspectConnection(ref) });
   local = createLocalWorldPort({ roots: config.localWorldRoots ?? [],
-    resolveControl: () => get('hanaworldsNativeEngineControl'), runtime });
+    resolveControl: () => get('hanaworldsNativeEngineControl'), resolveCanvas: () => get('hanaworldsCanvasV5'), runtime });
   let unregister, closing;
   const service = {
     worldAdapter: runtime.port, localWorlds: local.port,

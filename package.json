@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -44,7 +44,8 @@
     "GADGET.md",
     "LICENSE_AUDIT.md",
     "NOTICE",
-    "DEFERRED-LOCAL-WORLD.md"
+    "DEFERRED-LOCAL-WORLD.md",
+    "src/world-retirement.mjs"
   ],
   "dsh": {
     "bundle": {
@@ -52,7 +53,7 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
     "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs",
     "test:lua": "lua test/local-world-region.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
@@ -69,6 +70,6 @@
   },
   "dependencies": {
     "canonicalize": "5.1.0",
-    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.3"
+    "hanaworlds-contracts": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4-rc.1"
   }
 }

@@ -1,13 +1,13 @@
 {
   "name": "hanaworlds-contracts",
-  "version": "0.5.3",
-  "tag": "v0.5.3",
-  "tagObject": "b3983bc5cde7791266758842a017458386d14283",
-  "revision": "3457493da209178f815d6950e323e1dc462e8d6c",
-  "sha256": "7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241",
-  "bytes": 146045,
-  "entryCount": 25,
-  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.3",
+  "version": "0.5.4-rc.1",
+  "tag": "v0.5.4-rc.1",
+  "tagObject": "f2600bd84bbc6b53ae9b52a0baadeb5c1c8336ef",
+  "revision": "0beeff5774db476c0128683ca6107a28bdcdcbee",
+  "sha256": "51902797a167a222d812c344871bb1c0774ae775fb0026d70381edd4c08f17ed",
+  "bytes": 157755,
+  "entryCount": 26,
+  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4-rc.1",
   "entries": [
     {
       "path": "LICENSE",
@@ -21,8 +21,8 @@
     },
     {
       "path": "README.md",
-      "size": 30772,
-      "sha256": "8de2a9c177f4818659a5f96526fb4dda3a6a1b770cb8774bf53fef019a7d8c4d"
+      "size": 35139,
+      "sha256": "fa5f7196cd63034808cea04bb58c90e8cd59fb79552bcefbd7d9f471b019e8cf"
     },
     {
       "path": "dist/errors.mjs",
@@ -41,13 +41,13 @@
     },
     {
       "path": "dist/local/domain.mjs",
-      "size": 13976,
-      "sha256": "f5ed3cb4f10da258d683cb32b5603f5f8bc74c64719d463c8cb7747e6ff21044"
+      "size": 14352,
+      "sha256": "b92b7e1bc0562cf02003a13d9d6e2f5dbd9287997b9399942ba8feb0184f208b"
     },
     {
       "path": "dist/local/generated/contracts.mjs",
-      "size": 205734,
-      "sha256": "619f66ddd20baf90c1d2ebe9f5f4fc71df024f2cac88c36ac78e11a7059ee6f8"
+      "size": 222034,
+      "sha256": "6d46078694abc3425943e77f9626bbf7fecebc145c9cef15d94d9dd9fedebb90"
     },
     {
       "path": "dist/local/index.mjs",
@@ -61,8 +61,8 @@
     },
     {
       "path": "dist/local/public.d.ts",
-      "size": 14356,
-      "sha256": "71653b1064a46280493884528d9e152858001718ae21ff4f8f9e921cb7ec0f4d"
+      "size": 15383,
+      "sha256": "8db88745472da4176ccf38c00e43c704eee46df18eaad2ac4abe10a330963ff5"
     },
     {
       "path": "dist/local/region-domain.mjs",
@@ -76,8 +76,8 @@
     },
     {
       "path": "dist/local/runtime.mjs",
-      "size": 24135,
-      "sha256": "a6f73c7a79efe5544f35ad0247cc39c2cccd79c4c7d699722807f6c63056b428"
+      "size": 26735,
+      "sha256": "b16d6838ba523278e7bf2676744b9ec1f914e83683a89eb99fe702a63c829d71"
     },
     {
       "path": "dist/local/schema-validator.mjs",
@@ -110,29 +110,34 @@
       "sha256": "a8003d917cc6fd98e42139524fc257eae73beaa506cf6c0f9ddb9b0c058611b0"
     },
     {
+      "path": "fixtures/local/session-world.json",
+      "size": 19721,
+      "sha256": "7882edf432affbcfd447f5fa0896b3dee6a3d3c1fddcce4f8bd078486397564d"
+    },
+    {
       "path": "package.json",
-      "size": 1925,
-      "sha256": "09d86170af0e7326c515e7b328fa9004d67f180c2992f9779076ffc2ab7cc62b"
+      "size": 2059,
+      "sha256": "95b8c285a3fb467094941fc161e68877cc40e2c82271089db08effdec9eeb0e3"
     },
     {
       "path": "schemas/local/contracts.schema.json",
-      "size": 284120,
-      "sha256": "252c1094dfc4cfdabd87e217cb8a7676764197bc0b92bca84c966a352b022f3d"
+      "size": 298870,
+      "sha256": "dd5913e01191cdd9dd52d78684735fdf9ced5dd289e1d44189e6bd9193f41b4f"
     },
     {
       "path": "schemas/local/profile.json",
-      "size": 320613,
-      "sha256": "c62917474344a9878b7436a3cb34c02abe4bc7184920dbf5ef15b36516a8560a"
+      "size": 343274,
+      "sha256": "a0e8dbff5518679b0dc50a2b5434c8b0bb7854efaf1236738c2252b80c3da887"
     },
     {
       "path": "types/local/contracts.d.ts",
-      "size": 104126,
-      "sha256": "5031bcf31d7e5acd7023ff510ffc417331c28016cd0f4d5f3d75edfbd5e9997a"
+      "size": 109997,
+      "sha256": "69748f351887ad294212ab32709c85368a954a9431895a9546829207ab28e9ca"
     },
     {
       "path": "types/local/index.d.ts",
-      "size": 14356,
-      "sha256": "71653b1064a46280493884528d9e152858001718ae21ff4f8f9e921cb7ec0f4d"
+      "size": 15383,
+      "sha256": "8db88745472da4176ccf38c00e43c704eee46df18eaad2ac4abe10a330963ff5"
     }
   ]
 }

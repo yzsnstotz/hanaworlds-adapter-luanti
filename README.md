@@ -455,3 +455,7 @@ archive above. `npm run test:contracts` includes byte/missing-module/tag refusal
 Existing 0.7.4 / contracts0.5.2 trial services retain their own source and profile;
 this dependency update does not upgrade or restart them. Historical gate scripts
 for earlier cards and contracts versions are not current formal-product gates.
+
+## Candidate source preparation (2026-10-09)
+
+Own branch source is Adapter 0.7.6 / payload 0.6.0, pinned to exact contracts v0.5.4-rc.1. This source node is PARTIAL, with no new Adapter tar or 47612 UI delivery. Accepted 0.7.5/0.5.3 remains protected. Current public packet: [Loader/native ownership](./PUBLIC_HOST_RECIPE.md), [Inspection/CAS/revision mapping](./PUBLIC_INSPECTION_RECIPE.md). Candidate pin and new consumer tests cover only SOURCE/FIXTURE; page, real Luanti/Core and product gates remain pending.
