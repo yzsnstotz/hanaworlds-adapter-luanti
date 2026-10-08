@@ -13,7 +13,12 @@ export function createSessionManager({local,adapter,fixture,requesterRef,userPat
  const query=row=>({requesterRef,connectionRef:row.connectionRef,worldRef:row.worldRef});
  const consumer=createSessionSelectionConsumer({resolveCanvas:()=>fixture.canvas,ensureConnection:async(sessionRef,connectionRef)=>{
   await fixture.readIdentity(sessionRef);const row=await world(connectionRef);
-  try{return await adapterCall('ReadLocalConnection',{sessionRef,connectionRef});}catch(e){if(e.message!=='CONNECTION_NOT_FOUND')throw e;}
+  try{return await adapterCall('ReadLocalConnection',{sessionRef,connectionRef});}catch(e){
+   if(e.message==='CURRENT_WORLD_MISMATCH'&&native.has(connectionRef)){
+    // Invalid CURRENT cannot prove exit. Reconnect only after original Host finite STOPPED callback.
+    await local.stopWorld(query(row));native.delete(connectionRef);
+   }else if(e.message!=='CONNECTION_NOT_FOUND')throw e;
+  }
   if(game.running()||(await foreignActivity(row.worldPath)).length)fail('WORLD_IN_USE');
   const lease=await local.acquire({requesterRef,userPath,connectionRef,action:'BIND_RUNNING_WORLD'});
   const q={requesterRef,connectionRef,leaseRef:lease.leaseRef};await local.pair(q);native.set(connectionRef,{...row,lease:q,nativeProcessId:lease.nativeProcessId});
