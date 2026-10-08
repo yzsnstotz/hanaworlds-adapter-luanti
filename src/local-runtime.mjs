@@ -110,6 +110,30 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial=work.catch(()=>{});return work;
     },
+    /** Read-only node state of a box in the exact currently paired world (no transaction,
+     * no Canvas selection): the same emerge + VoxelManip chunk reads as ReadRegion, with
+     * KNOWN/UNKNOWN per mapblock. Loading may generate never-visited map; nothing is written
+     * by the Adapter. Host/dev suppliers use it for observation, never as a BEFORE_IMAGE. */
+    readRegionState(worldRef, box) {
+      const work=serial.then(async()=>{
+        if(closed) fail('ADAPTER_UNAVAILABLE');
+        if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+        const target=validateType('Box',box);
+        const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
+        if(matches.length!==1) fail('WORLD_NOT_BOUND');
+        const row=matches[0];
+        await inspectConnection(row.connectionRef);
+        if(row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
+        const out=await readRegion(row.engine,{worldRef,box:target,localContext:null});
+        const chunks=out.result.chunks.map(c=>validateType('RegionChunkRead',c));
+        for(const c of chunks) if(c.state && digestValue('region-state',c.state).sha256!==c.stateDigest) fail('CURRENT_WORLD_MISMATCH');
+        await inspectConnection(row.connectionRef);
+        if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
+        return {worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation,
+          payloadVersion:row.payloadVersion,payloadDigest:row.payloadDigest,box:target,chunks,facts:out.facts};
+      });
+      serial=work.catch(()=>{});return work;
+    },
     readScopedState(connectionRef, positions) {
       const work = serial.then(async () => {
         if (closed) fail('ADAPTER_UNAVAILABLE');

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adapter 地表读回</title>
+<style>
+  :root { --bg:#f6f5f2; --fg:#1d1d1b; --muted:#6b6a66; --card:#fff; --line:#dddad3; --warn-bg:#fff1c2; --warn-fg:#6b4a00; --warn-line:#e0b400; --err:#a3261b; --ok:#1f6b3a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#181816; --fg:#ecebe6; --muted:#9e9c95; --card:#22221f; --line:#3a3934; --warn-bg:#4a3a00; --warn-fg:#ffe59a; --warn-line:#c99c00; --err:#ff8a7e; --ok:#7fd49a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
+  .fixture { position:sticky; top:0; z-index:5; background:var(--warn-bg); color:var(--warn-fg); border-bottom:3px solid var(--warn-line); padding:10px 16px; font-weight:600; }
+  .fixture.real { background:#d9f2e1; color:#14532d; border-color:#2f855a; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:4px 0 12px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+  .worlds label { display:block; padding:8px 10px; border:1px solid var(--line); border-radius:6px; margin:6px 0; cursor:pointer; }
+  .worlds label.disabled { opacity:.65; cursor:not-allowed; }
+  .muted { color:var(--muted); }
+  button { font:inherit; padding:7px 14px; border-radius:6px; border:1px solid var(--line); background:var(--fg); color:var(--bg); cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .err { color:var(--err); font-weight:600; }
+  .ok { color:var(--ok); font-weight:600; }
+  canvas { image-rendering: pixelated; border:1px solid var(--line); max-width:100%; height:auto; background:#000; }
+  table { border-collapse:collapse; width:100%; }
+  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .sw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.2); }
+  code, .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; word-break:break-all; }
+  #hover { min-height:1.5em; }
+  details summary { cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="banner" class="fixture">示例 · 当前显示的是本卡隔离的示例世界（fixture），不是 owner 的真实世界</div>
+<main>
+  <h1>Adapter 本地世界地表读回</h1>
+  <p class="muted">选一个本地世界 → Adapter 公开只读能力 <code>hanaworldsLuantiNativeFacts.readRegionState</code> 实际读取出生点周围一片区域 → 俯视图（地表材质与高度）。本页不写世界，不经过 Canvas。</p>
+
+  <div class="card worlds">
+    <strong>1. 选择世界</strong>
+    <div id="worlds" class="muted">加载中…</div>
+  </div>
+
+  <div class="card">
+    <strong>2. 读取出生点周围地表</strong>
+    <div style="margin-top:8px"><button id="read">读取 / 重新读取</button> <span id="status" class="muted"></span></div>
+    <div id="error" class="err" style="margin-top:8px"></div>
+  </div>
+
+  <div id="result" hidden>
+    <div class="row">
+      <div class="card" style="flex:1 1 420px">
+        <strong>俯视图</strong> <span class="muted">（北 = −Z 在上，东 = +X 在右；颜色 = 地表材质，明暗 = 高度；中心十字 = 出生点中心）</span>
+        <div style="margin-top:8px"><canvas id="map"></canvas></div>
+        <div id="hover" class="mono muted"></div>
+      </div>
+      <div class="card" style="flex:1 1 300px">
+        <strong>地表材质与高度</strong>
+        <table id="materials"></table>
+        <div id="counts" class="muted" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <strong>这次读回的来源</strong>
+      <table id="meta"></table>
+      <details style="margin-top:8px"><summary>逐个地图块（mapblock）的读回事实</summary><table id="chunks"></table></details>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let selected = 'sample', current = null;
+const KNOWN_COLORS = { 'mcl_core:dirt_with_grass':'#5d9b3a', 'mcl_core:dirt':'#8a5a33', 'mcl_core:stone':'#8c8c8c', 'mcl_core:bedrock':'#3a3a3a',
+  'mcl_core:sand':'#dccf8e', 'mcl_core:water_source':'#2f5fbf', 'mcl_core:snow':'#f2f2f2', 'mcl_core:gravel':'#7e7a75' };
+function color(name) {
+  if (KNOWN_COLORS[name]) return KNOWN_COLORS[name];
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 55% 50%)`;
+}
+function shade(hex, f) {
+  const c = document.createElement('canvas').getContext('2d'); c.fillStyle = hex; const v = c.fillStyle;
+  const m = v.match(/^#(..)(..)(..)$/); if (!m) return hex;
+  const k = [1,2,3].map(i => Math.max(0, Math.min(255, Math.round(parseInt(m[i],16) * f))));
+  return `rgb(${k.join(',')})`;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function renderWorlds(st) {
+  $('worlds').innerHTML = st.worlds.map(w => {
+    const dis = w.kind === 'REAL_OWNER_WORLD' && !w.available;
+    const extra = w.kind === 'SAMPLE_FIXTURE'
+      ? `<div class="muted">${w.exists ? '已创建' : '尚未创建（首次读取时由 Adapter 的 createFlatWorld 在本卡隔离目录创建）'} · ${w.running ? `Luanti 运行中 PID ${w.luantiPid}` : 'Luanti 未运行（读取时由开发 Host 启动）'}</div>`
+        + (w.prerequisites && w.prerequisites.ready === false ? `<div class="err">缺少前置：${esc(JSON.stringify(w.prerequisites.missing))}</div>` : '')
+      : `<div class="err">不可用：${esc(w.reason)}</div>`;
+    return `<label class="${dis ? 'disabled' : ''}"><input type="radio" name="world" value="${w.id}" ${dis ? 'disabled' : ''} ${selected === w.id ? 'checked' : ''}> <strong>${esc(w.label)}</strong>${extra}</label>`;
+  }).join('');
+  document.querySelectorAll('input[name=world]').forEach(i => i.onchange = () => { selected = i.value; });
+}
+
+function renderReadback(rb) {
+  current = rb; if (!rb) { $('result').hidden = true; return; }
+  $('result').hidden = false;
+  const real = rb.world.kind !== 'SAMPLE_FIXTURE';
+  $('banner').className = 'fixture' + (real ? ' real' : '');
+  $('banner').textContent = real ? '真实世界读回' : `示例 · 下方是本卡隔离示例世界「${rb.world.worldName}」的实际读回（fixture），不是 owner 的真实世界`;
+  const s = rb.surface, [x0,,z0] = s.box.min, [x1,,z1] = s.box.max, w = x1 - x0 + 1, h = z1 - z0 + 1, S = 8;
+  const cv = $('map'); cv.width = w * S; cv.height = h * S; const g = cv.getContext('2d');
+  const ys = s.columns.filter(c => c.status === 'KNOWN').map(c => c.y), lo = Math.min(...ys), hi = Math.max(...ys);
+  const at = new Map(s.columns.map(c => [`${c.x},${c.z}`, c]));
+  for (const c of s.columns) {
+    const px = (c.x - x0) * S, pz = (c.z - z0) * S;
+    if (c.status !== 'KNOWN') { g.fillStyle = '#d01c8b'; g.fillRect(px, pz, S, S); continue; }
+    const f = hi === lo ? 1 : 0.75 + 0.5 * (c.y - lo) / (hi - lo);
+    g.fillStyle = shade(color(c.nodeName), f); g.fillRect(px, pz, S, S);
+  }
+  const cx = (rb.spawn.x - x0) * S + S / 2, cz = (rb.spawn.z - z0) * S + S / 2;
+  g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 10, cz); g.lineTo(cx + 10, cz); g.moveTo(cx, cz - 10); g.lineTo(cx, cz + 10); g.stroke();
+  cv.onmousemove = e => {
+    const r = cv.getBoundingClientRect(), x = x0 + Math.floor((e.clientX - r.left) * cv.width / r.width / S), z = z0 + Math.floor((e.clientY - r.top) * cv.height / r.height / S);
+    const c = at.get(`${x},${z}`);
+    $('hover').textContent = c ? `x=${c.x} z=${c.z} · 地表 y=${c.y ?? '?'} · ${c.nodeName ?? ''} ${c.status !== 'KNOWN' ? '· ' + c.status + (c.unknownReason ? ' ' + c.unknownReason : '') : ''}` : '';
+  };
+  const mats = Object.entries(s.materials).sort((a, b) => b[1].count - a[1].count);
+  $('materials').innerHTML = '<tr><th>材质（节点名）</th><th>列数</th><th>高度 y</th></tr>' + mats.map(([n, m]) =>
+    `<tr><td><span class="sw" style="background:${color(n)}"></span><code>${esc(n)}</code></td><td>${m.count}</td><td>${m.minY === m.maxY ? m.minY : m.minY + '…' + m.maxY}</td></tr>`).join('');
+  const total = s.columns.length;
+  $('counts').innerHTML = `共 ${total} 列（${w}×${h}）：` + Object.entries(s.counts).map(([k, v]) => `${k} ${v}`).join(' · ') +
+    ((s.counts.KNOWN ?? 0) === total ? ' <span class="ok">全部读到</span>' : ' <span class="err">有未读到的列（品红色）</span>');
+  const known = rb.chunks.filter(c => c.availability === 'KNOWN').length;
+  const rows = [
+    ['世界', `${real ? '真实' : '<strong>示例（fixture）</strong>'} · ${esc(rb.world.worldName)}`],
+    ['worldRef', `<code>${esc(rb.world.worldRef)}</code>`],
+    ['连接', `<code>${esc(rb.world.connectionRef)}</code><br>incarnation <code>${esc(rb.world.connectionIncarnationRef)}</code>`],
+    ['Adapter payload', `${esc(rb.world.payloadVersion)} · <code>${esc(rb.world.payloadDigest)}</code>`],
+    ['Luanti 进程', `PID ${esc(rb.world.nativeProcessId)} · 日志 <code>${esc(rb.world.luantiLog)}</code>`],
+    ['读取能力', `<code>${esc(rb.port)}</code>`],
+    ['出生点中心', `x=${rb.spawn.x}, z=${rb.spawn.z} <div class="muted">${esc(rb.spawn.basis)}</div>`],
+    ['读取区域', `<code>${esc(JSON.stringify(rb.box))}</code>（半径 ${(x1 - x0) / 2}）`],
+    ['地图块', `${rb.chunks.length} 个，KNOWN ${known}，UNKNOWN ${rb.chunks.length - known}`],
+    ['读回摘要', `<code>${esc(s.readDigest)}</code><div class="muted">俯视图、材质和高度都来自这一次读回的同一组地图块（上面摘要覆盖每块 stateDigest）。</div>`],
+    ['读回编号 / 时间', `<code>${esc(rb.readbackId)}</code> · ${esc(rb.at)} · ${rb.ms} ms`],
+  ];
+  $('meta').innerHTML = rows.map(([k, v]) => `<tr><th style="width:9em">${k}</th><td>${v}</td></tr>`).join('');
+  $('chunks').innerHTML = '<tr><th>chunkPos</th><th>availability</th><th>loadMethod</th><th>stateDigest</th></tr>' + rb.chunks.map(c =>
+    `<tr><td>${c.chunkPos.join(',')}</td><td>${c.availability}${c.unknownReason ? ' ' + c.unknownReason : ''}</td><td>${c.loadMethod ?? ''}</td><td><code>${c.stateDigest ?? ''}</code></td></tr>`).join('');
+}
+
+function renderError(e) {
+  if (!e) { $('error').textContent = ''; return; }
+  const why = { SAMPLE_PREREQUISITE_MISSING: '示例世界的前置不全（Adapter describeFlatWorldCreation 报告缺少的项见下）', CURRENT_WORLD_MISMATCH: '已配对的 Luanti 进程不再是当前进程（例如被停止）；需要重启本开发服务', WORLD_NOT_BOUND: '世界尚未绑定' }[e.code] ?? '';
+  $('error').innerHTML = `读取失败：<code>${esc(e.code)}</code> ${esc(why)} ${e.details ? '<code>' + esc(JSON.stringify(e.details)) + '</code>' : ''} <span class="muted">${esc(e.at)}</span>`;
+}
+
+async function load() {
+  const st = await (await fetch('/api/state', { cache: 'no-store' })).json();
+  renderWorlds(st); renderReadback(st.lastReadback); renderError(st.lastError);
+  $('status').textContent = st.lastReadback ? `显示最近一次读回 ${st.lastReadback.at}` : '还没有读回，点「读取」';
+}
+$('read').onclick = async () => {
+  if (selected !== 'sample') return;
+  $('read').disabled = true; $('status').textContent = '读取中…（首次会创建示例世界并启动 Luanti）';
+  try {
+    const prior = current?.surface?.readDigest;
+    const r = await (await fetch('/api/readback', { method: 'POST' })).json();
+    await load();
+    if (r.ok) $('status').innerHTML = prior ? (prior === r.readback.surface.readDigest ? '<span class="ok">重新读取完成：与上一次读回摘要一致</span>' : '重新读取完成：世界内容与上次不同（摘要变化）') : '<span class="ok">读取完成</span>';
+  } catch (e) { renderError({ code: 'PAGE_REQUEST_FAILED', details: String(e), at: new Date().toISOString() }); }
+  finally { $('read').disabled = false; }
+};
+load().catch(e => renderError({ code: 'SERVICE_UNREACHABLE', details: String(e), at: new Date().toISOString() }));
+</script>
+</body>
+</html>

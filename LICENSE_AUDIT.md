@@ -139,3 +139,16 @@ inputs retain the versions, sources and licenses above. Cordis 4.0.4 · MIT ·
 https://github.com/deepseek-ai/deepseek-harness/tree/main/vendor/cordis · temporary
 component Host/Canvas fixture runtime. This update authorizes no publication
 and makes no new combined-work licensing conclusion.
+
+0.7.2 (F-AD-WORLD-READBACK-01) adds the read-only `NativeFacts.readRegionState` and the
+development page under `dev/world-readback/` (not in the package file list). No production
+dependency is added. Development-only inputs: Cordis 4.0.4 · MIT ·
+https://github.com/deepseek-ai/deepseek-harness/tree/main/vendor/cordis · dev page plugin
+root; Luanti 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti · real
+engine for the sample world; VoxeLibre 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media ·
+https://content.luanti.org/packages/Wuzzy/mineclone2/ · sample world game (zip SHA256
+51ea9242aabb1f29575abbfb599c79bcde9435616ea097c0582e11ac1b2b279d); WorldEdit 62ffafe ·
+AGPL-3.0 · https://github.com/Uberi/Minetest-WorldEdit · per-cell mod required by
+createFlatWorld; Google Chrome 154 (installed app, proprietary/BSD Chromium base) · evidence
+screenshots over the DevTools protocol only. The spawn note reads VoxeLibre mcl_spawn
+behaviour from its source (mods/PLAYER/mcl_spawn/init.lua); no game code is copied.

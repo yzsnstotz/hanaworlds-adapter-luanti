@@ -1,6 +1,6 @@
 # HanaWorlds Luanti Adapter
 
-Version0.7.0 (payload0.6.0, contracts0.5.2) publishes Catalogue facts under
+Version0.7.2 (payload0.6.0, contracts0.5.2) publishes Catalogue facts under
 `write-path-init/v1`, with `NativeFacts.readWritePathEvidence(worldRef)` returning
 the actual callback inventory and public validation result. Only a known empty
 write-path global registry and nodes without initialization/state hooks can yield
@@ -42,3 +42,8 @@ features of this current package.
 The public read-only NativeFacts.readCatalogue(worldRef) supplies the complete
 loaded-engine Catalogue for the actual current world. Unknown fields remain
 explicit; Host may wire Workshop Catalogue.read to this method.
+
+0.7.2 adds read-only NativeFacts.readRegionState(worldRef, box) for the paired world (no
+Canvas context, no transaction, no write) and a development page (dev/world-readback, port
+47606) that shows a clearly marked sample-world FIXTURE's surface materials and heights from
+one real read. Owner worlds need the App Host's public connection supply.

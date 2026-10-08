@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.7.1 (flat-world creation + write-path facts, payload 0.6.0)
+# HanaWorlds Luanti Adapter 0.7.2 (flat-world creation + write-path facts + read-only region state, payload 0.6.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of
 `hanaworlds-contracts@0.5.2` (source `6185622e977ef5136e9ef12219e0ba89dbba29db`,
@@ -107,6 +107,38 @@ and `hanaworldsLuantiInspectionContext.read(request)` supply Canvas's current
 revision/selected-object context. These are logical Canvas revisions, not
 claims of a Luanti whole-world revision. Native catalogue, region, body and
 cell state come from the paired engine. Missing public peer facts fail closed.
+
+## Read-only region state and the development readback page (0.7.2)
+
+`hanaworldsLuantiNativeFacts.readRegionState(worldRef, box)` reads a node box of the exact
+currently paired world with the same emerge + VoxelManip chunk reads as `ReadRegion`, but
+outside any transaction: no Canvas selection context, no `localContext`, no BEFORE_IMAGE
+role and no write. It returns `{worldRef, connectionRef, connectionIncarnationRef,
+payloadVersion, payloadDigest, box, chunks, facts}`; every chunk is a public
+`RegionChunkRead` (KNOWN with `state`/`stateDigest`, or UNKNOWN with its reason) and each
+`stateDigest` is rechecked. The Host process/world/connection is inspected before and after.
+Unbound/wrong/stopped worlds fail closed (`WORLD_NOT_BOUND`, `CURRENT_WORLD_MISMATCH`), an
+invalid box is `SCHEMA_INVALID`. Loading a never-visited area lets Luanti generate it (the
+engine's own map generation, as a player visit would); the Adapter writes nothing. Payload
+bytes are unchanged (0.6.0), so worlds created by 0.7.x stay bindable.
+
+`dev/world-readback/` (development only, not packaged) serves http://127.0.0.1:47606/ and
+http://localhost:47606/ (loopback IPv4 and IPv6; any page path or query recovers to the page,
+`/api/*` is JSON). It loads this plugin into its own Cordis root and calls only public ports.
+The selectable **sample world is a FIXTURE**, marked on every view: created by
+`createFlatWorld` in the service's own isolated Luanti user path and run by the labelled
+development Host in `server.mjs` (one real headless Luanti child; no Canvas peer). Reading
+uses `readRegionState` around the spawn centre (x=0,z=0: no `static_spawnpoint` in the dev
+config and no `/setworldspawn` in the fresh world, so VoxeLibre leaves spawn to the engine's
+search around the origin), growing the vertical window until each column's top is bracketed;
+the top-down map, materials and heights all come from the one final read whose digest is
+shown. The owner's real worlds are not listed, started or read here: they need the
+HanaWorlds.app Host's public connection supply, an integration input. Start detached with
+`dev/world-readback/start.sh <state dir> <cordis lib/index.js>`; the state dir must contain
+`profile/games/mineclone2` and `profile/mods/worldedit`, else the page lists the Adapter's own
+`describeFlatWorldCreation` missing items. `npm run test:readback` covers the fail-closed
+port and the projection (FIXTURE); `dev/world-readback/browser-walk.mjs` drives the page in
+headless Chrome for screenshots.
 
 ## Scoped writes and same-origin Undo
 
