@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+# HW_WORLD_MANAGE_PORT selects the registered isolated trial port (default 47607).
 [[ $# = 2 ]] || { echo 'Usage: start.sh <own state directory> <cordis module>'; exit 2; }
 STATE=$1; CORDIS=$2; HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$STATE/logs"

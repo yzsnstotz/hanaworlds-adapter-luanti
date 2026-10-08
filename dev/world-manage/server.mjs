@@ -30,7 +30,8 @@ await fiber.await();
 const manager = createWorldManager({ local: ctx.get('hanaworldsLuantiLocalWorlds'), requesterRef: 'dev-world-manager', userPath: profile,
   foreignActivity: owned.foreignActivity, game: owned.game, validateContext: input => C.validateType('LocalWorldContext', input) });
 const page = await readFile(new URL('./page.html', import.meta.url));
-const port = 47607;
+const port = Number(process.env.HW_WORLD_MANAGE_PORT ?? '47607');
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('DEV_PORT_INVALID');
 const json = (res, code, data) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(data)); };
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw Error('SCHEMA_INVALID');
