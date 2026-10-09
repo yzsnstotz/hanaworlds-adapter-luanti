@@ -49,16 +49,17 @@ try {
       let k=palette.findIndex(x=>x.nodeName===e.nodeName);if(k<0){k=palette.length;palette.push({nodeName:e.nodeName,param2:0});}
       ix[(p[0]-c.box.min[0])+(p[1]-c.box.min[1])*size[0]+(p[2]-c.box.min[2])*size[0]*size[1]]=k;
     }
+    if (!palette.length) return null;
     const ops=C.encodeRegionBlock({origin:c.box.min,size,palette,indices:ix});
     C.validateRegionPalette(ops,catalogue);
     return {chunkPos:c.chunkPos,expectedCurrentDigest:c.stateDigest,ops,state:null};
-  });
+  }).filter(Boolean);
   const restoreWrites = (now,target) => target.chunks.map((c,i)=>({chunkPos:c.chunkPos,expectedCurrentDigest:now.chunks[i].stateDigest,ops:null,state:c.state}));
   const digests = r => r.chunks.map(c=>c.stateDigest);
   const writeR = (id,purpose,writes) => rcall('WriteRegion',{transactionId:id,purpose,writes});
   await w.startClient(); await w.probe({place:[0,8.5,0]});
   const sealed = await writeR('sealed-apply','APPLY',opsWrites(initial,ring(false)));
-  assert.deepEqual(sealed.guardRefusal,{guard:'PLAYER_ENCLOSURE',stage:'REGION_APPLY',finding:'PLAYER_ENCLOSED'});
+  assert.equal(JSON.stringify(sealed.guardRefusal),JSON.stringify({guard:'PLAYER_ENCLOSURE',stage:'REGION_APPLY',finding:'PLAYER_ENCLOSED'}));
   assert.equal(sealed.error.mutationState,'NONE');
   assert.deepEqual(digests(await readR(box)),digests(initial));noGeometry(sealed);
   step('REAL_REGION_APPLY_ENCLOSED_ZERO_WRITE',{error:sealed.error,guardRefusal:sealed.guardRefusal,chunks:initial.chunks.length});
@@ -75,7 +76,7 @@ try {
   assert.equal((await writeR('door-open','APPLY',opsWrites(sealedTarget,door))).error,null);
   const doorOpen=await readR(box);await w.probe({place:[0,8.5,0]});
   const refused=await writeR('sealed-restore','RESTORE',restoreWrites(doorOpen,sealedTarget));
-  assert.deepEqual(refused.guardRefusal,{guard:'PLAYER_ENCLOSURE',stage:'REGION_RESTORE',finding:'PLAYER_ENCLOSED'});
+  assert.equal(JSON.stringify(refused.guardRefusal),JSON.stringify({guard:'PLAYER_ENCLOSURE',stage:'REGION_RESTORE',finding:'PLAYER_ENCLOSED'}));
   assert.equal(refused.error.phase,'restore');assert.equal(refused.error.causeCode,null);assert.equal(refused.error.mutationState,'NONE');
   assert.deepEqual(digests(await readR(box)),digests(doorOpen));noGeometry(refused);
   step('REAL_REGION_RESTORE_ENCLOSED_ZERO_WRITE',{error:refused.error,guardRefusal:refused.guardRefusal});

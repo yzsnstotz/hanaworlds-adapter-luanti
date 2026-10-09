@@ -544,8 +544,8 @@ the engine reads players, boxes, current unspecified cells and registered-node p
 The host supplies world geometry only. This checks enclosure across chunks and avoids an unsafe
 intermediate batch. The existing movement model and limits above still apply; this is not a global
 pathfinder. A zero-write refusal carries PLAYER_ENCLOSURE at REGION_APPLY or REGION_RESTORE;
-a later batch failure retains per-chunk status for Canvas's rollback decision. Entire planned
-geometry must fit the private courier command size; oversized requests are refused, not truncated.
+a later batch failure retains per-chunk status for Canvas's rollback decision. The complete compressed plan grows with request size; the batch budget still comes from the
+existing engine reply limit. No separate command-size bound is advertised.
 No per-cell RESTORE enclosure stage is claimed.
 
 The hanaworldsLuantiNativeFacts service now throws the installed contract's ContractError/publicError
