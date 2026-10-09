@@ -44,11 +44,20 @@ end
 -- verified (Luanti 5.17 lua_api.md "Nodes"/paramtype2, builtin item_place_node):
 -- facedir stores one of 24 rotations; none is engine-unused mod data, so only
 -- the engine placement value (place_param2, else 0) is legal for our writes.
--- Every other paramtype2 stays unknown (null), never a guessed zero.
+-- glasslikeliquidlevel is a complete byte bitfield on the two documented
+-- framed glass drawtypes: low 6 bits are level 0..63; bits 6/7 are independent
+-- vertical/horizontal connection flags (Luanti 5.17 content_mapblock.cpp).
+-- Thus every byte value is defined, including empty/connected 0; it is not a
+-- generic placement default. Other modes or incompatible drawtypes stay unknown.
 local function legal_param2(def)
   if def.paramtype2 == 'facedir' then
     local values = {}
     for i = 0, 23 do values[#values + 1] = i end
+    return values
+  elseif def.paramtype2 == 'glasslikeliquidlevel'
+    and (def.drawtype == 'glasslike_framed' or def.drawtype == 'glasslike_framed_optional') then
+    local values = {}
+    for i = 0, 255 do values[#values + 1] = i end
     return values
   elseif def.paramtype2 == 'none' then
     local placed = def.place_param2

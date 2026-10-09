@@ -19,6 +19,10 @@ local nodes = {
     'fx_plain.png', {image = 'fx_plain.png', backface_culling = true}, 'fx_plain.png'}}),
   ['fx:facedir'] = node({paramtype2 = 'facedir', tiles = {'fx_dir.png'}}),
   ['fx:placed'] = node({place_param2 = 7, tiles = {'fx_plain.png'}}),
+  ['fx:glass'] = node({paramtype2 = 'glasslikeliquidlevel', drawtype = 'glasslike_framed', tiles = {'fx_plain.png'}}),
+  ['fx:glass_optional'] = node({paramtype2 = 'glasslikeliquidlevel', drawtype = 'glasslike_framed_optional', tiles = {'fx_plain.png'}}),
+  ['fx:glass_wrong_drawtype'] = node({paramtype2 = 'glasslikeliquidlevel', tiles = {'fx_plain.png'}}),
+  ['fx:glass_state'] = node({paramtype2 = 'glasslikeliquidlevel', drawtype = 'glasslike_framed', on_construct = function() end}),
   ['fx:faces'] = node({tiles = {'fx_top.png', 'fx_side.png'}}),
   ['fx:modifier'] = node({tiles = {'fx_plain.png^[colorize:#ff0000:128'}}),
   ['fx:anim'] = node({tiles = {{name = 'fx_plain.png', animation = {type = 'vertical_frames'}}}}),
@@ -50,6 +54,8 @@ local core = {
   write_json = json,
 }
 local mode = arg and arg[1]
+if mode == 'glass' then core.registered_on_mapblocks_changed = {} end
+if mode == 'glass-global' then core.registered_on_mapblocks_changed = {function() end} end
 if mode == 'state' or mode == 'state-global' or mode == 'state-unknown' then
   -- write-path-init/v1: only initialization/state-indicator callbacks and the
   -- write-path global registry decide; player hooks/ABM/LBM are out of scope.

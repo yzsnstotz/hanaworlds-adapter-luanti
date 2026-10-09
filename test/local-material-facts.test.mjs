@@ -20,7 +20,7 @@ test('one native snapshot carries Catalogue, actual paths, load-ordered mods and
   assert.deepEqual(Object.keys(m.appearance).sort(), Object.keys(m.catalogue.nodes).sort());
   assert.deepEqual(run('catalogue'), m.catalogue, 'readCatalogue and material metadata share one projection');
 });
-test('legal param2 only for engine-verified none/facedir; others stay null', () => {
+test('existing engine-verified none/facedir and unknown modes retain their semantics', () => {
   const n = run().catalogue.nodes;
   assert.deepEqual(n['fx:plain'].allowedParam2, [0]);
   assert.deepEqual(n['fx:placed'].allowedParam2, [7], 'engine item_place_node uses place_param2');
@@ -28,6 +28,22 @@ test('legal param2 only for engine-verified none/facedir; others stay null', () 
   for (const k of ['fx:wall', 'fx:palette']) { assert.equal(n[k].allowedParam2, null); assert.ok(n[k].unknownFields.includes('allowedParam2')); }
   assert.ok(!n['fx:plain'].unknownFields.includes('allowedParam2'));
   for (const v of Object.values(n)) { assert.equal(v.hasPersistentState, null); assert.equal(v.collisionBoxes, null); }
+});
+test('documented glass bitfield domain admits valid glass without relaxing static-state or unknown gates', () => {
+  const cat = run('glass').catalogue, domain = Array.from({ length: 256 }, (_, i) => i);
+  for (const nodeName of ['fx:glass', 'fx:glass_optional']) {
+    const node = cat.nodes[nodeName];
+    assert.deepEqual(node.allowedParam2, domain);
+    assert.ok(!node.unknownFields.includes('allowedParam2'));
+    for (const param2 of domain) assert.doesNotThrow(() => C.validateStaticMaterials({ window: { nodeName, param2 } }, cat));
+    for (const param2 of [-1, 256, 0.5]) assert.throws(() => C.validateStaticMaterials({ window: { nodeName, param2 } }, cat));
+    assert.deepEqual(run('glass').appearance[nodeName], { supported: false, textureName: null }, 'appearance support is a separate gate');
+  }
+  assert.equal(cat.nodes['fx:glass_wrong_drawtype'].allowedParam2, null);
+  for (const nodeName of ['fx:glass_wrong_drawtype', 'fx:wall', 'fx:palette', 'fx:glass_state'])
+    assert.throws(() => C.validateStaticMaterials({ window: { nodeName, param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/);
+  for (const mode of ['glass-global', 'catalogue'])
+    assert.throws(() => C.validateStaticMaterials({ window: { nodeName: 'fx:glass', param2: 0 } }, run(mode).catalogue ?? run(mode)), /UNSUPPORTED_MUTATION_SEMANTICS/);
 });
 test('write-path-init/v1: facts from initialization/state callbacks and the write-path global registry', () => {
   const n = run('state').nodes, f = k => [n[k].hasCallbacks, n[k].hasPersistentState];
