@@ -175,7 +175,8 @@ and a narrow appearance projection. Node reads texture bytes only from those roo
 
 Legal param2 (`Catalogue.allowedParam2`) is derived from engine semantics only:
 `facedir` → 0..23; `none` → the engine placement value (`place_param2`, else 0,
-as in builtin `item_place_node`). Every other paramtype2 stays null/unknown.
+as in builtin `item_place_node`); `glasslikeliquidlevel` on documented framed glass
+drawtypes → 0..255 (payload0.10.1). Other paramtype2 modes stay null/unknown.
 A supported appearance is an opaque `normal` drawtype whose 1..6 tiles all name
 the same plain `.png`/`.jpg` file with no modifier, animation, colour, palette or
 overlay. Source precedence follows Luanti 5.17.0 `Server::fillMediaCache`:
@@ -183,8 +184,18 @@ user `textures/server` (reported UNRESOLVED_SOURCE, not a game/mod source), game
 `textures`, then mods in reverse load order; sub-directories starting with `_` or
 `.` are ignored, a duplicate inside the winning recursive root, an empty/oversized
 file, any symlink/unreadable media directory, an `override.txt` in game textures or
-a non-empty `texture_path` all give UNKNOWN. `collisionBoxes` remains
-unknown regardless of KNOWN textures; `hasPersistentState` follows the rule below. Metadata is read twice around the
+a non-empty `texture_path` all give UNKNOWN. `collisionBoxes` (payload0.10.2)
+is the **effective node collision set**: an actual registered `walkable == false`
+node other than `ignore` supplies `[]`, because Luanti 5.17 `collision.cpp`
+skips that node before collecting collision boxes. `ignore` is engine-obstructing
+and stays unknown, as do solid nodes, unreadable/non-boolean walkability and
+context/param2-dependent box shapes. Neither an `air` name nor `airlike` drawtype,
+missing `collision_box`, or KNOWN texture establishes an empty collision set.
+Raw `get_node_boxes` resolves shape boxes and does not apply that non-walkable
+collision filter. No player/body box or position is exported. Known empty is
+serialized explicitly as JSON `[]`, removed from `unknownFields`, and included
+in the definition revision; transitions invalidate the Catalogue digest.
+`hasPersistentState` follows the rule below. Metadata is read twice around the
 byte resolution; any change of registry facts, bytes, connection or process rejects
 `CURRENT_WORLD_MISMATCH`. Source basis is SERVER_ASSET_ONLY: no client texture-pack
 or rendered-appearance claim, no RGB values, no cache.

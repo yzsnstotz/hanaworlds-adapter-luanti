@@ -162,7 +162,15 @@ local function catalogue(core)
     local fields = {'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
       'lightSource', 'param2Type', 'allowedParam2', 'hasCallbacks', 'hasPersistentState',
       'definitionRevision'}
-    local unknown = {'collisionBoxes'}
+    -- Effective node collision set: Luanti 5.17 collision.cpp skips every known
+    -- non-walkable node before collecting boxes, but treats CONTENT_IGNORE as
+    -- a solid obstacle. get_node_boxes alone returns raw shape boxes and does
+    -- not establish this effective set. Solid/context-dependent boxes remain
+    -- unknown in this node-level Catalogue; never infer empty from airlike/name.
+    local collision_json = 'null'
+    if name ~= 'ignore' and def.walkable == false then collision_json = '[]' end
+    local unknown = {}
+    if collision_json == 'null' then unknown[#unknown + 1] = 'collisionBoxes' end
     if allowed == nil then unknown[#unknown + 1] = 'allowedParam2' end
     local scalar = {}
     if type(known.walkable) ~= 'boolean' then known.walkable = nil end
@@ -178,6 +186,7 @@ local function catalogue(core)
       allowed_json = '[' .. table.concat(parts, ',') .. ']'
     end
     scalar[#scalar + 1] = 'allowedParam2=' .. allowed_json
+    if collision_json ~= 'null' then scalar[#scalar + 1] = 'collisionBoxes=' .. collision_json end
     table.sort(unknown)
     local rev = core.sha256(name .. '|' .. table.concat(scalar, '|') .. '|'
       .. table.concat(defined, '|'))
@@ -186,6 +195,7 @@ local function catalogue(core)
     for _, field in ipairs(fields) do
       local value = field == 'definitionRevision' and rev or known[field]
       local encoded = field == 'allowedParam2' and allowed_json
+        or (field == 'collisionBoxes' and collision_json)
         or (value == nil and 'null' or json(value))
       properties[#properties + 1] = json(field) .. ':' .. encoded
     end

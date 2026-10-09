@@ -27,7 +27,30 @@ test('existing engine-verified none/facedir and unknown modes retain their seman
   assert.deepEqual(n['fx:facedir'].allowedParam2, Array.from({ length: 24 }, (_, i) => i));
   for (const k of ['fx:wall', 'fx:palette']) { assert.equal(n[k].allowedParam2, null); assert.ok(n[k].unknownFields.includes('allowedParam2')); }
   assert.ok(!n['fx:plain'].unknownFields.includes('allowedParam2'));
-  for (const v of Object.values(n)) { assert.equal(v.hasPersistentState, null); assert.equal(v.collisionBoxes, null); }
+  for (const [name, v] of Object.entries(n)) { assert.equal(v.hasPersistentState, null);
+    if (!['air', 'fx:noncolliding'].includes(name)) assert.equal(v.collisionBoxes, null); }
+});
+test('effective collision facts require actual non-walkability, never a node name/drawtype/default', () => {
+  const cat = run().catalogue;
+  C.validateType('Catalogue', cat);
+  for (const name of ['air', 'fx:noncolliding']) {
+    assert.deepEqual(cat.nodes[name].collisionBoxes, []);
+    assert.ok(!cat.nodes[name].unknownFields.includes('collisionBoxes'));
+  }
+  for (const name of ['fx:plain', 'fx:airlike_solid', 'ignore']) {
+    assert.equal(cat.nodes[name].collisionBoxes, null);
+    assert.ok(cat.nodes[name].unknownFields.includes('collisionBoxes'));
+  }
+  for (const mode of ['collision-air-solid', 'collision-air-unknown', 'collision-air-nonbool']) {
+    const air = run(mode).catalogue.nodes.air;
+    assert.equal(air.collisionBoxes, null, mode);
+    assert.ok(air.unknownFields.includes('collisionBoxes'), mode);
+    assert.notEqual(air.definitionRevision, cat.nodes.air.definitionRevision, mode);
+  }
+  assert.equal(run().catalogue.nodes.air.definitionRevision, cat.nodes.air.definitionRevision);
+  // Node collision facts do not advertise safe material callbacks/state.
+  assert.equal(cat.nodes['fx:noncolliding'].hasCallbacks, null);
+  assert.equal(cat.nodes['fx:noncolliding'].hasPersistentState, null);
 });
 test('documented glass bitfield domain admits valid glass without relaxing static-state or unknown gates', () => {
   const cat = run('glass').catalogue, domain = Array.from({ length: 256 }, (_, i) => i);

@@ -14,6 +14,9 @@ local function node(over)
 end
 local nodes = {
   ['air'] = node({drawtype = 'airlike', walkable = false}),
+  ['fx:noncolliding'] = node({walkable = false, collision_box = {type = 'fixed', fixed = {-0.5,-0.5,-0.5,0.5,0.5,0.5}}}),
+  ['fx:airlike_solid'] = node({drawtype = 'airlike', walkable = true}),
+  ['ignore'] = node({drawtype = 'airlike', walkable = false}),
   ['fx:plain'] = node({tiles = {'fx_plain.png'}}),
   ['fx:six'] = node({tiles = {'fx_plain.png', 'fx_plain.png', {name = 'fx_plain.png'},
     'fx_plain.png', {image = 'fx_plain.png', backface_culling = true}, 'fx_plain.png'}}),
@@ -54,6 +57,9 @@ local core = {
   write_json = json,
 }
 local mode = arg and arg[1]
+if mode == 'collision-air-solid' then core.registered_nodes.air.walkable = true end
+if mode == 'collision-air-unknown' then core.registered_nodes.air.walkable = nil end
+if mode == 'collision-air-nonbool' then core.registered_nodes.air.walkable = 'false' end
 if mode == 'glass' then core.registered_on_mapblocks_changed = {} end
 if mode == 'glass-global' then core.registered_on_mapblocks_changed = {function() end} end
 if mode == 'state' or mode == 'state-global' or mode == 'state-unknown' then
