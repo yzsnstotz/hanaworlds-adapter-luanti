@@ -1,11 +1,11 @@
-import { REGION_SAFETY, WORLD_ADAPTER_SAFETY, guardFailure } from './safety-capabilities.mjs';
+import { refusalDetail } from './safety-capabilities.mjs';
 import { validateType, digestValue, encodeRegionBlock, expandRegionBlock, regionBlockBox,
   regionChunksOfBox, comparePosition } from '#contracts';
 import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns, BLOCK } from './region-batches.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /*
- * world-adapter-region/v1 transport over the paired Luanti engine. The Adapter
+ * world-adapter-region/v2 transport over the paired Luanti engine. The Adapter
  * reports per-chunk engine facts only: it never decides or claims a commit.
  * Canvas compares summaries and restores its own snapshot (purpose RESTORE).
  */
@@ -17,16 +17,16 @@ const sha = (kind, v) => digestValue(kind, v).sha256;
 const floorBlock = n => Math.floor(n / BLOCK);
 const blockOf = box => box.min.map(floorBlock);
 export class RegionFault extends Error {
-  constructor(code, reason, publicError = null) { super(code); this.reason = reason; this.publicError = publicError; }
+  constructor(code, reason, refusal = null) { super(code); this.reason = reason; this.refusal = refusal; }
 }
 
 export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter-region', major: 1, minor: 1 }],
+  protocols: [{ protocol: 'world-adapter-region', major: 2, minor: 0 }],
   // callback-free-write: region writes and restores are VoxelManip node data (voxel.lua).
-  capabilities: ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-read',
-    'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
-    'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state', ...REGION_SAFETY].sort(), // RefSet: UTF-16 ascending
+  capabilities: ['world-adapter-region/v2:callback-free-write', 'world-adapter-region/v2:chunked-read',
+    'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
+    'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'],
   // Provenance is a record only; an installed package cannot know its own tar digest.
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
@@ -37,7 +37,7 @@ export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake',
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
   protocols: [{ protocol: 'world-adapter', major: 7, minor: 0 }],
-  capabilities: ['world-adapter/v7:callback-free-write', 'world-adapter/v7:write-path-state-facts', ...WORLD_ADAPTER_SAFETY].sort(),
+  capabilities: ['world-adapter/v7:callback-free-write', 'world-adapter/v7:write-path-state-facts'],
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
@@ -157,9 +157,10 @@ export async function writeRegion(engine, request) {
   for (const group of groups) {
     try { await engine.regionWrite(command(group, true)); }
     catch (error) {
-      // Engine guards refuse in this check-only pass, before any write of the request.
-      const named = guardFailure('world-adapter-region/v1', error?.detail, { restore: !apply, transactionRef: request.transactionId });
-      throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', named);
+      // Engine guards refuse in this check-only pass, before any write of the request. Only
+      // REGION_APPLY is declared (see safety-capabilities.mjs); a RESTORE refusal stays a plain error.
+      const refusal = apply ? refusalDetail('REGION_APPLY', error?.detail, { transactionRef: request.transactionId }) : null;
+      throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', refusal);
     }
   }
   const status = new Map(), facts = [];

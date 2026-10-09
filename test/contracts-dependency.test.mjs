@@ -31,9 +31,9 @@ for (const [name, mutate] of [
   ['commit pin', dependency(`${SOURCE}#f84974eb07e30b683f4c1b1712145b756d5671ed`)],
   ['workspace link', dependency('file:../hanaworlds-contracts')],
   ['vendor copy', dir => mkdirSync(join(dir, 'vendor/hanaworlds-contracts'), { recursive: true })],
-  // Installed is 1.0.0-rc.1: a later prerelease, the plain release, the old major and a
-  // different X.Y.Z prerelease lower bound must all refuse it.
-  ['installed below a later prerelease', dependency(`${SOURCE}#semver:^1.0.0-rc.2`)],
+  // Installed is a 1.0.0 prerelease (rc.2): a later prerelease, the plain release, the old
+  // major and a different X.Y.Z prerelease lower bound must all refuse it.
+  ['installed below a later prerelease', dependency(`${SOURCE}#semver:^1.0.0-rc.3`)],
   ['prerelease below a release bound', dependency(`${SOURCE}#semver:^1.0.0`)],
   ['installed outside the old major', dependency(`${SOURCE}#semver:^0.5.6`)],
   ['prerelease of another X.Y.Z', dependency(`${SOURCE}#semver:^0.9.0-rc.1`)],

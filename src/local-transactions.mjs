@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { canonicalJSON, digestValue, validateType, schemaBundle, comparePosition, safetyCheckFailure } from '#contracts';
-import { RESTORE_GUARD_DETAILS } from './safety-capabilities.mjs';
-const guarded = record => RESTORE_GUARD_DETAILS.includes(record.restoreFailure?.detail);
+import { canonicalJSON, digestValue, validateType, schemaBundle, comparePosition } from '#contracts';
+import { refusalDetail } from './safety-capabilities.mjs';
 const D = (kind, value) => digestValue(kind, value).sha256;
 const same = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const fail = code => { throw new Error(code); };
@@ -69,7 +68,23 @@ export class LocalTransactions {
       operationDigest: r.operationDigest, payload, transactionPayloadDigest: D('scoped-transaction-payload', payload), status: 'PREPARED' };
     await this.store.put(record); return this.prepared(record);
   }
+  /** Why the write failed (contracts 1.0 FailureDetail): a guard refusal at its stage, else the step's code. */
+  applyFailure(record) {
+    return refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId }) ??
+      { error: { code: record.failureCode ?? 'APPLY_FAILED', phase: 'apply', retryability: 'NEVER', mutationState: 'UNKNOWN',
+        transactionRef: record.transactionId, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' }, guardRefusal: null };
+  }
+  /** Why the restore failed; causeCode names the write failure that made the restore necessary. */
+  restoreFailure(record, cause) {
+    return refusalDetail('RESTORE', record.restoreFailure?.detail, { transactionRef: record.transactionId, cause }) ??
+      { error: { code: 'RESTORE_FAILED', phase: 'restore', retryability: 'AFTER_MANUAL_RECOVERY', mutationState: 'UNKNOWN',
+        transactionRef: record.transactionId, causeCode: cause, reason: 'REQUIRED_FACT_UNKNOWN' }, guardRefusal: null };
+  }
   receipt(record) {
+    const applyFailure = record.status === 'RESTORE_FAILED' ? this.applyFailure(record) : null;
+    const restore = applyFailure ? this.restoreFailure(record, applyFailure.error.code) : null;
+    // A write a guard refused before its first cell was rolled back: the refusal stays public.
+    const refused = record.status === 'ROLLED_BACK' ? refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId }) : null;
     return validateType('ReceiptProjection', { contractVersion: 'canvas/v6', transactionId: record.transactionId,
       operationDigest: record.operationDigest, transactionPayloadDigest: record.transactionPayloadDigest,
       status: record.status === 'APPLYING' ? 'RECOVERY_PENDING' : ['PREPARED','ABORTED_PREPARED'].includes(record.status) ? 'REJECTED' : record.status, previousWorldRevision: record.before.worldRevision,
@@ -77,14 +92,12 @@ export class LocalTransactions {
       readbackDigest: record.after ? D('readback', view(record.after)) : null,
       // A guard-refused restore wrote nothing: the world is known not restored.
       restoreStatus: record.status === 'ROLLED_BACK' ? 'VERIFIED_RESTORED' : record.status === 'VERIFIED' ? 'NOT_REQUIRED' :
-        record.status === 'RESTORE_FAILED' && guarded(record) ? 'FAILED' : 'UNKNOWN',
-      error: record.status === 'RESTORE_FAILED' && guarded(record) ? safetyCheckFailure('world-adapter/v7:restore-body-recheck', record.transactionId)
-        : ['RECOVERY_PENDING','APPLYING','RESTORE_FAILED'].includes(record.status) ? {
-        code:record.status==='RESTORE_FAILED'?'RESTORE_FAILED':'RECOVERY_PENDING',
-        // contracts 1.0: a failed restore stays pending manual recovery.
-        phase:record.status==='RESTORE_FAILED'?'restore':'apply',retryability:record.status==='RESTORE_FAILED'?'AFTER_MANUAL_RECOVERY':'NEVER',mutationState:'UNKNOWN',
+        restore?.guardRefusal ? 'FAILED' : 'UNKNOWN',
+      error: restore ? restore.error : refused ? refused.error : ['RECOVERY_PENDING','APPLYING'].includes(record.status) ? {
+        code:'RECOVERY_PENDING',phase:'apply',retryability:'NEVER',mutationState:'UNKNOWN',
         transactionRef:record.transactionId,causeCode:record.failureCode??'APPLY_FAILED',reason:'REQUIRED_FACT_UNKNOWN'} : null,
-      localContext: record.request.localContext });
+      localContext: record.request.localContext,
+      guardRefusal: restore ? restore.guardRefusal : refused ? refused.guardRefusal : null, applyFailure });
   }
   async apply(r) {
     await this.current(r); let saved = this.store.get(r.transactionId); if (!saved) fail('STALE_TRANSACTION');
@@ -112,8 +125,8 @@ export class LocalTransactions {
       saved = { ...saved, after, status: 'VERIFIED' }; await this.store.put(saved); return this.receipt(saved);
     } catch (error) {
       saved.failureCode=schemaBundle.definitions.ErrorCode.enum.includes(error.message)?error.message:'APPLY_FAILED';
-      // Engine guard that refused at apply (before its first write); the receipt stays ROLLED_BACK.
-      if (typeof error.detail === 'string') saved.failureDetail = error.detail;
+      // Engine guard that refused at apply, before its first write: kept for the receipt.
+      saved.failureStage = 'APPLY_COMPILED'; if (typeof error.detail === 'string') saved.failureDetail = error.detail;
       return this.rollback(saved);
     }
   }
@@ -183,6 +196,10 @@ export class LocalTransactions {
       const after = await this.snapshot(saved.target.coveredPositions);
       if (!same(view(after), view(saved.target))) fail('READBACK_MISMATCH');
       saved.status = 'VERIFIED'; saved.after = after; await this.store.put(saved); return this.receipt(saved);
-    } catch { return this.rollback(saved); }
+    } catch (error) {
+      saved.failureCode = schemaBundle.definitions.ErrorCode.enum.includes(error.message) ? error.message : 'APPLY_FAILED';
+      saved.failureStage = 'APPLY_HISTORY'; if (typeof error.detail === 'string') saved.failureDetail = error.detail;
+      return this.rollback(saved);
+    }
   }
 }

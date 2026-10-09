@@ -1,7 +1,7 @@
 // Region I/O REAL_RUNTIME: own source or extracted package + Cordis 4.0.4 + real Luanti 5.17.
 // The game `hw_region_fixture` is an explicit COMPONENT FIXTURE, never the product game.
 // Host lifecycle and the Canvas caller are public peer fixtures; the Canvas fixture only
-// answers ReadWorldSelectionContext and calls the public world-adapter-region/v1 port
+// answers ReadWorldSelectionContext and calls the public world-adapter-region/v2 port
 // (hanaworldsWorldAdapterRegionV1). Expected after-states are computed with the public
 // contract helper expectedRegionState, exactly as the Canvas side would.
 // Independent engine attestation comes from the hw_probe mod (node/light reads and write
@@ -182,9 +182,9 @@ async function engineRead(positions) {
   }
   throw Error('PROBE_ANSWER_TIMEOUT');
 }
-const W = 'world-adapter-region/v1';
-const CAPS = ['world-adapter-region/v1:chunked-read', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
-  'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state'];
+const W = 'world-adapter-region/v2';
+const CAPS = ['world-adapter-region/v2:chunked-read', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
+  'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'];
 let seq = 0;
 const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext });
 const summarize = r => r.result ? { chunks: r.result.chunks.length,
@@ -350,4 +350,4 @@ try {
   await writeFile(join(root, 'processes.json'), JSON.stringify(processes, null, 2) + '\n');
   await writeFile(join(root, 'events.json'), JSON.stringify(events, null, 2) + '\n');
 }
-console.log('REAL_RUNTIME world-adapter-region/v1 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');
+console.log('REAL_RUNTIME world-adapter-region/v2 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');

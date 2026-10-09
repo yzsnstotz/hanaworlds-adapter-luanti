@@ -407,7 +407,9 @@ end
 -- that run it. A guard the engine cannot run is false, never an empty list.
 function M.guards(core)
   return {
-    restoreBodyRecheck = {'restore'},
+    -- Real bodies vs written solid cells: prepare_check (also run before apply and
+    -- apply_state), restore_check (G1) and voxel.write for APPLY and RESTORE.
+    bodyClearance = {'prepare_check', 'apply', 'apply_state', 'restore', 'region_write'},
     perCellProtection = M.protection_capable(core)
       and {'prepare_check', 'apply', 'apply_state', 'restore', 'region_write'} or false,
     playerEnclosure = {'prepare_check', 'apply', 'apply_state'},

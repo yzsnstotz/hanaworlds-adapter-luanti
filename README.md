@@ -520,11 +520,18 @@ The handshake carries `engineGuards` from `region.lua` `guards()`: each guard is
 
 Limits of G3 (design, not hidden): it is local to the write's box; a corridor capped far from the player, flying, swimming, climbing and ladders are not modelled; a player whose box already cannot reach "out" before the write is not protected by it. These are stated so a consumer can decide, not defaults to tune.
 
-## Contracts 1.0 (Adapter 0.10.0 / payload 0.8.0)
+## Contracts 1.0 (Adapter 0.11.0 / payload 0.9.0, candidate v1.0.0-rc.2)
 
-`hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^1.0.0-rc.1` (candidate; after the formal 1.0.0 only the range and lock change). Wires: `world-adapter/v7` (protocol major 7, minor 0), `canvas/v6`, `session/v4`; `world-adapter-region/v1` unchanged (minor 1). `npm run verify:contracts` accepts a prerelease lower bound by semver rules: `^1.0.0-rc.1` admits 1.0.0 prereleases at or above rc.1 and `>=1.0.0 <2.0.0`.
+`hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^1.0.0-rc.2` (after the formal 1.0.0 only the range and lock change). Wires: `world-adapter/v7` (major 7, minor 0), `world-adapter-region/v2` (major 2, minor 0; capability ids `world-adapter-region/v2:*`), `canvas/v6`, `session/v4`. `npm run verify:contracts` accepts a semver prerelease lower bound.
 
-- **No body geometry**: `InspectRegion` returns no body positions (payload `region.lua` emits no `body`; a reply that has one is refused). Bodies are still checked inside the engine at inspection (footprint refused), Prepare and every write.
-- **Advertised safety capabilities** (contract `safetyCapabilities`): `world-adapter/v7:restore-body-recheck`, `world-adapter/v7:cell-protection`, `world-adapter/v7:no-body-enclosure`, `world-adapter-region/v1:restore-body-recheck` (the region RESTORE check of every changed solid cell), `world-adapter-region/v1:cell-protection`. **Not advertised: `world-adapter-region/v1:no-body-enclosure`** — region writes run no enclosure guard; consumers refuse by that name (`requireSafetyCapabilities`).
-- **Refusals** are the contract's `safetyCheckFailure(id)` errors: G2 `SAFETY_INVARIANT_FAILED/apply/SCOPE_DENIED`, G3 `SAFETY_INVARIANT_FAILED/apply/INVALID_GEOMETRY`, a restore refused by a guard `RESTORE_FAILED/restore/RESTORE_ERROR` (`AFTER_MANUAL_RECOVERY`, receipt `restoreStatus FAILED`). The engine detail (`PROTECTED_CELL`, `PLAYER_ENCLOSED`, `BODY_OCCUPIED`) stays Adapter-private.
-- **Stated gaps**: G2 asks protection for the empty name — it does not check an authenticated acting principal (none exists in the local courier) and InspectRegion runs no protection check. A guard that refuses at *apply* (world changed after Prepare) is rolled back with zero writes and answered as a `ROLLED_BACK` receipt; the guard cause is only in the Adapter record (`failureDetail`).
+- **No body geometry**: `InspectRegion` returns no body positions (payload `region.lua` emits no `body`; a reply that has one is refused). Bodies are still checked inside the engine at inspection (footprint refused as a placement choice), Prepare and every write.
+- **`PublicCapabilities.engineGuards`** (`engine-guards/v1`, in `ReadLocalConnection`), derived from the paired World's payload `guards()`; a World whose payload declares anything else is not paired:
+
+| Guard | Stages declared | Not declared |
+|---|---|---|
+| `BODY_CLEARANCE` | PREPARE_RECOVERABLE, APPLY_COMPILED, APPLY_HISTORY, RESTORE, REGION_APPLY | INSPECT_REGION, PREPARE_HISTORY, REGION_RESTORE |
+| `CELL_PROTECTION` (`protectionPrincipal: ANONYMOUS`) | same | same; no ACTING_PRINCIPAL |
+| `PLAYER_ENCLOSURE` | PREPARE_RECOVERABLE, APPLY_COMPILED, APPLY_HISTORY | everything else (restores, region writes) |
+
+  Consumers refuse an uncovered stage by name (`requireEngineGuards`). `ANONYMOUS` means protection is asked for the empty name: every protected cell is refused for everyone; it is not protection on behalf of the acting player (no identity source exists). REGION_RESTORE is not declared although the engine does refuse a region restore into a body or a protected cell: `WriteRegionRequest` carries no cause for the restore (an Undo has none), so the contract's REGION_RESTORE error, whose `causeCode` names that cause, cannot be produced; such a refusal is answered as a plain `SAFETY_INVARIANT_FAILED/validate` error with nothing written and no `guardRefusal`.
+- **Refusals**: guarded responses carry `guardRefusal` beside `error`, and the error is exactly `guardRefusalError(guardRefusal)`. A write refused at apply (after Prepare passed) is rolled back with zero writes; its `ROLLED_BACK` receipt carries the refusal. A failed restore is `RESTORE_FAILED` pending manual recovery: `applyFailure {error, guardRefusal}` keeps why the write failed, `error.causeCode` equals that code, `guardRefusal` says why the restore was refused (`restoreStatus FAILED` then).

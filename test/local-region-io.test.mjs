@@ -1,4 +1,4 @@
-// SOURCE/FIXTURE: world-adapter-region/v1 host logic against an in-memory engine
+// SOURCE/FIXTURE: world-adapter-region/v2 host logic against an in-memory engine
 // double. Engine semantics (VoxelManip/emerge/light/metadata) are exercised only
 // by test/real-region-io.mjs against real Luanti.
 import test from 'node:test';
@@ -8,7 +8,7 @@ import { batches, blocksPerBatch } from '../src/region-batches.mjs';
 import { validateRegionRead, validateRegionWrite, requireKnownRegion, expectedRegionState, encodeRegionBlock,
   checkProtocolCompatibility, protocolRequirement, validateRequest, digestValue } from '#contracts';
 
-const W = 'world-adapter-region/v1', world = 'luanti:fixture';
+const W = 'world-adapter-region/v2', world = 'luanti:fixture';
 const localContext = { connectionRef: 'c', connectionIncarnationRef: 'i', worldRef: world, selectionRevision: 's' };
 const key = p => p.join(',');
 const blk = (x, y, z) => [x, y, z].map(v => Math.floor(v / 16)).join(',');
@@ -87,18 +87,18 @@ const writeReq = (purpose, writes, id) => validateRequest(W, 'WriteRegion', { co
   worldRef: world, transactionId: `tx-${id}`, purpose, writes, localContext });
 async function write(e, purpose, writes, id = 'w') {
   const r = writeReq(purpose, writes, id), out = await writeRegion(e, r);
-  return { ...validateRegionWrite(r, { contractVersion: W, requestId: r.requestId, result: out.result, error: null }), facts: out.facts };
+  return { ...validateRegionWrite(r, { contractVersion: W, requestId: r.requestId, result: out.result, error: null, guardRefusal: null }), facts: out.facts };
 }
 const applyWrites = before => before.chunks.map(c => ({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest,
   ops: opsFor(c, fillDig), state: null }));
 
-test('protocol handshake: same major + capabilities consumed; v2 requirement and v2 wire rejected', () => {
-  const caps = ['world-adapter-region/v1:chunked-read', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
-    'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state'];
+test('protocol handshake: same major + capabilities consumed; v3 requirement and v3 wire rejected', () => {
+  const caps = ['world-adapter-region/v2:chunked-read', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
+    'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'];
   assert.equal(checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, caps)]).result, 'PROTOCOL_COMPATIBLE');
-  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement('world-adapter-region/v2', caps)]), /UNSUPPORTED_VERSION/);
-  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, ['world-adapter-region/v1:teleport'])]), /CAPABILITY_UNAVAILABLE/);
-  assert.throws(() => validateRequest('world-adapter-region/v2', 'ReadRegion', { ...readReq(), contractVersion: 'world-adapter-region/v2' }), /UNSUPPORTED_VERSION/);
+  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement('world-adapter-region/v3', caps)]), /UNSUPPORTED_VERSION/);
+  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, ['world-adapter-region/v2:teleport'])]), /CAPABILITY_UNAVAILABLE/);
+  assert.throws(() => validateRequest('world-adapter-region/v3', 'ReadRegion', { ...readReq(), contractVersion: 'world-adapter-region/v3' }), /UNSUPPORTED_VERSION/);
   assert.ok(blocksPerBatch({ maxBodyBytes: 4 * 1024 * 1024, registeredNodes: 50, longestNodeName: 20 }) >= 30);
   assert.deepEqual(batches([-5, 0, 0], [40, 3, 3], 2).map(b => [b.min, b.max]), [[[-5, 0, 0], [15, 3, 3]], [[16, 0, 0], [40, 3, 3]]]);
 });

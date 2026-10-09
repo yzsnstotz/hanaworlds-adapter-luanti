@@ -177,7 +177,7 @@ end
 
 -- Declaration: exactly what the payload enforces, read from the handshake.
 local g = region_module.guards(core)
-assert(table.concat(g.restoreBodyRecheck, ',') == 'restore')
+assert(table.concat(g.bodyClearance, ',') == 'prepare_check,apply,apply_state,restore,region_write')
 assert(table.concat(g.perCellProtection, ',') == 'prepare_check,apply,apply_state,restore,region_write')
 assert(table.concat(g.playerEnclosure, ',') == 'prepare_check,apply,apply_state')
 local hs = call({operation = 'handshake'})
@@ -222,7 +222,7 @@ r = call({operation = 'region_write', purpose = 'APPLY', min = {4, 1, 0}, max = 
   param2Runs = {0, 2}, guard = read.boxes[1].guard}}})
 assert(r:find('"written":true', 1, true) and r:find('"error":null', 1, true), r)
 
--- G1 on region restores (world-adapter-region/v1:restore-body-recheck): the check-only pass
+-- G1 on region restores (world-adapter-region/v2:restore-body-recheck): the check-only pass
 -- refuses a RESTORE that would put a solid node into a real body; nothing is written.
 reset(); players = {{4, 0.5, 0}}
 read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})

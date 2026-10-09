@@ -1,4 +1,8 @@
-import { guardFailure } from './safety-capabilities.mjs';
+import { engineGuardDeclaration, refusalDetail, GUARDED_OPERATIONS } from './safety-capabilities.mjs';
+// contracts 1.0-rc.2: guarded responses always carry guardRefusal (null unless a guard refused).
+const shaped = (name, v) => GUARDED_OPERATIONS.has(name) ? { guardRefusal: null, ...v } : v;
+// Public engine-guard stage of a world-adapter/v7 operation that can be refused before writing.
+const STAGE = { PrepareRecoverableTransaction: 'PREPARE_RECOVERABLE', ApplyCompiledTransaction: 'APPLY_COMPILED', ApplyHistoryTransaction: 'APPLY_HISTORY' };
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
@@ -211,6 +215,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   function capabilities(row) {
     return { providerRef: ADAPTER_ID, capabilityRevision: `adapter:${ADAPTER_VERSION}:${row.payloadDigest}`,
       worldRef: row.worldRef, engineBounds: null, limits: [], recoveryGuarantee: 'RECOVERABLE_VERIFIED',
+      // What this world's loaded payload actually checks, per guard and stage.
+      engineGuards: engineGuardDeclaration(row.engine.engineGuards),
       stateProfile: row.profile, sessionDeleteSupported: true, imageMediaTypes: [], model: null };
   }
   async function perform(name, r, row) {
@@ -320,9 +326,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},
       entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
   }
-  // world-adapter-region/v1 for the Canvas transaction owner: current paired
+  // world-adapter-region/v2 for the Canvas transaction owner: current paired
   // world/selection only, serialized with every other courier use.
-  const REGION_WIRE = 'world-adapter-region/v1';
+  const REGION_WIRE = 'world-adapter-region/v2';
   let regionFacts = null;
   const regionIO = {
     ctx,
@@ -339,7 +345,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       const r = validateRequest(wire, name, raw);
       const work = serial.then(async () => {
         regionFacts = null;
-        const respond = result => validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE, requestId: r.requestId, result, error: null });
+        const respond = result => validateResponse(REGION_WIRE, name, shaped(name, { contractVersion: REGION_WIRE, requestId: r.requestId, result, error: null }));
         try {
           if (closed) fail('ADAPTER_UNAVAILABLE');
           canvasCaller(caller);
@@ -354,13 +360,13 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           else validateRegionWrite(r, response);
           return response;
         } catch (error) {
-          if (error instanceof RegionFault && error.publicError) return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE,
-            requestId: r.requestId, result: null, error: error.publicError });
+          if (error instanceof RegionFault && error.refusal) return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE,
+            requestId: r.requestId, result: null, ...error.refusal });
           const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
-          return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE, requestId: r.requestId, result: null,
+          return validateResponse(REGION_WIRE, name, shaped(name, { contractVersion: REGION_WIRE, requestId: r.requestId, result: null,
             error: { code, phase: 'validate', retryability: 'AFTER_NEW_FACTS', mutationState: 'NONE',
               transactionRef: r.transactionId ?? null, causeCode: null,
-              reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN' } });
+              reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN' } }));
         }
       });
       serial = work.catch(() => {}); return work;
@@ -393,23 +399,25 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
               replay: prior ? 'EXACT_REPLAY' : 'NEW', priorRequestDigest: prior?.digest ?? null });
             if (admission.disposition === 'RETURN_STORED') return prior.response;
             const result = await perform(name, r, row);
-            const response = validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result, error: null });
+            const response = validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result, error: null }));
             await current(r, row); await row.store.finish(key, admission.requestDigest, response); return response;
           }
           if (row) await inspectConnection(row.connectionRef);
-          return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: await perform(name, r, row), error: null });
+          return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: await perform(name, r, row), error: null }));
         } catch (error) {
           const saved = r.transactionId && rows.get(r.localContext?.connectionRef)?.store.get(r.transactionId);
-          // An engine guard refusal is answered with the contract's exact safety-capability error.
-          const named = saved?.status === 'RESTORE_FAILED' && error.message === 'RESTORE_FAILED'
-            ? guardFailure(WIRE, saved.restoreFailure?.detail, { restore: true, transactionRef: r.transactionId })
-            : guardFailure(WIRE, error.detail, { transactionRef: r.transactionId ?? null });
-          if (named) return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: null, error: named });
+          // A failed restore answers with the receipt's restore error and guard refusal; a guard
+          // that refused before any write answers with its contract error and GuardRefusal.
+          const backend = rows.get(r.localContext?.connectionRef)?.backend;
+          const named = saved?.status === 'RESTORE_FAILED' && error.message === 'RESTORE_FAILED' && backend
+            ? (({ error, guardRefusal }) => ({ error, guardRefusal }))(backend.receipt(saved))
+            : STAGE[name] ? refusalDetail(STAGE[name], error.detail, { transactionRef: r.transactionId ?? null }) : null;
+          if (named) return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null, ...named }));
           const mutationState = saved && !['PREPARED','ABORTED_PREPARED'].includes(saved.status) ? 'UNKNOWN' : 'NONE';
           const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
-          return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: null,
+          return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null,
             error: { code, phase: mutationState==='UNKNOWN'?'apply':'validate', retryability: 'NEVER', mutationState,
-              transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } });
+              transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } }));
         }
       };
       const work = inventoryRead ? execute() : serial.then(execute);

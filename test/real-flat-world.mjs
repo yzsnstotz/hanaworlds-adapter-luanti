@@ -110,7 +110,7 @@ async function engine(query) {
   }
   throw Error('PROBE_ANSWER_TIMEOUT');
 }
-const W = 'world-adapter-region/v1';
+const W = 'world-adapter-region/v2';
 let seq = 0;
 const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext });
 async function io(name, request) {
@@ -215,8 +215,8 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   const proto = {
     v6: C.checkProtocolCompatibility(v6port.protocolHandshake, [C.protocolRequirement('world-adapter/v6',
       ['world-adapter/v6:callback-free-write', 'world-adapter/v6:write-path-state-facts'], 1)]).result,
-    region: C.checkProtocolCompatibility(regionPort.protocolHandshake, [C.protocolRequirement('world-adapter-region/v1',
-      ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:restore-state'], 1)]).result };
+    region: C.checkProtocolCompatibility(regionPort.protocolHandshake, [C.protocolRequirement('world-adapter-region/v2',
+      ['world-adapter-region/v2:callback-free-write', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:restore-state'], 1)]).result };
   assert.deepEqual(proto, { v6: 'PROTOCOL_COMPATIBLE', region: 'PROTOCOL_COMPATIBLE' });
   const wp = await native.readWritePathEvidence(paired.worldRef);
   await writeFile(join(root, 'catalogue.json'), JSON.stringify(wp.catalogue, null, 2) + '\n');

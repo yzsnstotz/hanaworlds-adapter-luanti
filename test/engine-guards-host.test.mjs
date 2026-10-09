@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import * as C from 'hanaworlds-contracts';
 import { LocalCourier } from '../src/local-courier.mjs';
-import { ENGINE_GUARDS, guardFailure, WORLD_ADAPTER_SAFETY, REGION_SAFETY } from '../src/safety-capabilities.mjs';
+import { ENGINE_GUARDS, ENGINE_GUARD_DECLARATION, engineGuardDeclaration, refusalDetail } from '../src/safety-capabilities.mjs';
 import { protocolHandshake, worldAdapterProtocolHandshake } from '../src/region-io.mjs';
 import { LocalRecords } from '../src/local-records.mjs';
 import { LocalTransactions } from '../src/local-transactions.mjs';
@@ -17,14 +17,14 @@ const manifest = { worldRef: 'local:w', payloadDigest: 'p'.repeat(64) };
 const answer = (courier, result) => { const e = courier.queue.shift(); clearTimeout(e.timer); e.resolve(result); return e.command; };
 const hello = engineGuards => ({ worldRef: manifest.worldRef, payloadVersion: PAYLOAD_VERSION, payloadMatches: true,
   loadedSourceDigest: manifest.payloadDigest, worldeditAvailable: true, engineGuards });
-const declared = { restoreBodyRecheck: ['restore'],
+const declared = { bodyClearance: ['prepare_check', 'apply', 'apply_state', 'restore', 'region_write'],
   perCellProtection: ['prepare_check', 'apply', 'apply_state', 'restore', 'region_write'],
   playerEnclosure: ['prepare_check', 'apply', 'apply_state'] };
 
 test('courier pairs only a payload whose engine runs every advertised guard', async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(ENGINE_GUARDS)), declared);
   for (const bad of [undefined, {}, { ...declared, perCellProtection: false }, { ...declared, playerEnclosure: ['apply'] },
-    { ...declared, extra: false }, { ...declared, restoreBodyRecheck: true }]) {
+    { ...declared, extra: false }, { ...declared, bodyClearance: ['restore'] }]) {
     const courier = new LocalCourier(manifest, { token: 'a'.repeat(64) });
     const pending = courier.handshake();
     answer(courier, hello(bad));
@@ -72,46 +72,78 @@ test('a blocked restore stays RESTORE_FAILED with its cause and keeps its cells 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('rc.1 safety capabilities: advertised exactly where implemented, the rest refused by name', () => {
-  const ours = C.safetyCapabilities.filter(c => c.owner === 'hanaworlds-adapter-luanti').map(c => c.id).sort();
-  assert.deepEqual(ours, [...WORLD_ADAPTER_SAFETY, ...REGION_SAFETY, 'world-adapter-region/v1:no-body-enclosure'].sort());
-  assert.deepEqual(C.unmetSafetyCapabilities(worldAdapterProtocolHandshake, WORLD_ADAPTER_SAFETY), []);
-  assert.equal(JSON.stringify(C.requireSafetyCapabilities(worldAdapterProtocolHandshake, WORLD_ADAPTER_SAFETY)), JSON.stringify(WORLD_ADAPTER_SAFETY));
-  assert.deepEqual(C.unmetSafetyCapabilities(protocolHandshake, REGION_SAFETY), []);
-  // Region writes have no enclosure guard: not advertised, so a consumer refuses by its name.
-  const [unmet] = C.unmetSafetyCapabilities(protocolHandshake, ['world-adapter-region/v1:no-body-enclosure']);
-  assert.equal(unmet.cause, 'BODY_ENCLOSURE_UNCHECKED');
-  assert.throws(() => C.requireSafetyCapabilities(protocolHandshake, ['world-adapter-region/v1:no-body-enclosure']), /CAPABILITY_UNAVAILABLE/);
+test('rc.2 engineGuards: declared per guard and stage exactly as the payload runs them', () => {
+  const D = ENGINE_GUARD_DECLARATION;
+  assert.equal(JSON.stringify(D), JSON.stringify(engineGuardDeclaration(declared)));
+  const P = ['PREPARE_RECOVERABLE', 'APPLY_COMPILED', 'APPLY_HISTORY'];
+  assert.equal(JSON.stringify(D.coverage), JSON.stringify([
+    { guard: 'BODY_CLEARANCE', stages: [...P, 'RESTORE', 'REGION_APPLY'], protectionPrincipal: null },
+    { guard: 'CELL_PROTECTION', stages: [...P, 'RESTORE', 'REGION_APPLY'], protectionPrincipal: 'ANONYMOUS' },
+    { guard: 'PLAYER_ENCLOSURE', stages: P, protectionPrincipal: null }]));
+  const covered = D.coverage.flatMap(c => c.stages.map(stage => ({ guard: c.guard, stage })));
+  assert.deepEqual(C.unmetEngineGuards(D, covered), []);
+  // Not covered, so refused by name before any write: no G3 on restores or region writes, nothing at
+  // inspection or history Prepare, no region restore claim, and ANONYMOUS is not acting-principal protection.
+  const uncovered = [['PLAYER_ENCLOSURE', 'RESTORE'], ['PLAYER_ENCLOSURE', 'REGION_APPLY'], ['PLAYER_ENCLOSURE', 'REGION_RESTORE'],
+    ['BODY_CLEARANCE', 'REGION_RESTORE'], ['CELL_PROTECTION', 'REGION_RESTORE'], ['CELL_PROTECTION', 'INSPECT_REGION'],
+    ['BODY_CLEARANCE', 'PREPARE_HISTORY']].map(([guard, stage]) => ({ guard, stage }));
+  assert.equal(C.unmetEngineGuards(D, uncovered).length, uncovered.length);
+  assert.ok(C.unmetEngineGuards(D, uncovered).every(x => x.finding === 'GUARD_UNAVAILABLE'));
+  assert.deepEqual(C.unmetEngineGuards(D, [{ guard: 'CELL_PROTECTION', stage: 'APPLY_COMPILED', protectionPrincipal: 'ACTING_PRINCIPAL' }]),
+    [{ guard: 'CELL_PROTECTION', stage: 'APPLY_COMPILED', finding: 'GUARD_UNAVAILABLE' }]);
+  assert.throws(() => C.requireEngineGuards(D, [{ guard: 'PLAYER_ENCLOSURE', stage: 'REGION_APPLY' }]), /CAPABILITY_UNAVAILABLE/);
+  // rc.1 capability ids are gone from both handshakes; protocol majors follow rc.2.
+  for (const h of [worldAdapterProtocolHandshake, protocolHandshake])
+    assert.ok(!h.capabilities.some(c => /body|protection|enclosure/.test(c)));
   assert.equal(JSON.stringify(worldAdapterProtocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter', major: 7, minor: 0 }]));
+  assert.equal(JSON.stringify(protocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter-region', major: 2, minor: 0 }]));
 });
 
-test('engine guard refusals are the contract errors, never a private code', () => {
-  const W = 'world-adapter/v7', R = 'world-adapter-region/v1';
-  assert.deepEqual(guardFailure(W, 'PROTECTED_CELL', { transactionRef: 't' }), C.safetyCheckFailure(`${W}:cell-protection`, 't'));
-  assert.deepEqual(guardFailure(W, 'PLAYER_ENCLOSED'), C.safetyCheckFailure(`${W}:no-body-enclosure`));
-  assert.deepEqual(guardFailure(W, 'BODY_OCCUPIED', { restore: true, transactionRef: 't' }), C.safetyCheckFailure(`${W}:restore-body-recheck`, 't'));
-  assert.deepEqual(guardFailure(R, 'PROTECTED_CELL'), C.safetyCheckFailure(`${R}:cell-protection`));
-  assert.deepEqual(guardFailure(R, 'BODY_OCCUPIED', { restore: true }), C.safetyCheckFailure(`${R}:restore-body-recheck`));
-  // Not a declared guard (or a write-time body overlap, the pre-existing check): no safety-capability error.
-  for (const [w, d, o] of [[W, 'BODY_OCCUPIED', {}], [R, 'PLAYER_ENCLOSED', {}], [W, 'RESTORE_GUARD_UNAVAILABLE', { restore: true }], [W, undefined, {}]])
-    assert.equal(guardFailure(w, d, o), null);
+test('guard refusals are public GuardRefusal plus the exact contract error; undeclared stages claim nothing', () => {
+  for (const [stage, detail, guard] of [['PREPARE_RECOVERABLE', 'PROTECTED_CELL', 'CELL_PROTECTION'], ['APPLY_COMPILED', 'PLAYER_ENCLOSED', 'PLAYER_ENCLOSURE'],
+    ['APPLY_HISTORY', 'BODY_OCCUPIED', 'BODY_CLEARANCE'], ['REGION_APPLY', 'PROTECTED_CELL', 'CELL_PROTECTION']]) {
+    const r = refusalDetail(stage, detail, { transactionRef: 't' });
+    assert.deepEqual(r.guardRefusal, { guard, stage, finding: detail });
+    assert.deepEqual(r.error, C.guardRefusalError(r.guardRefusal, { transactionRef: 't' }));
+    C.validateType('FailureDetail', r);
+  }
+  const restore = refusalDetail('RESTORE', 'BODY_OCCUPIED', { transactionRef: 't', cause: 'READBACK_MISMATCH' });
+  assert.equal(restore.error.code, 'RESTORE_FAILED'); assert.equal(restore.error.causeCode, 'READBACK_MISMATCH');
+  assert.deepEqual(refusalDetail('RESTORE', 'RESTORE_GUARD_UNAVAILABLE', { cause: 'APPLY_FAILED' }).guardRefusal,
+    { guard: 'BODY_CLEARANCE', stage: 'RESTORE', finding: 'GUARD_UNAVAILABLE' });
+  for (const [stage, detail] of [['REGION_RESTORE', 'BODY_OCCUPIED'], ['REGION_APPLY', 'PLAYER_ENCLOSED'], ['RESTORE', 'PLAYER_ENCLOSED'], ['APPLY_COMPILED', undefined]])
+    assert.equal(refusalDetail(stage, detail, { cause: 'APPLY_FAILED' }), null);
 });
 
-test('a guard-refused restore receipt meets the canvas/v6 RESTORE_FAILED rule', async () => {
+test('receipts: RESTORE_FAILED keeps both causes (applyFailure), a guard-refused write rolls back with its refusal', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hw-guards-'));
   try {
     const store = await LocalRecords.open(dir, manifest.worldRef);
     const tx = new LocalTransactions({ store, current: async () => {} });
-    const base = { transactionId: 't1', operationDigest: 'a'.repeat(64), transactionPayloadDigest: 'b'.repeat(64),
-      before: { worldRevision: 'scope-state:x' }, request: { localContext: null }, status: 'RESTORE_FAILED', failureCode: 'APPLY_FAILED' };
     const ctx = { connectionRef: 'c', connectionIncarnationRef: 'i', worldRef: manifest.worldRef, selectionRevision: 'r1' };
-    for (const [detail, restoreStatus, causeCode] of [['BODY_OCCUPIED', 'FAILED', 'SAFETY_INVARIANT_FAILED'], ['PROTECTED_CELL', 'FAILED', 'SAFETY_INVARIANT_FAILED'], [null, 'UNKNOWN', 'APPLY_FAILED']]) {
-      // receipt() validates ReceiptProjection, including the contract's RESTORE_FAILED rule.
-      const receipt = tx.receipt({ ...base, request: { localContext: ctx }, restoreFailure: { code: 'RESTORE_FAILED', detail } });
-      assert.equal(receipt.restoreStatus, restoreStatus);
-      assert.equal(receipt.error.phase, 'restore');
+    const base = { transactionId: 't1', operationDigest: 'a'.repeat(64), transactionPayloadDigest: 'b'.repeat(64),
+      before: { worldRevision: 'scope-state:x' }, request: { localContext: ctx } };
+    // receipt() validates ReceiptProjection with the contract's domain rules.
+    for (const [failure, restore, restoreStatus] of [
+      [{ failureCode: 'SAFETY_INVARIANT_FAILED', failureStage: 'APPLY_COMPILED', failureDetail: 'PLAYER_ENCLOSED' }, 'BODY_OCCUPIED', 'FAILED'],
+      [{ failureCode: 'READBACK_MISMATCH', failureStage: 'APPLY_HISTORY' }, 'PROTECTED_CELL', 'FAILED'],
+      [{ failureCode: 'APPLY_FAILED', failureStage: 'APPLY_COMPILED' }, 'RESTORE_GUARD_UNAVAILABLE', 'FAILED'],
+      [{ failureCode: 'APPLY_FAILED', failureStage: 'APPLY_COMPILED' }, null, 'UNKNOWN']]) {
+      const receipt = tx.receipt({ ...base, ...failure, status: 'RESTORE_FAILED', restoreFailure: { code: 'RESTORE_FAILED', detail: restore } });
+      assert.equal(receipt.status, 'RESTORE_FAILED'); assert.equal(receipt.restoreStatus, restoreStatus);
+      assert.equal(receipt.error.causeCode, receipt.applyFailure.error.code);
       assert.equal(receipt.error.retryability, 'AFTER_MANUAL_RECOVERY');
-      assert.equal(receipt.error.causeCode, causeCode);
+      assert.equal(receipt.applyFailure.guardRefusal?.finding ?? null, failure.failureDetail ?? null);
+      assert.equal(receipt.guardRefusal?.stage ?? null, restore ? 'RESTORE' : null);
     }
+    const stateProfile = { profileVersion: 'state-profile/v2', nodeFields: ['nodeName', 'param1', 'param2'], metadataMode: 'exact',
+      inventoryMode: 'exact', timerMode: 'exact', derivedLightMode: 'recompute-with-readback' };
+    const after = { worldRef: manifest.worldRef, coveredPositions: [[0, 1, 0]], stateProfile, records: [{ position: [0, 1, 0],
+      nodeName: 'air', param1: 0, param2: 0, metadata: {}, inventory: {}, timer: null }] };
+    const rolled = tx.receipt({ ...base, status: 'ROLLED_BACK', failureCode: 'SAFETY_INVARIANT_FAILED', failureStage: 'APPLY_COMPILED',
+      failureDetail: 'PROTECTED_CELL', after: { ...after, worldRevision: 'scope-state:y' } });
+    assert.equal(JSON.stringify(rolled.guardRefusal), JSON.stringify({ guard: 'CELL_PROTECTION', stage: 'APPLY_COMPILED', finding: 'PROTECTED_CELL' }));
+    assert.equal(rolled.status, 'ROLLED_BACK'); assert.equal(rolled.error.mutationState, 'NONE');
+    assert.equal(rolled.error.reason, 'SCOPE_DENIED'); assert.equal(rolled.applyFailure, null);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
