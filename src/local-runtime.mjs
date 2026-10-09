@@ -8,6 +8,7 @@ import { LocalTransactions, cellDigest, readbackView } from './local-transaction
 import { nativeJournalDirectory, readJournalActivity } from './native-storage.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
+import { createStage1Facts } from './stage1-facts.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
 const WIRE = 'world-adapter/v6';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
@@ -21,6 +22,7 @@ const original = value => value?.[Symbol.for('cordis.original')] ?? value;
 export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
   let inventorySignature = null, inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`;
+  const stage1 = createStage1Facts();
   const runtime = {
     setLocalRoots() {},
     retireLocal(connectionRef) {
@@ -29,6 +31,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const row = rows.get(connectionRef);
         if (!row) fail('WORLD_NOT_BOUND');
         rows.delete(connectionRef);
+        stage1.withdrawWorld(row.worldRef, 'CONNECTION_RETIRED');
         await row.engine.close();
       });
       serial = work.catch(() => {}); return work;
@@ -95,6 +98,13 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial=work.catch(()=>{});return work;
     },
+    /** Stage 1 facts of the exact currently paired world, checked current before and after. */
+    readAvatarEnvelope(worldRef) { return stage1Read(worldRef, row => stage1.avatarEnvelope(row, row.engine)); },
+    readWorldEditFacts(worldRef) { return stage1Read(worldRef, row => stage1.worldEditFacts(row, row.engine)); },
+    readStage1FactLedger(worldRef) {
+      if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+      return stage1.ledger(worldRef);
+    },
     readMaterialSources(worldRef) {
       const work=serial.then(async()=>{
         if(closed) fail('ADAPTER_UNAVAILABLE');
@@ -156,8 +166,27 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial = work.catch(() => {}); return work;
     },
-    async close() { closed = true; await serial.catch(() => {}); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
+    async close() { closed = true; await serial.catch(() => {}); stage1.withdrawAll('ADAPTER_CLOSED'); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
   };
+  function stage1Read(worldRef, read) {
+    const work=serial.then(async()=>{
+      if(closed) fail('ADAPTER_UNAVAILABLE');
+      if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+      const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
+      if(matches.length!==1) fail('WORLD_NOT_BOUND');
+      const row=matches[0];
+      const check=async()=>{
+        await inspectConnection(row.connectionRef);
+        if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
+      };
+      await check();
+      const out=await read(row);
+      try { await check(); }
+      catch(error) { stage1.withdrawWorld(worldRef,'CONNECTION_DOMAIN_CHANGED'); throw error; }
+      return out;
+    });
+    serial=work.catch(()=>{});return work;
+  }
   async function current(request, row) {
     await inspectConnection(row.connectionRef);
     if (row.engine.closed || request.worldRef !== row.worldRef || request.localContext.connectionRef !== row.connectionRef ||

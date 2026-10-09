@@ -74,6 +74,14 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       if type(facts) ~= 'table' or type(facts.material_metadata) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.material_metadata(minetest) end
+    elseif command.operation == 'fact_avatar_envelope' then
+      if type(facts) ~= 'table' or type(facts.avatar_envelope) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.avatar_envelope(minetest, command.salt) end
+    elseif command.operation == 'fact_worldedit_runtime' then
+      if type(facts) ~= 'table' or type(facts.worldedit_runtime) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.worldedit_runtime(minetest) end
     elseif command.operation == 'fact_world_revision' then
       if type(facts) ~= 'table' or type(facts.world_revision) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'

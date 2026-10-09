@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.7.9",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -37,6 +37,7 @@
     "src/local-courier.mjs",
     "src/native-storage.mjs",
     "src/material-sources.mjs",
+    "src/stage1-facts.mjs",
     "src/region-io.mjs",
     "src/region-batches.mjs",
     "src/flat-world.mjs",
@@ -65,7 +66,7 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/stage1-facts.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
     "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs",
     "test:lua": "lua test/local-world-region.lua",
     "verify:contracts": "node scripts/verify-contracts-pin.mjs",
@@ -79,7 +80,8 @@
     "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs",
     "test:world-manage": "node --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs",
     "test:contracts": "node --test test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs",
-    "test:public-host": "node --test test/public-host-exports.test.mjs"
+    "test:public-host": "node --test test/public-host-exports.test.mjs",
+    "test:stage1": "node --test test/stage1-facts.test.mjs && lua test/stage1-facts.lua"
   },
   "dependencies": {
     "canonicalize": "5.1.0",

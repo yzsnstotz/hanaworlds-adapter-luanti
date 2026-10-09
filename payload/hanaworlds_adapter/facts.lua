@@ -295,6 +295,62 @@ function M.material_metadata(core)
     .. table.concat(looks, ',') .. '}}'}
 end
 
+-- The single connected player's current collision envelope (extents only).
+-- Position, yaw and the box offsets stay in the engine (INV-POSE-STAYS-IN-ENGINE);
+-- the player is returned only as a salted digest so a change of player is
+-- visible without releasing a name. No connected player, several players or an
+-- unreadable box is a named refusal, never a guessed player or a design size.
+local function finite(n) return type(n) == 'number' and n == n and n ~= math.huge and n ~= -math.huge end
+function M.avatar_envelope(core, salt)
+  if type(salt) ~= 'string' or not salt:match('^[0-9a-f]+$') or #salt ~= 64 then
+    return nil, 'SCHEMA_INVALID'
+  end
+  if not available(core, 'get_connected_players') or not available(core, 'sha256') then
+    return nil, 'CAPABILITY_UNAVAILABLE'
+  end
+  local players = core.get_connected_players()
+  if type(players) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
+  if #players == 0 then return nil, 'PLAYER_NOT_CONNECTED' end
+  if #players > 1 then return nil, 'PLAYER_NOT_SINGULAR' end
+  local player = players[1]
+  local name = player and player.get_player_name and player:get_player_name()
+  local props = player and player.get_properties and player:get_properties()
+  local box = type(props) == 'table' and props.collisionbox or nil
+  if type(name) ~= 'string' or name == '' or type(box) ~= 'table' then
+    return nil, 'COLLISIONBOX_UNREADABLE'
+  end
+  for i = 1, 6 do if not finite(box[i]) then return nil, 'COLLISIONBOX_UNREADABLE' end end
+  local width, height, depth = box[4] - box[1], box[5] - box[2], box[6] - box[3]
+  if not (width > 0 and height > 0 and depth > 0) then return nil, 'COLLISIONBOX_UNREADABLE' end
+  return {width = width, height = height, depth = depth,
+    playerRef = core.sha256(salt .. '|' .. name)}
+end
+
+-- What the running engine actually loaded for WorldEdit: the mod name in the
+-- loaded mod list, its runtime API table and the version the loaded mod itself
+-- exposes. Package/Git versions are never substituted for a missing value.
+function M.worldedit_runtime(core)
+  if not available(core, 'get_modnames') then return nil, 'CAPABILITY_UNAVAILABLE' end
+  local mods = core.get_modnames()
+  if type(mods) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
+  local listed = false
+  for _, name in ipairs(mods) do if name == 'worldedit' then listed = true end end
+  local api = rawget(_G, 'worldedit')
+  local version, major, minor = nil, nil, nil
+  if type(api) == 'table' then
+    if type(api.version_string) == 'string' and api.version_string ~= '' then version = api.version_string end
+    local v = api.version
+    if type(v) == 'table' and math.type and math.type(v.major) == 'integer' and math.type(v.minor) == 'integer' then
+      major, minor = v.major, v.minor
+    elseif type(v) == 'table' and type(v.major) == 'number' and type(v.minor) == 'number'
+      and v.major == math.floor(v.major) and v.minor == math.floor(v.minor) then
+      major, minor = v.major, v.minor
+    end
+  end
+  return {modListed = listed, apiTable = type(api) == 'table', versionString = version,
+    versionMajor = major, versionMinor = minor}
+end
+
 function M.world_revision() return nil, 'CAPABILITY_UNAVAILABLE' end
 function M.object_revisions() return nil, 'CAPABILITY_UNAVAILABLE' end
 

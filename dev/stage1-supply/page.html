@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adapter Stage 1 Facts</title>
+<style>
+  :root { --bg:#f7f7f5; --fg:#1d1d1b; --muted:#66655f; --card:#fff; --line:#dcdad3;
+    --fix:#b45309; --fixbg:#fff4e0; --real:#166534; --realbg:#e8f6ec; --err:#9f1239; --errbg:#fde8ee; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ecebe6; --muted:#a3a29b; --card:#1f1f1c; --line:#3a3934;
+    --fix:#fbbf24; --fixbg:#3a2a0c; --real:#86efac; --realbg:#12301d; --err:#fda4af; --errbg:#3b1420; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 12px; }
+  .banner { border:2px solid var(--fix); background:var(--fixbg); color:var(--fix); padding:10px 12px; border-radius:8px; font-weight:600; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:12px; }
+  @media (max-width:800px) { .grid { grid-template-columns:1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  h2 { font-size:15px; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .tag { font-size:11px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:.03em; }
+  .tag.fix { background:var(--fixbg); color:var(--fix); border:1px solid var(--fix); }
+  .tag.real { background:var(--realbg); color:var(--real); border:1px solid var(--real); }
+  label { display:block; margin:2px 0; }
+  fieldset { border:1px dashed var(--fix); border-radius:6px; margin:0 0 10px; padding:6px 10px; }
+  legend { color:var(--fix); font-weight:600; font-size:13px; }
+  button { font:inherit; padding:6px 10px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; margin:2px 4px 2px 0; }
+  button.primary { border-color:var(--real); }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; overflow:auto; font-size:12px; max-height:420px; white-space:pre-wrap; word-break:break-all; }
+  .err { background:var(--errbg); color:var(--err); border-radius:6px; padding:8px; font-weight:600; }
+  .ok { background:var(--realbg); color:var(--real); border-radius:6px; padding:8px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td, th { border-bottom:1px solid var(--line); text-align:left; padding:4px; vertical-align:top; word-break:break-all; }
+  .muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Adapter · Stage 1 engine facts</h1>
+  <p class="sub">Player collision envelope and loaded WorldEdit for the current World, read through <code>hanaworldsLuantiNativeFacts</code>.</p>
+  <div class="banner" id="banner">FIXTURE INPUT — the engine (players, collision boxes, loaded mods, WorldEdit) and the native Host are fixtures. Not Luanti, not a real player, World or WorldEdit. Only the output is produced by the real Adapter code.</div>
+  <div class="grid">
+    <section>
+      <h2>1 · Input <span class="tag fix">FIXTURE</span></h2>
+      <p class="muted">World <code id="world">…</code> · <span id="conn">…</span></p>
+      <button class="primary" id="connect">Connect World</button><button id="disconnect">Disconnect World</button>
+      <fieldset><legend>Fixture: connected players</legend><div id="players"></div></fieldset>
+      <fieldset><legend>Fixture: WorldEdit in the engine</legend><div id="worldedit"></div></fieldset>
+      <h2>2 · Read</h2>
+      <button class="primary" id="readAvatar">Read collision envelope</button><button class="primary" id="readWE">Read WorldEdit facts</button>
+      <h2 style="margin-top:12px">Not supplied</h2>
+      <div id="missing" class="muted"></div>
+    </section>
+    <section>
+      <h2>3 · Output <span class="tag real">REAL ADAPTER CODE</span><span class="tag fix">FROM FIXTURE INPUT</span></h2>
+      <div id="status" class="muted">Nothing read yet.</div>
+      <pre id="out"></pre>
+      <h2>Supply ledger (current / retired)</h2>
+      <table><thead><tr><th>fact</th><th>state</th><th>revision</th><th>reasons</th></tr></thead><tbody id="ledger"></tbody></table>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+async function call(method, path, body) {
+  const r = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  return r.json();
+}
+function render(s) {
+  $('world').textContent = s.worldRef; $('conn').textContent = s.connected ? 'connected (fixture native)' : 'not connected';
+  const radios = (box, name, options, current) => { $(box).innerHTML = Object.entries(options).map(([k, v]) =>
+    `<label><input type="radio" name="${name}" value="${k}" ${k === current ? 'checked' : ''}> ${v.label}</label>`).join('');
+    $(box).querySelectorAll('input').forEach(i => i.onchange = async () => { const r = await call('POST', '/api/scenario', { [name]: i.value }); render(r.value); }); };
+  radios('players', 'player', s.players, s.choice.player); radios('worldedit', 'worldedit', s.worldedit, s.choice.worldedit);
+  $('missing').innerHTML = s.notSupplied.map(m => `<div><b>${m.field}</b> — ${m.status}: ${m.why}</div>`).join('');
+}
+function show(label, r) {
+  $('status').className = r.ok ? 'ok' : 'err';
+  $('status').textContent = r.ok ? `${label}: supplied` : `${label}: refused — ${r.error.code}${r.error.reason ? ' / ' + r.error.reason : ''}${r.error.detail ? ' / ' + r.error.detail : ''}`;
+  $('out').textContent = JSON.stringify(r.ok ? r.value : r.error, null, 2);
+  ledger();
+}
+async function ledger() {
+  const r = await call('GET', '/api/ledger'); if (!r.ok) return;
+  const rows = [...r.value.avatarEnvelope.map(x => ['envelope', x]), ...r.value.worldEdit.map(x => ['worldedit', x])];
+  $('ledger').innerHTML = rows.map(([f, x]) => `<tr><td>${f}</td><td>${x.state}</td><td>${x.revision.slice(0, 32)}…</td><td>${(x.reasons ?? []).join(', ')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">empty</td></tr>';
+}
+$('connect').onclick = async () => { const r = await call('POST', '/api/connect'); if (r.ok) render(r.value); else show('Connect', r); ledger(); };
+$('disconnect').onclick = async () => { const r = await call('POST', '/api/disconnect'); if (r.ok) render(r.value); ledger(); };
+$('readAvatar').onclick = async () => show('Collision envelope', await call('POST', '/api/read/avatar'));
+$('readWE').onclick = async () => show('WorldEdit facts', await call('POST', '/api/read/worldedit'));
+call('GET', '/api/state').then(r => render(r.value)); ledger();
+</script>
+</body>
+</html>
