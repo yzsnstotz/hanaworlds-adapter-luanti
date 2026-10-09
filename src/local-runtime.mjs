@@ -197,8 +197,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (row.engine.closed || request.worldRef !== row.worldRef || request.localContext.connectionRef !== row.connectionRef ||
       request.localContext.connectionIncarnationRef !== row.incarnation || request.localContext.worldRef !== row.worldRef) fail('CURRENT_WORLD_MISMATCH');
     const canvas = resolveCanvas(); if (typeof canvas?.call !== 'function') fail('CAPABILITY_UNAVAILABLE');
-    const input={contractVersion:'canvas/v6',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
-    const reply=validateBoundResponse('canvas/v6','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
+    const input={contractVersion:'canvas/v7',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
+    const reply=validateBoundResponse('canvas/v7','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
     const selection=reply.result?.selection;
     if ((resolveCanvas()?.[Symbol.for('cordis.original')] ?? resolveCanvas()) !== (canvas[Symbol.for('cordis.original')] ?? canvas) ||
       reply.error || selection?.status !== 'BOUND' || selection.connectionRef !== row.connectionRef ||

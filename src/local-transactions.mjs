@@ -93,7 +93,7 @@ export class LocalTransactions {
       : refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId })
       ?? (record.failureCode ? { error: { code: record.failureCode, phase: 'apply', retryability: 'AFTER_NEW_FACTS', mutationState: 'ROLLED_BACK',
         transactionRef: record.transactionId, causeCode: null, reason: ROLLBACK_REASON[record.failureCode] ?? 'APPLY_ERROR' }, guardRefusal: null } : null);
-    return validateType('ReceiptProjection', { contractVersion: 'canvas/v6', transactionId: record.transactionId,
+    return validateType('ReceiptProjection', { contractVersion: 'canvas/v7', transactionId: record.transactionId,
       operationDigest: record.operationDigest, transactionPayloadDigest: record.transactionPayloadDigest,
       status: record.status === 'APPLYING' ? 'RECOVERY_PENDING' : ['PREPARED','ABORTED_PREPARED'].includes(record.status) ? 'REJECTED' : record.status, previousWorldRevision: record.before.worldRevision,
       observedWorldRevision: record.after?.worldRevision ?? null,

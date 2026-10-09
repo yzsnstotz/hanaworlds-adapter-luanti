@@ -6,7 +6,7 @@ const mod=await import('../dev/world-manage/session-selection.mjs').catch(e=>{if
 function setup(){
  const selections=new Map(), calls=[],nativeStarts=[];let revision=0,failSwitch=false;
  const connection=world=>({connectionRef:`connection:${world}`,connectionIncarnationRef:`incarnation:${world}`,worldRef:world,payloadVersion:'0.6.0',payloadDigest:'0'.repeat(64),capabilities:{providerRef:'hanaworlds-adapter-luanti',capabilityRevision:'cap:1',worldRef:world,engineBounds:null,limits:[],recoveryGuarantee:'RECOVERABLE_VERIFIED',stateProfile:{profileVersion:'state-profile/v2',nodeFields:['nodeName','param1','param2'],metadataMode:'exact',inventoryMode:'exact',timerMode:'exact',derivedLightMode:'recompute-with-readback'},sessionDeleteSupported:true,imageMediaTypes:[],model:null,engineGuards:null}});
- const canvas={async call(name,input){C.validateBoundRequest('canvas/v6',name,input);calls.push({name,input});
+ const canvas={async call(name,input){C.validateBoundRequest('canvas/v7',name,input);calls.push({name,input});
   if(!['S1','S2'].includes(input.sessionRef))throw Error('SESSION_NOT_FOUND');
   let result;
   if(name==='ReadWorldSelectionContext')result={sessionRef:input.sessionRef,worldRef:input.worldRef,inventory:{capabilityRevision:'cap:1',connections:[]},selection:selections.get(input.sessionRef)??{status:'UNBOUND',sessionRef:input.sessionRef,sessionRevision:'fixture-session:1'}};
@@ -17,7 +17,7 @@ function setup(){
    result={currentSession:input.sessionRef,activeWorldRef:world,orderedSelectedObjectRefs:[],sessionRevision:'fixture-session:1',selectionRevision:rev,localContext:{connectionRef:ref,connectionIncarnationRef:`incarnation:${world}`,worldRef:world,selectionRevision:rev}};
    selections.set(input.sessionRef,{status:'BOUND',connectionRef:ref,context:result});
   }
-  return C.validateBoundResponse('canvas/v6',name,input,{contractVersion:'canvas/v6',requestId:input.requestId,result,error:null});
+  return C.validateBoundResponse('canvas/v7',name,input,{contractVersion:'canvas/v7',requestId:input.requestId,result,error:null});
  }};
  assert.ok(mod,'existing-route Session selection consumer is missing');
  const consumer=mod.createSessionSelectionConsumer({resolveCanvas:()=>canvas,ensureConnection:async(sessionRef,connectionRef)=>{nativeStarts.push({sessionRef,connectionRef});return C.validateType('LocalConnectionReadback',connection(connectionRef.replace('connection:','')));}});
