@@ -81,8 +81,11 @@ try {
   assert.deepEqual(digests(await readR(box)),digests(doorOpen));noGeometry(refused);
   step('REAL_REGION_RESTORE_ENCLOSED_ZERO_WRITE',{error:refused.error,guardRefusal:refused.guardRefusal});
   await w.probe({place:[6,8.5,6]});
-  assert.equal((await writeR('restore-away','RESTORE',restoreWrites(doorOpen,sealedTarget))).error,null);
-  assert.deepEqual(digests(await readR(box)),digests(sealedTarget));
+  const restoreAway=await writeR('restore-away','RESTORE',restoreWrites(doorOpen,sealedTarget));
+  assert.equal(restoreAway.error,null);
+  const afterRestore=await readR(box);
+  await writeFile(join(E,'restore-debug.json'),JSON.stringify({target:sealedTarget,actual:afterRestore,response:restoreAway},null,2));
+  assert.deepEqual(digests(afterRestore),digests(sealedTarget));
   step('REAL_REGION_RESTORE_PLAYER_CHANGED',{result:'restored after player left'});
   assert.equal((await writeR('clear-test','RESTORE',restoreWrites(await readR(box),initial))).error,null);
   // Actual unloaded native scoped-state failure, preserving its code through the public service.
