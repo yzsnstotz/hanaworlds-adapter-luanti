@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openFixtureWorld } from './fixture-world.mjs';
+import { openRealWorld } from './real-world.mjs';
 import { ADAPTER_VERSION, PAYLOAD_VERSION } from '../../src/version.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -34,18 +35,26 @@ const scenario = () => ({ gameId: 'fixture_game', nodes: ['air', 'fixture:stone'
   worldedit: WORLDEDIT[choice.worldedit].worldedit, players: PLAYERS[choice.player].players,
   writeBackendDeclared: BACKEND[choice.backend].writeBackendDeclared });
 
-const world = await openFixtureWorld({ runRoot, scenario: scenario() });
+// HW_STAGE1_INPUT=real: the input is this run's own real Luanti World (see real-world.mjs).
+const REAL = process.env.HW_STAGE1_INPUT === 'real';
+const world = REAL
+  ? await openRealWorld({ runRoot, game: process.env.HW_GAME, worldedit: process.env.HW_WORLDEDIT, log: m => console.log(m) })
+  : await openFixtureWorld({ runRoot, scenario: scenario() });
 let connected = false;
-const LAYERS = { input: 'FIXTURE (engine core + native Host model; not Luanti, not a real player/World/WorldEdit)',
-  output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION} facts.lua + hanaworldsLuantiNativeFacts)` };
+const LAYERS = REAL
+  ? { mode: 'REAL', input: `REAL own World: Luanti 5.17 + VoxeLibre ${world.created.game.version} + WorldEdit, created by the Adapter's createFlatWorld in this run's own Luanti user path; Host start/stop is a labelled fixture; no player connected on this page`,
+    output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION}; hanaworldsLuantiNativeFacts and world-adapter/v7 ReadLocalConnection) in the official SDK Cordis` }
+  : { mode: 'FIXTURE', input: 'FIXTURE (engine core + native Host model; not Luanti, not a real player/World/WorldEdit)',
+    output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION} facts.lua + hanaworldsLuantiNativeFacts)` };
 const errorOf = e => ({ code: e.message, reason: e.reason ?? null, detail: e.detail ?? null });
-const state = () => ({ layers: LAYERS, worldRef: world.worldRef, connected, choice, players: PLAYERS, worldedit: WORLDEDIT, backend: BACKEND,
+const state = () => ({ layers: LAYERS, worldRef: world.worldRef, connected, ...(REAL ? { real: { game: world.created.game, mapgen: world.created.mapgen.mg_name } } : { choice, players: PLAYERS, worldedit: WORLDEDIT, backend: BACKEND }),
   notSupplied: [{ field: 'SafetyProfile.avatarDimensions', status: 'UNAVAILABLE (always)',
-    why: 'actual collision boxes and their pose-dependent sizes stay inside the engine (INV-POSE-STAYS-IN-ENGINE). Changing the fixture players must not change any output. No 1x2x1 or other design size is produced.' }] });
+    why: 'actual collision boxes and their pose-dependent sizes stay inside the engine (INV-POSE-STAYS-IN-ENGINE). ' + (REAL ? 'The real body check runs inside the engine at Prepare and every write (see engine guard coverage).' : 'Changing the fixture players must not change any output.') + ' No 1x2x1 or other design size is produced.' }] });
 
 const api = {
   'GET /api/state': async () => state(),
   'POST /api/scenario': async body => {
+    if (REAL) throw Object.assign(Error('UNSUPPORTED_OPERATION'), { detail: 'real input has no fixture scenario' });
     if (body.player !== undefined) { if (!PLAYERS[body.player]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'player' }); choice.player = body.player; }
     if (body.worldedit !== undefined) { if (!WORLDEDIT[body.worldedit]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'worldedit' }); choice.worldedit = body.worldedit; }
     if (body.backend !== undefined) { if (!BACKEND[body.backend]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'backend' }); choice.backend = body.backend; }
@@ -55,6 +64,13 @@ const api = {
   'POST /api/disconnect': async () => { if (connected) { await world.disconnect(); connected = false; } return state(); },
   'POST /api/read/config': async () => world.facts.readConfigEngineFacts(world.worldRef),
   'POST /api/read/worldedit': async () => world.facts.readWorldEditFacts(world.worldRef),
+  'POST /api/read/guards': async () => {
+    if (!REAL) throw Object.assign(Error('UNSUPPORTED_OPERATION'), { detail: 'engine guard coverage is read from a real paired World' });
+    if (!connected) throw Object.assign(Error('WORLD_NOT_BOUND'), { detail: 'connect the World first' });
+    const r = await world.v7().call('ReadLocalConnection', { contractVersion: 'world-adapter/v7', sessionRef: 'page', requestId: `page-${Date.now()}`, connectionRef: world.paired.connectionRef });
+    if (r.error) throw Object.assign(Error(r.error.code), { reason: r.error.reason });
+    return { engineGuards: r.result.capabilities.engineGuards, connectionIncarnationRef: r.result.connectionIncarnationRef, payloadVersion: r.result.payloadVersion };
+  },
   'GET /api/ledger': async () => world.facts.readStage1FactLedger(world.worldRef),
 };
 

@@ -42,19 +42,22 @@
   <div class="banner" id="banner">FIXTURE INPUT — the engine (players, collision boxes, loaded mods, WorldEdit) and the native Host are fixtures. Not Luanti, not a real player, World or WorldEdit. Only the output is produced by the real Adapter code.</div>
   <div class="grid">
     <section>
-      <h2>1 · Input <span class="tag fix">FIXTURE</span></h2>
+      <h2>1 · Input <span class="tag fix" id="inTag">FIXTURE</span></h2>
       <p class="muted">World <code id="world">…</code> · <span id="conn">…</span></p>
       <button class="primary" id="connect">Connect World</button><button id="disconnect">Disconnect World</button>
+      <div id="fixtureInputs">
       <fieldset><legend>Fixture: connected players</legend><div id="players"></div></fieldset>
       <fieldset><legend>Fixture: WorldEdit in the engine</legend><div id="worldedit"></div></fieldset>
       <fieldset><legend>Fixture: payload write-backend declaration</legend><div id="backend"></div></fieldset>
+      </div>
+      <p class="muted" id="realInput" hidden></p>
       <h2>2 · Read</h2>
-      <button class="primary" id="readConfig">Read config engine facts</button><button class="primary" id="readWE">Read WorldEdit facts</button>
+      <button class="primary" id="readConfig">Read config engine facts</button><button class="primary" id="readWE">Read WorldEdit facts</button><button class="primary" id="readGuards" hidden>Read engine guard coverage</button>
       <h2 style="margin-top:12px">Not supplied</h2>
       <div id="missing" class="muted"></div>
     </section>
     <section>
-      <h2>3 · Output <span class="tag real">REAL ADAPTER CODE</span><span class="tag fix">FROM FIXTURE INPUT</span></h2>
+      <h2>3 · Output <span class="tag real">REAL ADAPTER CODE</span><span class="tag fix" id="outTag">FROM FIXTURE INPUT</span></h2>
       <div id="status" class="muted">Nothing read yet.</div>
       <pre id="out"></pre>
       <h2>Supply ledger (current / retired)</h2>
@@ -69,7 +72,16 @@ async function call(method, path, body) {
   return r.json();
 }
 function render(s) {
-  $('world').textContent = s.worldRef; $('conn').textContent = s.connected ? 'connected (fixture native)' : 'not connected';
+  const real = s.layers.mode === 'REAL';
+  $('world').textContent = s.worldRef; $('conn').textContent = s.connected ? (real ? 'connected (real Luanti server)' : 'connected (fixture native)') : 'not connected';
+  if (real) {
+    $('banner').className = 'ok'; $('banner').textContent = 'REAL INPUT — ' + s.layers.input + '.';
+    $('inTag').className = 'tag real'; $('inTag').textContent = 'REAL WORLD'; $('outTag').className = 'tag real'; $('outTag').textContent = 'FROM REAL WORLD';
+    $('fixtureInputs').hidden = true; $('realInput').hidden = false; $('readGuards').hidden = false;
+    $('realInput').textContent = `Game ${s.real.game.title} ${s.real.game.version} (${s.real.game.gameId}), mapgen ${s.real.mapgen}.`;
+    $('missing').innerHTML = s.notSupplied.map(m => `<div><b>${m.field}</b> — ${m.status}: ${m.why}</div>`).join('');
+    return;
+  }
   const radios = (box, name, options, current) => { $(box).innerHTML = Object.entries(options).map(([k, v]) =>
     `<label><input type="radio" name="${name}" value="${k}" ${k === current ? 'checked' : ''}> ${v.label}</label>`).join('');
     $(box).querySelectorAll('input').forEach(i => i.onchange = async () => { const r = await call('POST', '/api/scenario', { [name]: i.value }); render(r.value); }); };
@@ -92,6 +104,7 @@ $('connect').onclick = async () => { const r = await call('POST', '/api/connect'
 $('disconnect').onclick = async () => { const r = await call('POST', '/api/disconnect'); if (r.ok) render(r.value); ledger(); };
 $('readConfig').onclick = async () => show('Config engine facts', await call('POST', '/api/read/config'));
 $('readWE').onclick = async () => show('WorldEdit facts', await call('POST', '/api/read/worldedit'));
+$('readGuards').onclick = async () => show('Engine guard coverage', await call('POST', '/api/read/guards'));
 call('GET', '/api/state').then(r => render(r.value)); ledger();
 </script>
 </body>
