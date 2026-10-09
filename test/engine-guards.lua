@@ -175,13 +175,47 @@ local function ring(height, gap)
   return out
 end
 
+-- Region G3 uses the whole request across chunks, on APPLY and RESTORE, before writes.
+for _, purpose in ipairs({'APPLY', 'RESTORE'}) do
+  for _, checkOnly in ipairs({true, false}) do
+    reset(); players = {{0, 0.5, 0}}
+    local chunks = {}
+    for _, e in ipairs(ring(3)) do
+      local b = {min = e.position, max = e.position}
+      local read = voxel.read(core, b)
+      chunks[#chunks + 1] = {min = b.min, max = b.max, palette = {'test:stone'}, contentRuns = {0, 1},
+        param2Runs = {0, 1}, guard = read.boxes[1].guard, extras = {}}
+    end
+    local reply = call({operation = 'region_write', purpose = purpose, min = {-1, 1, -1}, max = {1, 3, 1},
+      chunks = {chunks[1]}, enclosure = {chunks = chunks}, checkOnly = checkOnly})
+    assert(refused(reply, 'SAFETY_INVARIANT_FAILED', 'PLAYER_ENCLOSED') and writes == 0, purpose .. ' cross-chunk enclosure ' .. reply)
+  end
+end
+
+-- Open gap, changed player, and live non-walkable nodes are still admitted.
+for _, purpose in ipairs({'APPLY', 'RESTORE'}) do
+  for _, mode in ipairs({'gap', 'far', 'flower'}) do
+    reset(); players = mode == 'far' and {{30, 0.5, 30}} or {{0, 0.5, 0}}
+    local chunks = {}
+    for _, e in ipairs(ring(3, mode == 'gap')) do
+      local rd = voxel.read(core, {min = e.position, max = e.position})
+      chunks[#chunks + 1] = {min = e.position, max = e.position,
+        palette = {mode == 'flower' and e.position[1] == 1 and e.position[3] == 0 and 'test:flower' or 'test:stone'},
+        contentRuns = {0, 1}, param2Runs = {0, 1}, guard = rd.boxes[1].guard, extras = {}}
+    end
+    local reply = call({operation = 'region_write', purpose = purpose, min = {-1, 1, -1}, max = {1, 3, 1},
+      chunks = chunks, enclosure = {chunks = chunks}, checkOnly = true})
+    assert(reply:find('"error":null', 1, true), purpose .. ' ' .. mode .. ' ' .. reply)
+  end
+end
+
 -- Declaration: exactly what the payload enforces, read from the handshake.
 local g = region_module.guards(core)
 assert(table.concat(g.bodyClearance, ',') == 'prepare_check,apply,apply_state,restore,region_write')
 assert(table.concat(g.perCellProtection, ',') == 'prepare_check,apply,apply_state,restore,region_write')
-assert(table.concat(g.playerEnclosure, ',') == 'prepare_check,apply,apply_state')
+assert(table.concat(g.playerEnclosure, ',') == 'prepare_check,apply,apply_state,region_write')
 local hs = call({operation = 'handshake'})
-assert(hs:find('"engineGuards":{', 1, true) and hs:find('"playerEnclosure":["prepare_check","apply","apply_state"]', 1, true), hs)
+assert(hs:find('"engineGuards":{', 1, true) and hs:find('"playerEnclosure":["prepare_check","apply","apply_state","region_write"]', 1, true), hs)
 
 -- G1 restore: a real body in a cell that would receive a solid node blocks
 -- the whole restore before the first write; it stays RESTORE_FAILED.

@@ -6,7 +6,7 @@ import { engineGuards as contractGuards, guardRefusalError, validateType } from 
 export const ENGINE_GUARDS = Object.freeze({
   bodyClearance: Object.freeze(['prepare_check', 'apply', 'apply_state', 'restore', 'region_write']),
   perCellProtection: Object.freeze(['prepare_check', 'apply', 'apply_state', 'restore', 'region_write']),
-  playerEnclosure: Object.freeze(['prepare_check', 'apply', 'apply_state']),
+  playerEnclosure: Object.freeze(['prepare_check', 'apply', 'apply_state', 'region_write']),
 });
 export function sameGuards(value) {
   return value && typeof value === 'object' && !Array.isArray(value) &&
@@ -20,7 +20,8 @@ const FINDING = Object.freeze({ BODY_OCCUPIED: 'BODY_CLEARANCE', PROTECTED_CELL:
 // ApplyHistory call prepare_check with their effects before anything is written; ApplyHistory
 // then writes through apply_state, which runs it again.
 // REGION_APPLY and REGION_RESTORE are both voxel.write (purpose APPLY / RESTORE): every changed
-// solid cell against real bodies, every changed or extras-cleared cell against protection.
+// solid cell against real bodies, every changed or extras-cleared cell against protection, and
+// (payload 0.10.0) the enclosure guard over the whole request's post-write passability.
 // Not declared: INSPECT_REGION (an overlapping footprint is a placement CHOICE, not a guard
 // error) and PREPARE_HISTORY (no engine check).
 const STAGE_OPERATION = Object.freeze({ PREPARE_RECOVERABLE: 'prepare_check', APPLY_COMPILED: 'apply',

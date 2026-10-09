@@ -50,7 +50,7 @@ try {
   await click('#connect'); await until(opened); await shot(1, 'open the test World: status 已打开（真实游戏世界）');
   await read('#readConfig'); await shot(2, 'write method 已知 + player body 不可用; no name/size/position/facing');
   await read('#readWE'); await shot(3, 'WorldEdit 已加载, version 1.3');
-  await read('#readGuards'); await shot(4, 'three safety checks: 6 / 6 (ANONYMOUS) / 3 stages');
+  await read('#readGuards'); await shot(4, 'three safety checks: 6 / 6 (ANONYMOUS) / 5 stages');
   await click('#disconnect'); await until(closed); await read('#readConfig'); await shot(5, 'closed World: refused 世界没有打开, records 已撤回');
   await click('#connect'); await until(opened); await read('#readConfig'); await shot(6, 'reopened: new connection number');
   // Leave the service at its initial state for the owner.

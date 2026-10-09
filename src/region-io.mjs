@@ -152,8 +152,12 @@ export async function writeRegion(engine, request) {
     item.command = { ...writeRuns(item.box, block.indices, block.palette, -1), guard: seen.guard,
       ...(apply ? {} : { extras: item.write.state.extras }) };
   }
+  // Compressed planned WORLD geometry only. The engine resolves passability and reads real
+  // bodies at every check and write batch. The entire plan detects cross-chunk enclosure.
+  const enclosure = { chunks: items.map(i => ({ min: i.command.min, max: i.command.max,
+    palette: i.command.palette, contentRuns: i.command.contentRuns })) };
   const command = (group, checkOnly) => ({ purpose: request.purpose, min: group.box.min, max: group.box.max,
-    chunks: group.items.map(i => i.command), checkOnly });
+    chunks: group.items.map(i => i.command), checkOnly, enclosure });
   for (const group of groups) {
     try { await engine.regionWrite(command(group, true)); }
     catch (error) {
@@ -175,8 +179,12 @@ export async function writeRegion(engine, request) {
         extrasSet: reply.extrasSet, lightComplete: reply.lightComplete, lightBox: reply.lightBox });
       group.items.forEach(i => status.set(key(i.box.min), 'WRITTEN'));
     } catch (error) {
+      const refusal = refusalDetail(apply ? 'REGION_APPLY' : 'REGION_RESTORE', error?.detail, { transactionRef: request.transactionId });
+      // A first-batch refusal is proven zero-write. Later refusals retain partial chunk status
+      // for Canvas to restore; never label a partial request NONE.
+      if (index === 0 && refusal) throw new RegionFault(error.message, 'APPLY_ERROR', refusal);
       const code = error?.message ?? 'CAPABILITY_UNAVAILABLE';
-      failure = { batch: index, code };
+      failure = { batch: index, code, ...(refusal ? { guardRefusal: refusal.guardRefusal } : {}) };
       facts.push({ batch: index, chunks: group.items.length, error: code });
       group.items.forEach(i => status.set(key(i.box.min), LOST.has(code) ? 'UNKNOWN' : 'NOT_WRITTEN'));
     }

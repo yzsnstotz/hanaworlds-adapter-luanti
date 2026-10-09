@@ -283,7 +283,7 @@ end
 -- args: purpose (APPLY | RESTORE), min/max (batch bounding box), chunks
 -- [{min, max, palette (names), contentRuns ([index | -1, count]...; -1 is
 -- UNSPECIFIED, APPLY only), param2Runs, guard, extras (RESTORE)}], checkOnly.
-function M.write(core, args)
+function M.write(core, args, enclosure)
   local p1, p2 = vbox(args.min, args.max)
   if not p1 or type(args.chunks) ~= 'table' or #args.chunks == 0
     or (args.purpose ~= 'APPLY' and args.purpose ~= 'RESTORE') then return nil, 'SCHEMA_INVALID' end
@@ -374,6 +374,15 @@ function M.write(core, args)
         sets[#sets + 1] = {pos = q, metadata = e.metadata, inventory = e.inventory, timer = e.timer}
       end
     end
+  end
+  -- Recheck both this batch's immediate state and the final whole-request state.
+  -- Without a guard callback the write is unavailable, rather than silently unguarded.
+  if type(enclosure) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+  local ok, code, detail = enclosure({chunks = args.chunks})
+  if not ok then return nil, code, detail end
+  if args.enclosure then
+    ok, code, detail = enclosure(args.enclosure)
+    if not ok then return nil, code, detail end
   end
   -- A check-only call proves every precondition of the batch without writing.
   if args.checkOnly then return {written = false, checked = true, changedCells = changed} end

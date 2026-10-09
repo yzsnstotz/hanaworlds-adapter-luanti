@@ -280,14 +280,15 @@ local function passable(core, name)
   local def = type(name) == 'string' and core.registered_nodes[name]
   return type(def) == 'table' and def.walkable == false
 end
+-- `after(p)` gives the post-write passability of a written cell (true/false), or nil for a
+-- cell the write leaves alone (read from the current world).
 local function escapes(core, body, box, after)
   local h = math.max(1, math.ceil(body.hi[2] - body.lo[2]))
   local function open(p)
-    local name = after and after[key(p)]
-    if name == nil then
-      local ok, node = pcall(core.get_node_or_nil, vec(p))
-      name = ok and node and node.name ~= 'ignore' and node.name or nil
-    end
+    local planned = after and after(p)
+    if planned ~= nil then return planned end
+    local ok, node = pcall(core.get_node_or_nil, vec(p))
+    local name = ok and node and node.name ~= 'ignore' and node.name or nil
     return name ~= nil and passable(core, name)
   end
   local function standable(f)
@@ -339,13 +340,13 @@ local function enclosure(core, body_list, effects)
   for _, e in ipairs(effects) do
     if type(e) ~= 'table' or type(e.position) ~= 'table' or #e.position ~= 3
       or type(e.nodeName) ~= 'string' then return nil, 'SCHEMA_INVALID' end
-    after[key(e.position)] = e.nodeName
+    after[key(e.position)] = passable(core, e.nodeName)
     for i = 1, 3 do
       box.min[i] = math.min(box.min[i], e.position[i]); box.max[i] = math.max(box.max[i], e.position[i])
     end
   end
   for _, body in ipairs(body_list) do
-    if escapes(core, body, box, nil) and not escapes(core, body, box, after) then
+    if escapes(core, body, box, nil) and not escapes(core, body, box, function(p) return after[key(p)] end) then
       return nil, 'SAFETY_INVARIANT_FAILED', 'PLAYER_ENCLOSED'
     end
   end
@@ -403,6 +404,52 @@ function Region:restore_check(records)
   return protection(core, all)
 end
 
+-- Whole-request G3, with compressed planned world nodes. Real player data and passability
+-- remain in the engine. Unspecified cells are read fresh, including between write batches.
+function Region:region_enclosure(enc)
+  local core = self.core
+  if type(enc) ~= 'table' or type(enc.chunks) ~= 'table' or #enc.chunks == 0 then return nil, 'SCHEMA_INVALID' end
+  local grids, box = {}, {min = {math.huge, math.huge, math.huge}, max = {-math.huge, -math.huge, -math.huge}}
+  for _, c in ipairs(enc.chunks) do
+    if type(c.min) ~= 'table' or type(c.max) ~= 'table' or #c.min ~= 3 or #c.max ~= 3
+      or type(c.palette) ~= 'table' or type(c.contentRuns) ~= 'table' or #c.contentRuns % 2 ~= 0 then return nil, 'SCHEMA_INVALID' end
+    local size, volume = {}, 1
+    for i = 1, 3 do
+      if type(c.min[i]) ~= 'number' or type(c.max[i]) ~= 'number' or c.min[i] ~= math.floor(c.min[i])
+        or c.max[i] ~= math.floor(c.max[i]) or c.min[i] > c.max[i] then return nil, 'SCHEMA_INVALID' end
+      size[i] = c.max[i] - c.min[i] + 1; volume = volume * size[i]
+    end
+    local cells, n = {}, 0
+    for r = 1, #c.contentRuns, 2 do
+      local k, count = c.contentRuns[r], c.contentRuns[r + 1]
+      if type(k) ~= 'number' or k ~= math.floor(k) or (k ~= -1 and type(c.palette[k + 1]) ~= 'string')
+        or type(count) ~= 'number' or count ~= math.floor(count) or count < 1 or n + count > volume then return nil, 'SCHEMA_INVALID' end
+      if k ~= -1 and type(core.registered_nodes[c.palette[k + 1]]) ~= 'table' then return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+      for _ = 1, count do n = n + 1; cells[n] = k end
+    end
+    if n ~= volume then return nil, 'SCHEMA_INVALID' end
+    grids[#grids + 1] = {min = c.min, max = c.max, size = size, cells = cells, palette = c.palette}
+    for i = 1, 3 do box.min[i] = math.min(box.min[i], c.min[i]); box.max[i] = math.max(box.max[i], c.max[i]) end
+  end
+  local function after(p)
+    for _, g in ipairs(grids) do
+      if p[1] >= g.min[1] and p[1] <= g.max[1] and p[2] >= g.min[2] and p[2] <= g.max[2]
+        and p[3] >= g.min[3] and p[3] <= g.max[3] then
+        local k = g.cells[(p[1] - g.min[1]) + (p[2] - g.min[2]) * g.size[1] + (p[3] - g.min[3]) * g.size[1] * g.size[2] + 1]
+        if k ~= -1 then return passable(core, g.palette[k + 1]) end
+      end
+    end
+  end
+  local body_list = bodies(core)
+  if not body_list then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  for _, body in ipairs(body_list) do
+    if escapes(core, body, box, nil) and not escapes(core, body, box, after) then
+      return nil, 'SAFETY_INVARIANT_FAILED', 'PLAYER_ENCLOSED'
+    end
+  end
+  return true
+end
+
 -- What this payload actually enforces, per guard, as the courier operations
 -- that run it. A guard the engine cannot run is false, never an empty list.
 function M.guards(core)
@@ -412,7 +459,7 @@ function M.guards(core)
     bodyClearance = {'prepare_check', 'apply', 'apply_state', 'restore', 'region_write'},
     perCellProtection = M.protection_capable(core)
       and {'prepare_check', 'apply', 'apply_state', 'restore', 'region_write'} or false,
-    playerEnclosure = {'prepare_check', 'apply', 'apply_state'},
+    playerEnclosure = {'prepare_check', 'apply', 'apply_state', 'region_write'},
   }
 end
 

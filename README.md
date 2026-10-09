@@ -520,7 +520,7 @@ The handshake carries `engineGuards` from `region.lua` `guards()`: each guard is
 
 Limits of G3 (design, not hidden): it is local to the write's box; a corridor capped far from the player, flying, swimming, climbing and ladders are not modelled; a player whose box already cannot reach "out" before the write is not protected by it. These are stated so a consumer can decide, not defaults to tune.
 
-## Contracts 1.0 (Adapter 0.12.1 / payload 0.9.0, formal v1.0.0)
+## Contracts 1.0 (Adapter 0.13.0 / payload 0.10.0, formal v1.0.0)
 
 `hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^1.0.0` (formal release; 0.12.1 changed only the range and lock from the rc.3 candidate, whose consistency carries over: the Adapter-facing types are identical in 1.0.0). Wires: `world-adapter/v7` (major 7, minor 0), `world-adapter-region/v2` (major 2, minor 0; capability ids `world-adapter-region/v2:*`), `canvas/v6`, `session/v4`. `npm run verify:contracts` accepts a semver prerelease lower bound.
 
@@ -531,7 +531,25 @@ Limits of G3 (design, not hidden): it is local to the write's box; a corridor ca
 |---|---|---|
 | `BODY_CLEARANCE` | PREPARE_RECOVERABLE, APPLY_COMPILED, APPLY_HISTORY, RESTORE, REGION_APPLY, REGION_RESTORE | INSPECT_REGION, PREPARE_HISTORY |
 | `CELL_PROTECTION` (`protectionPrincipal: ANONYMOUS`) | same | same; no ACTING_PRINCIPAL |
-| `PLAYER_ENCLOSURE` | PREPARE_RECOVERABLE, APPLY_COMPILED, APPLY_HISTORY | everything else (restores, region writes) |
+| `PLAYER_ENCLOSURE` | PREPARE_RECOVERABLE, APPLY_COMPILED, APPLY_HISTORY, REGION_APPLY, REGION_RESTORE | RESTORE, INSPECT_REGION, PREPARE_HISTORY |
 
   Consumers refuse an uncovered stage by name (`requireEngineGuards`). `ANONYMOUS` means protection is asked for the empty name: every protected cell is refused for everyone; it is not protection on behalf of the acting player (no identity source exists). A WriteRegion RESTORE refused by a guard (in its check-only pass, nothing written) answers with `guardRefusal` and the contract's engine form (`SAFETY_INVARIANT_FAILED`, phase `restore`, `causeCode null`, `mutationState NONE`); the stateless writer knows no cause, Canvas adds it when the restore was a rollback.
 - **Refusals**: guarded responses carry `guardRefusal` beside `error`, and the error is exactly `guardRefusalError(guardRefusal)`. A write refused at apply (after Prepare passed) is rolled back with zero writes; its `ROLLED_BACK` receipt carries the refusal. A failed restore is `RESTORE_FAILED` pending manual recovery: `applyFailure {error, guardRefusal}` keeps why the write failed, `error.causeCode` equals that code, `guardRefusal` says why the restore was refused (`restoreStatus FAILED` then).
+
+### Region enclosure and public failures (0.13.0)
+
+Region APPLY and RESTORE reuse the engine's existing local escape predicate. Each batch checks both
+its immediate planned nodes and the complete request's compressed planned nodes before writing;
+the engine reads players, boxes, current unspecified cells and registered-node passability anew.
+The host supplies world geometry only. This checks enclosure across chunks and avoids an unsafe
+intermediate batch. The existing movement model and limits above still apply; this is not a global
+pathfinder. A zero-write refusal carries PLAYER_ENCLOSURE at REGION_APPLY or REGION_RESTORE;
+a later batch failure retains per-chunk status for Canvas's rollback decision. Entire planned
+geometry must fit the private courier command size; oversized requests are refused, not truncated.
+No per-cell RESTORE enclosure stage is claimed.
+
+The hanaworldsLuantiNativeFacts service now throws the installed contract's ContractError/publicError
+on failure, preserving recognised codes including TARGET_FACTS_INCOMPLETE. Existing ContractErrors
+pass through unchanged. Ordinary write failures with verified rollback carry their cause in the
+existing ReceiptProjection.error (mutationState ROLLED_BACK), while zero-write guard refusals keep
+the contract-defined NONE shape. No contract schema or wire identifier changed.

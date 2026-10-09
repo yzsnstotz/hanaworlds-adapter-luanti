@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { canonicalJSON, digestValue, validateType, schemaBundle, comparePosition } from '#contracts';
 import { refusalDetail } from './safety-capabilities.mjs';
+// Public reason for a rolled-back write's own failure code (contract ErrorReason values).
+const ROLLBACK_REASON = { READBACK_MISMATCH: 'READBACK_ERROR', READBACK_FAILED: 'READBACK_ERROR', TRANSACTION_CONFLICT: 'EXTERNAL_EDIT_CONFLICT',
+  UNSUPPORTED_MUTATION_SEMANTICS: 'REQUIRED_FACT_UNKNOWN', SAFETY_INVARIANT_FAILED: 'INVALID_GEOMETRY', CAPABILITY_UNAVAILABLE: 'REQUIRED_FACT_UNKNOWN' };
 const D = (kind, value) => digestValue(kind, value).sha256;
 const same = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const fail = code => { throw new Error(code); };
@@ -84,7 +87,12 @@ export class LocalTransactions {
     const applyFailure = record.status === 'RESTORE_FAILED' ? this.applyFailure(record) : null;
     const restore = applyFailure ? this.restoreFailure(record, applyFailure.error.code) : null;
     // A write a guard refused before its first cell was rolled back: the refusal stays public.
-    const refused = record.status === 'ROLLED_BACK' ? refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId }) : null;
+    // Any other failed write that was rolled back keeps its cause visible too (mutation ROLLED_BACK: the
+    // world was verified restored); a ROLLED_BACK with no recorded failure has no error.
+    const refused = record.status !== 'ROLLED_BACK' ? null
+      : refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId })
+      ?? (record.failureCode ? { error: { code: record.failureCode, phase: 'apply', retryability: 'AFTER_NEW_FACTS', mutationState: 'ROLLED_BACK',
+        transactionRef: record.transactionId, causeCode: null, reason: ROLLBACK_REASON[record.failureCode] ?? 'APPLY_ERROR' }, guardRefusal: null } : null);
     return validateType('ReceiptProjection', { contractVersion: 'canvas/v6', transactionId: record.transactionId,
       operationDigest: record.operationDigest, transactionPayloadDigest: record.transactionPayloadDigest,
       status: record.status === 'APPLYING' ? 'RECOVERY_PENDING' : ['PREPARED','ABORTED_PREPARED'].includes(record.status) ? 'REJECTED' : record.status, previousWorldRevision: record.before.worldRevision,

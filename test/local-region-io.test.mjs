@@ -154,7 +154,7 @@ test('later batch failure: per-chunk WRITTEN/NOT_WRITTEN, never committed; RESTO
 
 test('guard refusals on WriteRegion: REGION_APPLY and REGION_RESTORE answer with GuardRefusal and the engine form, nothing written', async () => {
   for (const [purpose, detail, guard, reason] of [['RESTORE', 'BODY_OCCUPIED', 'BODY_CLEARANCE', 'INVALID_GEOMETRY'],
-    ['RESTORE', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED'], ['APPLY', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED']]) {
+    ['RESTORE', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED'], ['APPLY', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED'], ['APPLY', 'PLAYER_ENCLOSED', 'PLAYER_ENCLOSURE', 'INVALID_GEOMETRY'], ['RESTORE', 'PLAYER_ENCLOSED', 'PLAYER_ENCLOSURE', 'INVALID_GEOMETRY']]) {
     const e = engine({ guardRefuse: { purpose, detail } });
     const before = await read(e, 'g0');
     const writes = purpose === 'APPLY' ? applyWrites(before) : before.chunks.map(c => ({ chunkPos: c.chunkPos,
@@ -171,9 +171,22 @@ test('guard refusals on WriteRegion: REGION_APPLY and REGION_RESTORE answer with
     validateRegionWrite(r, { contractVersion: W, requestId: r.requestId, result: null, ...fault.refusal });
     assert.equal(e.writes, 0);
   }
-  // Not a declared region guard: enclosure is never claimed for region writes.
+  // The new enclosure stage is a named zero-write refusal.
   const e = engine({ guardRefuse: { purpose: 'APPLY', detail: 'PLAYER_ENCLOSED' } });
   const before = await read(e, 'g1');
   const fault = await writeRegion(e, writeReq('APPLY', applyWrites(before), 'g-enc')).then(() => null, x => x);
-  assert.equal(fault.refusal, null);
+  assert.equal(fault.refusal.guardRefusal.guard, 'PLAYER_ENCLOSURE');
 });
+
+ test('every precheck and write carries the full cross-chunk enclosure plan', async () => {
+  const e = engine(), call = e.regionWrite.bind(e), seen = [];
+  e.regionWrite = async command => {seen.push(command); return call(command);};
+  const before = await read(e, 'plan');
+  await write(e, 'APPLY', applyWrites(before), 'full-plan');
+  assert.ok(seen.filter(c => !c.checkOnly).length > 1);
+  for (const c of seen) {
+    assert.equal(c.enclosure.chunks.length, before.chunks.length);
+    assert.ok(c.enclosure.chunks.every(x => Array.isArray(x.contentRuns) && Array.isArray(x.palette)));
+    assert.equal(/collisionbox|player|body|passRuns/.test(JSON.stringify(c.enclosure)), false);
+  }
+ });

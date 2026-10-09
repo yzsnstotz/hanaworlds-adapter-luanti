@@ -46,7 +46,7 @@ const LAYERS = REAL
     output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION}; hanaworldsLuantiNativeFacts and world-adapter/v7 ReadLocalConnection) in the official SDK Cordis` }
   : { mode: 'FIXTURE', input: 'FIXTURE (engine core + native Host model; not Luanti, not a real player/World/WorldEdit)',
     output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION} facts.lua + hanaworldsLuantiNativeFacts)` };
-const errorOf = e => ({ code: e.message, reason: e.reason ?? null, detail: e.detail ?? null });
+const errorOf = e => ({ ...(e.publicError ?? { code: e.message, reason: e.reason ?? null }), detail: e.detail ?? null });
 const state = () => ({ layers: LAYERS, worldRef: world.worldRef, connected, ...(REAL ? { real: { game: world.created.game, mapgen: world.created.mapgen.mg_name } } : { choice, players: PLAYERS, worldedit: WORLDEDIT, backend: BACKEND }),
   notSupplied: [{ field: 'SafetyProfile.avatarDimensions', status: 'UNAVAILABLE (always)',
     why: 'actual collision boxes and their pose-dependent sizes stay inside the engine (INV-POSE-STAYS-IN-ENGINE). ' + (REAL ? 'The real body check runs inside the engine at Prepare and every write (see engine guard coverage).' : 'Changing the fixture players must not change any output.') + ' No 1x2x1 or other design size is produced.' }] });
