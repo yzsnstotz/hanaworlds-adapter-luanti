@@ -22,7 +22,7 @@ let facts;try{
  await ctx.plugin(Loader,{baseUrl:pathToFileURL(join(sdk,'package.json')).href});
  const id=await ctx.loader.create({id:'hanaworlds-luanti-adapter',name:'hanaworlds-adapter-luanti',config:{localWorldRoots:[worlds]}});await ctx.loader.await();
  assert.equal(ctx.loader.resolve(id).fiber.state,2);assert.equal(ctx.get('hanaworldsNativeEngineControl'),owned.host);assert.equal(ctx.get('hanaworldsLuantiInspectionContext'),bridge);
- const adapter=ctx.get('hanaworldsWorldAdapterV6');assert.equal(adapter.contractHandshake.contracts,'hanaworlds-contracts@0.5.4');
+ const adapter=ctx.get('hanaworldsWorldAdapterV6');assert.equal(adapter.contractHandshake.contracts,'hanaworlds-contracts@0.5.5-rc.1');
  const request={contractVersion:'world-adapter/v6',sessionRef:'own:readonly-request-shape',requestId:'own:read-connections',adapterId:'hanaworlds-adapter-luanti'};
  const connections=await adapter.call('DiscoverConnections',request);const worldInventory=await ctx.get('hanaworldsLuantiLocalWorlds').discover();
  assert.equal(connections.error,null);assert.deepEqual(connections.result.connections,[]);assert.deepEqual(worldInventory,[]);

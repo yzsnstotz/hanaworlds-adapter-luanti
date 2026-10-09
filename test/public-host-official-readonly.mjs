@@ -14,7 +14,7 @@ import {createInspectionContext} from 'hanaworlds-adapter-luanti/inspection-cont
 const sdk=process.env.HW_PUBLIC_HOST_SDK_ROOT,baseInput=process.env.HW_PUBLIC_HOST_STATE,packetPath=process.env.HW_OFFICIAL_HOST_PACKET;
 if(!sdk||!baseInput||!packetPath)throw Error('own SDK/state and authorized public packet required');
 assert.equal(import.meta.url,pathToFileURL(join(sdk,'public-host-official-readonly.mjs')).href);
-assert.equal(C.version,'0.5.4');
+assert.equal(C.version,'0.5.5-rc.1');
 const packet=JSON.parse(await readFile(packetPath,'utf8')),officialIdentity=[];
 for(const row of packet.officialPackages){
  const dir=join(sdk,'node_modules',row.package),pkg=JSON.parse(await readFile(join(dir,'package.json'),'utf8'));assert.equal(pkg.version,row.exactVersion);

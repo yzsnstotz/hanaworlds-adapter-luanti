@@ -1,4 +1,4 @@
-# Stage 1 engine fact supply (Adapter 0.8.1 / payload 0.6.2 / contracts 0.5.4)
+# Stage 1 engine fact supply (Adapter 0.8.2 / payload 0.6.2 / contracts 0.5.5-rc.1)
 
 2026-10-09 · hanaworlds-adapter-luanti-SUPPLY-01 · **SOURCE + FIXTURE only.** No real Luanti,
 World, Session or player has been read with this code. The real read needs a separate PM GO.
@@ -14,7 +14,7 @@ consumes for `readCatalogue`). No new key, wire, operation or contract type.
 
 | Method | Returns | Refusals |
 | --- | --- | --- |
-| `readConfigEngineFacts(worldRef)` | `config-engine-facts/v1` record, the shape of the contracts 0.5.5-rc.1 candidate `ConfigEngineFactsPort` (below) | `SCHEMA_INVALID`, `ADAPTER_UNAVAILABLE`, `WORLD_NOT_BOUND`, `CURRENT_WORLD_MISMATCH` (+ `detail: CATALOGUE_CHANGED_DURING_READ`); `CAPABILITY_UNAVAILABLE`/`REQUIRED_FACT_UNKNOWN` + `detail` `WRITE_BACKEND_NOT_READY` / `WRITE_BACKEND_SEMANTICS_UNSUPPORTED` |
+| `readConfigEngineFacts(worldRef)` | `config-engine-facts/v1` record, the shape of the contracts 0.5.5-rc.1 candidate `ConfigEngineFactsPort` (below) | `SCHEMA_INVALID`, `ADAPTER_UNAVAILABLE`, `WORLD_NOT_BOUND`, `CURRENT_WORLD_MISMATCH` (+ `detail: CATALOGUE_CHANGED_DURING_READ`); `CAPABILITY_UNAVAILABLE`/`REQUIRED_FACT_UNKNOWN` + `detail` `WRITE_BACKEND_SEMANTICS_UNSUPPORTED` (typed ContractError); unreadable/not-ready backend is UNAVAILABLE/ENGINE_FACT_UNREADABLE |
 | `readWorldEditFacts(worldRef)` | `adapter-worldedit-runtime/v1` record (below) | as above; `detail: WORLDEDIT_RUNTIME_UNREADABLE` |
 | `readStage1FactLedger(worldRef)` | `{worldRef, configEngineFacts[], worldEdit[]}`: `{state: CURRENT|RETIRED, revision, publishedAt, retiredAt, retiredBy, reasons}` | `SCHEMA_INVALID` |
 
@@ -38,19 +38,16 @@ consumes for `readCatalogue`). No new key, wire, operation or contract type.
   yaw, player name or player count for this read; player presence and pose do not change any
   output (tested). No design size such as 1×2×1 is produced. Body safety stays where it was:
   InspectRegion body occupancy and the Prepare recheck of every connected player's actual box
-  (INV-BODY-RECHECK-AT-PREPARE), both inside the engine. `NO_PUBLIC_SOURCE` is not in the
-  0.5.5-rc.1 enum; it waits for the narrowed contract value.
+  (INV-BODY-RECHECK-AT-PREPARE), both inside the engine. The exact dcbe/0.5.5-rc.1 schema fixes this form to `UNAVAILABLE/NO_PUBLIC_SOURCE`.
 - **writeBackend** comes only from the loaded payload: `engine.lua` `WRITE_BACKEND` declares the
   backend `Engine:apply` implements (one WorldEdit `set` + `set_param2` per effect cell, then a light
   refresh). It is KNOWN only when the running engine can execute it (WorldEdit `set`/`set_param2`,
   `fix_light`, `get_node_light`). Not adapterId, payloadVersion, package version or a default.
   Changing that write path requires a new `backendProfileId`. The id string is the payload's
   declaration; its spelling is this worker's choice.
-- **sourceRevision**: contracts 0.5.4 has no `config-engine-facts` digest kind, so the Adapter
-  computes the candidate's declared rule itself (`configEngineFactsRevision`). Checked equal to the
-  candidate `digestValue` on an enum-valid record. At re-pin this is replaced by `digestValue`.
-- Read stability: Catalogue read before and after the payload read (same `gameRevision`), and the
-  connection checked current before and after.
+- **sourceRevision**: exact candidate SDK `digestValue('config-engine-facts', projection).sha256`;
+  all emitted records pass `validateType('ConfigEngineFacts')`. Exact tag and pack members are
+  pinned in `scripts/contracts-pin.mjs` / `.json`. Candidate SOURCE/FIXTURE only; formal not GO.
 
 ### WorldEdit (adapter-worldedit-runtime/v1)
 
@@ -76,15 +73,17 @@ after a read withdraws the World. Retired entries are never returned as current.
 
 ## Version impact
 
-Payload **0.6.0 → 0.6.2**, Adapter **0.7.9 → 0.8.1**. A World provisioned with payload 0.6.0 is not
+Payload **0.6.0 → 0.6.2**, Adapter **0.7.9 → 0.8.2**. A World provisioned with payload 0.6.0 is not
 adopted until 0.6.2 is provisioned into it (`PROVISION_PAYLOAD`, writes `worldmods/hanaworlds_adapter`).
 
 ## Development page (FIXTURE input)
 
-`HW_STAGE1_RUN=<own run dir> dev/stage1-supply/start.sh` → `http://127.0.0.1:47614/`. Real Adapter
+`HW_STAGE1_RUN=<own run dir> PORT=47615 dev/stage1-supply/start.sh` → `http://127.0.0.1:47615/`. Real Adapter
 public path; fixture native Host model and fixture engine `core`, labelled on the page and in every
 response. `dev/stage1-supply/browser-walk.mjs` walks it.
 
 ## Tests
 
-`npm run test:stage1` (7 Node tests through the public path + payload Lua test).
+`npm run test:stage1` (8 Node tests through the public path + payload Lua test).
+
+`npm run test:config-facts`: candidate provider valid/invalid public fixtures, consumer decisions and Adapter producer conformance (SOURCE/FIXTURE).

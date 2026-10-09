@@ -1,14 +1,14 @@
-// Published formal tag and exact advertised npm-pack identity; no contracts implementation is copied.
+// Published candidate tag and exact supplied npm-pack identity; no vendor copy.
 export const PINNED = Object.freeze({
   "name": "hanaworlds-contracts",
-  "version": "0.5.4",
-  "tag": "v0.5.4",
-  "tagObject": "b3721db855ffe08dfa524e6eea6a5da4eed4c220",
-  "revision": "85687fc3811e4c8ee6e69410d46d8026e19d2c75",
-  "sha256": "b920097dee8bf57ef44cc9ca964829e568b14c9e1b15a77bf4599f69391062ec",
-  "bytes": 157837,
-  "entryCount": 26,
-  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.4"
+  "version": "0.5.5-rc.1",
+  "tag": "v0.5.5-rc.1",
+  "tagObject": "3f2411ce0e25ea967107285df62ee69f4c7dbed7",
+  "revision": "dcbe648576de5f666bed11a90d015cc30bdf2bc9",
+  "sha256": "31ebd3c09f4cb2bfd2efdd3402a97ee198a29c705aea259386a631d46b6bac34",
+  "bytes": 166226,
+  "entryCount": 28,
+  "source": "https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.5-rc.1"
 });
 export const MANIFEST = "scripts/contracts-pin.json";
 export const RUNTIME_ENTRIES = ["dist/local/index.mjs"];

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { validateType, canonicalJSON, digestValue } from '#contracts';
+import { validateType, canonicalJSON, digestValue, ContractError } from '#contracts';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /** Stage 1 engine facts for Canvas configuration. Read-only, in memory only.
@@ -15,21 +15,19 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
  * A missing fact is a named refusal or UNAVAILABLE; no package version or default stands in. */
 export const CONFIG_ENGINE_FACTS_VERSION = 'config-engine-facts/v1';
 export const WORLDEDIT_FACTS_VERSION = 'adapter-worldedit-runtime/v1';
-// Pending the contract batch: the candidate enum has no value for "no public source".
+// The exact candidate permits only this avatar form; no public geometry source.
 export const AVATAR_UNAVAILABLE_REASON = 'NO_PUBLIC_SOURCE';
 const sha = value => createHash('sha256').update(canonicalJSON(value)).digest('hex');
 
-/** contracts 0.5.4 has no 'config-engine-facts' digest kind. This is the candidate's
- * declared rule (profile digest.domainPrefixByKind + kind + domainSuffix); replace with
- * digestValue('config-engine-facts', …) when the tagged contract is pinned. */
+/** Exact candidate SDK digest rule; no local alternate digest implementation. */
 export function configEngineFactsRevision(projection) {
-  return createHash('sha256').update('HanaWorlds|config-engine-facts/v1|config-engine-facts|' + canonicalJSON(projection), 'utf8').digest('hex');
+  return digestValue('config-engine-facts', projection).sha256;
 }
 
 /** Named refusal: the public code stays in the contract vocabulary; `detail`
  * is this Adapter's own label of what is missing (not a wire error). */
 export function refusal(code, reason, detail) {
-  return Object.assign(new Error(code), { code, reason, detail, publicError: { code, reason } });
+  return Object.assign(new ContractError(code, 'validate', reason), { detail });
 }
 
 export function domainOf(row) {
@@ -93,7 +91,7 @@ export function createStage1Facts() {
         writeBackend = { availability: 'UNAVAILABLE', reason: 'ENGINE_FACT_UNREADABLE' };
       else if (raw.nodeWriteSemantics !== 'explicit-nodeName-param2-static-v2')
         throw refusal('CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'WRITE_BACKEND_SEMANTICS_UNSUPPORTED');
-      else if (!raw.ready) throw refusal('CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'WRITE_BACKEND_NOT_READY');
+      else if (!raw.ready) writeBackend = { availability: 'UNAVAILABLE', reason: 'ENGINE_FACT_UNREADABLE' };
       else writeBackend = { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
         backendProfileId: validateType('Ref', raw.backendProfileId), nodeWriteSemantics: raw.nodeWriteSemantics };
       const projection = { profileVersion: CONFIG_ENGINE_FACTS_VERSION,
@@ -101,7 +99,7 @@ export function createStage1Facts() {
         catalogueDigest: digestValue('catalogue', catalogue).sha256,
         avatarEnvelope: { availability: 'UNAVAILABLE', reason: AVATAR_UNAVAILABLE_REASON },
         writeBackend };
-      const record = { ...projection, sourceRevision: configEngineFactsRevision(projection) };
+      const record = validateType('ConfigEngineFacts', { ...projection, sourceRevision: configEngineFactsRevision(projection) });
       const meta = { domain, gameRevision: catalogue.gameRevision, writeBackend };
       return publish(list, record.sourceRevision, meta, record, (a, b) => {
         const out = domainChanges(a, b);

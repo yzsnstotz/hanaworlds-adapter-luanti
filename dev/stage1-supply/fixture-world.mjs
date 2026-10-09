@@ -1,6 +1,6 @@
 // FIXTURE INPUT LAYER for the Stage 1 fact supply page and test.
 // Real: Adapter public apply() → local-world port (discover/acquire/provision/pair)
-//       → LocalCourier → payload facts.lua → readAvatarEnvelope / readWorldEditFacts.
+//       → LocalCourier → payload facts.lua → readConfigEngineFacts / readWorldEditFacts.
 // Fixture: the native Host (NativeEngineControl model) and the engine `core`
 //       (players, collision boxes, loaded mods, WorldEdit global) from a scenario.
 // No Luanti process, real World, player or WorldEdit is started or read.

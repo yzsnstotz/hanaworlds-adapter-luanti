@@ -7,7 +7,7 @@ local dir, scenario_path, operation = arg[1], arg[2], arg[3]
 local S = dofile(scenario_path)
 
 local function sha256(s)
-  local tmp = os.tmpname(); local f = assert(io.open(tmp, 'wb')); f:write(s); f:close()
+  local tmp = scenario_path .. '.sha-input'; local f = assert(io.open(tmp, 'wb')); f:write(s); f:close()
   local p = assert(io.popen('shasum -a 256 "' .. tmp .. '"')); local out = p:read('*l'); p:close(); os.remove(tmp)
   return out:match('^(%x+)')
 end
@@ -60,6 +60,7 @@ if S.worldedit then
     version_string = S.worldedit.version_string, version = S.worldedit.version }
 end
 
+if S.writeBackendReady == false then core.fix_light = nil end
 local facts = dofile(dir .. '/facts.lua')
 local result, code
 local engine_module = dofile(dir .. '/engine.lua')

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { digestValue } from 'hanaworlds-contracts';
+import { digestValue, validateConfigEngineFacts, requireKnownWriteBackend, publicError } from 'hanaworlds-contracts';
 import { openFixtureWorld } from '../dev/stage1-supply/fixture-world.mjs';
 import { configEngineFactsRevision } from '../src/stage1-facts.mjs';
 
@@ -28,9 +28,9 @@ test('config engine facts: payload-declared backend KNOWN, avatar always UNAVAIL
   assert.deepEqual(Object.keys(f).sort(), ['avatarEnvelope', 'catalogueDigest', 'connection', 'profileVersion', 'sourceRevision', 'writeBackend']);
   assert.equal(f.profileVersion, 'config-engine-facts/v1');
   assert.deepEqual({ ...f.connection }, { worldRef: w.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef });
-  assert.deepEqual(f.writeBackend, { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
+  assert.deepEqual({ ...f.writeBackend }, { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
     backendProfileId: 'hanaworlds-luanti-worldedit-cell-write/v1', nodeWriteSemantics: 'explicit-nodeName-param2-static-v2' });
-  assert.deepEqual(f.avatarEnvelope, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
+  assert.deepEqual({ ...f.avatarEnvelope }, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
   assert.equal(f.catalogueDigest, digestValue('catalogue', await w.facts.readCatalogue(w.worldRef)).sha256);
   const { sourceRevision, ...projection } = f;
   assert.equal(sourceRevision, configEngineFactsRevision(projection));
@@ -52,7 +52,7 @@ test('config engine facts: a payload without a declaration is UNAVAILABLE, never
   const w = await world(t, base([], undefined, false));
   await w.connect();
   const f = await w.facts.readConfigEngineFacts(w.worldRef);
-  assert.deepEqual(f.writeBackend, { availability: 'UNAVAILABLE', reason: 'NOT_DECLARED_BY_PAYLOAD' });
+  assert.deepEqual({ ...f.writeBackend }, { availability: 'UNAVAILABLE', reason: 'NOT_DECLARED_BY_PAYLOAD' });
   await w.setScenario(base([]));
   const g = await w.facts.readConfigEngineFacts(w.worldRef);
   assert.equal(g.writeBackend.availability, 'KNOWN');
@@ -104,4 +104,22 @@ test('input: unbound or invalid World is refused without reading', async t => {
   await assert.rejects(w.facts.readWorldEditFacts(''), /SCHEMA_INVALID/);
   assert.throws(() => w.facts.readStage1FactLedger(null), /SCHEMA_INVALID/);
   assert.equal(typeof w.facts.readAvatarEnvelope, 'undefined', 'no public envelope read exists');
+});
+
+
+test('backend not ready produces legal UNAVAILABLE and consumer public error, then retires the previous fact', async t => {
+  const w = await world(t, base([]));
+  await w.connect();
+  const known = await w.facts.readConfigEngineFacts(w.worldRef);
+  await w.setScenario({ ...base([]), writeBackendReady: false });
+  const unavailable = await w.facts.readConfigEngineFacts(w.worldRef);
+  assert.deepEqual({ ...unavailable.writeBackend }, { availability: 'UNAVAILABLE', reason: 'ENGINE_FACT_UNREADABLE' });
+  validateConfigEngineFacts(unavailable, await w.facts.readCatalogue(w.worldRef), unavailable.connection);
+  assert.throws(() => requireKnownWriteBackend(unavailable), error => {
+    const e = publicError(error);
+    assert.deepEqual([e.code, e.phase, e.reason], ['CAPABILITY_UNAVAILABLE', 'validate', 'REQUIRED_FACT_UNKNOWN']);
+    return true;
+  });
+  assert.notEqual(known.sourceRevision, unavailable.sourceRevision);
+  assert.deepEqual(w.facts.readStage1FactLedger(w.worldRef).configEngineFacts.map(x => x.state), ['RETIRED', 'CURRENT']);
 });
