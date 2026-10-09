@@ -31,10 +31,10 @@ for (const [name, mutate] of [
   ['commit pin', dependency(`${SOURCE}#f84974eb07e30b683f4c1b1712145b756d5671ed`)],
   ['workspace link', dependency('file:../hanaworlds-contracts')],
   ['vendor copy', dir => mkdirSync(join(dir, 'vendor/hanaworlds-contracts'), { recursive: true })],
-  // Installed is a 1.0.0 prerelease (rc.3): a later prerelease, the plain release, the old
-  // major and a different X.Y.Z prerelease lower bound must all refuse it.
-  ['installed below a later prerelease', dependency(`${SOURCE}#semver:^1.0.0-rc.4`)],
-  ['prerelease below a release bound', dependency(`${SOURCE}#semver:^1.0.0`)],
+  // Installed is the formal 1.0.0: a later release bound, the next major, the old major and
+  // a different X.Y.Z prerelease lower bound must all refuse it.
+  ['installed below a later release', dependency(`${SOURCE}#semver:^1.0.1`)],
+  ['installed below the next major', dependency(`${SOURCE}#semver:^2.0.0`)],
   ['installed outside the old major', dependency(`${SOURCE}#semver:^0.5.6`)],
   ['prerelease of another X.Y.Z', dependency(`${SOURCE}#semver:^0.9.0-rc.1`)],
 ]) test(`range verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });

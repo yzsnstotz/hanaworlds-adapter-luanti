@@ -520,9 +520,9 @@ The handshake carries `engineGuards` from `region.lua` `guards()`: each guard is
 
 Limits of G3 (design, not hidden): it is local to the write's box; a corridor capped far from the player, flying, swimming, climbing and ladders are not modelled; a player whose box already cannot reach "out" before the write is not protected by it. These are stated so a consumer can decide, not defaults to tune.
 
-## Contracts 1.0 (Adapter 0.12.0 / payload 0.9.0, candidate v1.0.0-rc.3)
+## Contracts 1.0 (Adapter 0.12.1 / payload 0.9.0, formal v1.0.0)
 
-`hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^1.0.0-rc.3` (after the formal 1.0.0 only the range and lock change). Wires: `world-adapter/v7` (major 7, minor 0), `world-adapter-region/v2` (major 2, minor 0; capability ids `world-adapter-region/v2:*`), `canvas/v6`, `session/v4`. `npm run verify:contracts` accepts a semver prerelease lower bound.
+`hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^1.0.0` (formal release; 0.12.1 changed only the range and lock from the rc.3 candidate, whose consistency carries over: the Adapter-facing types are identical in 1.0.0). Wires: `world-adapter/v7` (major 7, minor 0), `world-adapter-region/v2` (major 2, minor 0; capability ids `world-adapter-region/v2:*`), `canvas/v6`, `session/v4`. `npm run verify:contracts` accepts a semver prerelease lower bound.
 
 - **No body geometry**: `InspectRegion` returns no body positions (payload `region.lua` emits no `body`; a reply that has one is refused). Bodies are still checked inside the engine at inspection (footprint refused as a placement choice), Prepare and every write.
 - **`PublicCapabilities.engineGuards`** (`engine-guards/v1`, in `ReadLocalConnection`), derived from the paired World's payload `guards()`; a World whose payload declares anything else is not paired:
