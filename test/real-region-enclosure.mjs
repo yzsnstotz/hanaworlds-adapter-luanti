@@ -37,8 +37,11 @@ try {
   C.requireEngineGuards(conn.result.capabilities.engineGuards, ['REGION_APPLY','REGION_RESTORE'].map(stage => ({guard:'PLAYER_ENCLOSURE',stage})));
   noGeometry(conn);
   step('REAL_REGION_COVERAGE', {engineGuards:conn.result.capabilities.engineGuards});
-  const box = {min:[-16,0,-16],max:[15,15,15]};
+  // Snapshot the static wall layer; terrain below y=9 has game ABMs. Full-terrain
+  // concurrent edits are separately covered by real-region-conflict.mjs.
+  const box = {min:[-16,9,-16],max:[15,15,15]};
   const initial = await readR(box), catalogue = await w.facts.readCatalogue(w.worldRef);
+  await writeFile(join(E,'initial-state.json'),JSON.stringify(initial,null,2));
   const ring = gap => {const out=[];for(let x=-1;x<=1;x++)for(let z=-1;z<=1;z++){
     if((x===0&&z===0)||(gap&&x===1&&z===0))continue;
     for(let y=9;y<=11;y++)out.push({position:[x,y,z],nodeName:'mcl_core:stone'});
@@ -66,15 +69,20 @@ try {
   const gap = await writeR('open-apply','APPLY',opsWrites(initial,ring(true)));
   assert.equal(gap.error,null);assert.ok(gap.result.chunks.every(c=>c.status==='WRITTEN'));
   const withGap=await readR(box);
+  await writeFile(join(E,'gap-state.json'),JSON.stringify(withGap,null,2));
   assert.equal(nodeAt(withGap,[1,9,0]),'air');
   step('REAL_REGION_APPLY_OPEN_EXIT',{chunks:gap.result.chunks.length});
   // Capture a sealed restore target with the player outside, then open the doorway and move in.
   await w.probe({place:[6,8.5,6]});
-  assert.equal((await writeR('seal-away','APPLY',opsWrites(withGap,ring(false)))).error,null);
+  const sealAway=await writeR('seal-away','APPLY',opsWrites(withGap,ring(false)));
+  assert.equal(sealAway.error,null);assert.ok(sealAway.result.chunks.every(c=>c.status==='WRITTEN'));
   const sealedTarget=await readR(box);
+  await writeFile(join(E,'sealed-target-state.json'),JSON.stringify(sealedTarget,null,2));
   const door=[9,10,11].map(y=>({position:[1,y,0],nodeName:'air'}));
-  assert.equal((await writeR('door-open','APPLY',opsWrites(sealedTarget,door))).error,null);
-  const doorOpen=await readR(box);await w.probe({place:[0,8.5,0]});
+  const openDoor=await writeR('door-open','APPLY',opsWrites(sealedTarget,door));
+  assert.equal(openDoor.error,null);assert.ok(openDoor.result.chunks.every(c=>c.status==='WRITTEN'));
+  const doorOpen=await readR(box);
+  await writeFile(join(E,'door-open-state.json'),JSON.stringify(doorOpen,null,2));await w.probe({place:[0,8.5,0]});
   const refused=await writeR('sealed-restore','RESTORE',restoreWrites(doorOpen,sealedTarget));
   assert.equal(JSON.stringify(refused.guardRefusal),JSON.stringify({guard:'PLAYER_ENCLOSURE',stage:'REGION_RESTORE',finding:'PLAYER_ENCLOSED'}));
   assert.equal(refused.error.phase,'restore');assert.equal(refused.error.causeCode,null);assert.equal(refused.error.mutationState,'NONE');
@@ -82,12 +90,15 @@ try {
   step('REAL_REGION_RESTORE_ENCLOSED_ZERO_WRITE',{error:refused.error,guardRefusal:refused.guardRefusal});
   await w.probe({place:[6,8.5,6]});
   const restoreAway=await writeR('restore-away','RESTORE',restoreWrites(doorOpen,sealedTarget));
-  assert.equal(restoreAway.error,null);
+  await writeFile(join(E,'restore-response.json'),JSON.stringify({response:restoreAway,facts:w.region().lastFacts()},null,2));
+  assert.equal(restoreAway.error,null);assert.ok(restoreAway.result.chunks.every(c=>c.status==='WRITTEN'),'RESTORE must write every chunk; null envelope error alone is not success');
+  for(const c of restoreAway.result.chunks)assert.equal(c.readbackDigest,sealedTarget.chunks.find(t=>t.chunkPos.every((v,i)=>v===c.chunkPos[i])).stateDigest);
   const afterRestore=await readR(box);
   await writeFile(join(E,'restore-debug.json'),JSON.stringify({target:sealedTarget,actual:afterRestore,response:restoreAway},null,2));
   assert.deepEqual(digests(afterRestore),digests(sealedTarget));
   step('REAL_REGION_RESTORE_PLAYER_CHANGED',{result:'restored after player left'});
-  assert.equal((await writeR('clear-test','RESTORE',restoreWrites(await readR(box),initial))).error,null);
+  const clear=await writeR('clear-test','RESTORE',restoreWrites(await readR(box),initial));
+  assert.equal(clear.error,null);assert.ok(clear.result.chunks.every(c=>c.status==='WRITTEN'));
   // Actual unloaded native scoped-state failure, preserving its code through the public service.
   await assert.rejects(w.facts.readScopedState(w.paired.connectionRef,[[1000,9,1000]]),e=>{
     C.validateType('Error',e.publicError);assert.equal(e.publicError.code,'TARGET_FACTS_INCOMPLETE');
