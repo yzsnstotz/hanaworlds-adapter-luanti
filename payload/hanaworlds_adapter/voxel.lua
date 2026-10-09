@@ -322,6 +322,14 @@ function M.write(core, args)
   end
   local body_list = bodies(core)
   if not body_list then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  -- G2: every cell this batch modifies (content, param2 or cleared extras) is
+  -- asked core.is_protected for the empty name, as region.lua does.
+  if type(core.is_protected) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE' end
+  local function refused(x, y, z)
+    local ok, yes = pcall(core.is_protected, {x = x, y = y, z = z}, '')
+    if not ok then return 'TARGET_FACTS_INCOMPLETE' end
+    if yes then return 'SAFETY_INVARIANT_FAILED' end
+  end
   local changed, clears, sets = 0, {}, {}
   for _, plan in ipairs(plans) do
     local q1, q2, j = plan.q1, plan.q2, 0
@@ -338,11 +346,16 @@ function M.write(core, args)
               if plan.solid[k] then
                 for _, b in ipairs(body_list) do
                   if x - 0.5 < b.hi[1] and b.lo[1] < x + 0.5 and y - 0.5 < b.hi[2] and b.lo[2] < y + 0.5
-                    and z - 0.5 < b.hi[3] and b.lo[3] < z + 0.5 then return nil, 'SAFETY_INVARIANT_FAILED' end
+                    and z - 0.5 < b.hi[3] and b.lo[3] < z + 0.5 then return nil, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED' end
                 end
               end
+              local denied = refused(x, y, z)
+              if denied then return nil, denied, denied == 'SAFETY_INVARIANT_FAILED' and 'PROTECTED_CELL' or nil end
               changed = changed + 1
               if not args.checkOnly then data[i] = plan.cids[k]; p2data[i] = plan.target_p2[j] end
+            elseif extras[key] then
+              local denied = refused(x, y, z)
+              if denied then return nil, denied, denied == 'SAFETY_INVARIANT_FAILED' and 'PROTECTED_CELL' or nil end
             end
             -- A specified cell loses its extras (APPLY) or gets exactly the
             -- restored ones (RESTORE, below).

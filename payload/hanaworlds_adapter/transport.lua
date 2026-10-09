@@ -45,13 +45,14 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       return current and current.operation == 'restore'
         and recovery == current.recovery and recovery.status == 'RESTORING'
     end,
+    restoreGuard = function(records) return region:restore_check(records) end,
   })
 
   local function run(command)
     if type(command) ~= 'table' or type(command.id) ~= 'string'
       or command.worldRef ~= manifest.worldRef then return nil, 'CURRENT_WORLD_MISMATCH' end
     current = command
-    local result, code
+    local result, code, detail
     if command.operation == 'handshake' then
       result = capabilities()
     elseif command.operation == 'fact_profile' then
@@ -96,14 +97,14 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       elseif command.operation == 'region_limits' then result, code = voxel.limits(minetest, MAX_BODY_BYTES)
       elseif command.operation == 'region_emerge' then result, code = voxel.emerge(minetest, command.min, command.max)
       elseif command.operation == 'region_read' then result, code = voxel.read(minetest, command)
-      else result, code = voxel.write(minetest, command) end
+      else result, code, detail = voxel.write(minetest, command) end
     elseif command.operation == 'snapshot' then
       result, code = engine:snapshot(command.positions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'inspect' then
       result, code = engine:inspect(command.positions)
     elseif command.operation == 'prepare_check' then
-      result, code = region:prepare_check(command.positions)
+      result, code, detail = region:prepare_check(command.positions, command.effects)
     elseif command.operation == 'inspect_region' then
       local raw
       raw, code = region:inspect({worldRef = command.worldRef, sessionRef = command.sessionRef,
@@ -114,22 +115,23 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       local positions = {}
       for _, e in ipairs(command.effects) do positions[#positions+1] = e.position end
       local checked
-      checked, code = region:prepare_check(positions)
+      checked, code, detail = region:prepare_check(positions, command.effects)
       if checked then result, code = engine:apply(command.effects,
         command.beforeImage, command.prepared, command.scopeBeforeImage) end
     elseif command.operation == 'apply_state' then
       local checked
-      checked, code = region:prepare_check(command.targetImage.coveredPositions)
+      checked, code, detail = region:prepare_check(command.targetImage.coveredPositions,
+        command.targetImage.records)
       if checked then result, code = engine:apply_state(command.targetImage,
         command.beforeImage, command.prepared) end
     elseif command.operation == 'readback' then
       result, code = engine:readback(command.positions)
       if result then result.worldRef = manifest.worldRef end
     elseif command.operation == 'restore' then
-      result, code = engine:restore(command.beforeImage, command.recovery)
+      result, code, detail = engine:restore(command.beforeImage, command.recovery)
     else code = 'UNKNOWN_ACTION' end
     current = nil
-    return result, code
+    return result, code, detail
   end
 
   -- Luanti write_json maps every empty Lua table to JSON null. Build the
@@ -168,7 +170,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       .. ',"records":' .. records .. '}'
   end
 
-  local function encode_reply(id, result, code)
+  local function encode_reply(id, result, code, detail)
     -- Only a table result can carry shaped fields; present_frame replies with
     -- a boolean, and indexing it would raise inside the poll callback and stop
     -- the server.
@@ -188,7 +190,8 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     end
     return '{"id":' .. json(id) .. ',"worldRef":' .. json(manifest.worldRef)
       .. ',"result":' .. encoded
-      .. ',"error":' .. (code and json(code) or 'null') .. '}'
+      .. ',"error":' .. (code and json(code) or 'null')
+      .. ',"detail":' .. (code and type(detail) == 'string' and json(detail) or 'null') .. '}'
   end
 
   local function poll()
@@ -203,9 +206,9 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         end
         on_ready(true)
         if not decoded.command then minetest.after(0.2, poll); return end
-        local ok, result, code = pcall(run, decoded.command)
-        local function send(result, code)
-          local body = encode_reply(decoded.command.id, result, code)
+        local ok, result, code, detail = pcall(run, decoded.command)
+        local function send(result, code, detail)
+          local body = encode_reply(decoded.command.id, result, code, detail)
           if #body > MAX_BODY_BYTES then
             minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
             body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
@@ -233,9 +236,9 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
           current = nil
           minetest.log('error', 'HanaWorlds courier operation '
             .. tostring(decoded.command.operation) .. ' failed: ' .. M.redact(result))
-          result, code = nil, 'CAPABILITY_UNAVAILABLE'
+          result, code, detail = nil, 'CAPABILITY_UNAVAILABLE', nil
         end
-        send(result, code)
+        send(result, code, detail)
       end)
   end
   minetest.after(0, poll)

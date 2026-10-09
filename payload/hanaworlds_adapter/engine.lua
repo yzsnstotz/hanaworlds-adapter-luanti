@@ -65,7 +65,7 @@ end
 
 function M.new(dependencies)
   return setmetatable({verifyPrepared = dependencies.verifyPrepared,
-    verifyRestore = dependencies.verifyRestore}, Engine)
+    verifyRestore = dependencies.verifyRestore, restoreGuard = dependencies.restoreGuard}, Engine)
 end
 
 local function capture(self, positions)
@@ -320,6 +320,11 @@ function Engine:restore(before_image, recovery)
     if not pos then return nil, 'RESTORE_FAILED' end
     if not static_node(record.nodeName) then return nil, 'RESTORE_FAILED' end
   end
+  -- G1: real bodies and protection are rechecked before the first restore
+  -- write. A blocked or unguarded restore writes nothing and stays pending.
+  if type(self.restoreGuard) ~= 'function' then return nil, 'RESTORE_FAILED', 'RESTORE_GUARD_UNAVAILABLE' end
+  local guarded, _, detail = self.restoreGuard(before_image.records)
+  if not guarded then return nil, 'RESTORE_FAILED', detail or 'RESTORE_GUARD_FAILED' end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
     if not self.verifyRestore(before_image, recovery) then return nil, 'RESTORE_FAILED' end

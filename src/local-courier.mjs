@@ -5,6 +5,15 @@ import { join } from 'node:path';
 import { payloadDigest } from './local-worlds.mjs';
 import { PAYLOAD_VERSION } from './version.mjs';
 
+/** Guards the loaded payload enforces (payload region.lua guards()): each is the list of
+ * courier operations that run it, or false when the engine cannot run it. */
+export const ENGINE_GUARDS = Object.freeze(['restoreBodyRecheck', 'perCellProtection', 'playerEnclosure']);
+function engineGuards(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) &&
+    Object.keys(value).sort().join() === [...ENGINE_GUARDS].sort().join() &&
+    Object.values(value).every(v => v === false || (Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'string')));
+}
+
 /** Private loopback transport; no model/Canvas public HTTP mutator. */
 export class LocalCourier {
   static async open(world) {
@@ -37,7 +46,11 @@ export class LocalCourier {
       if (value.worldRef !== manifest.worldRef) return reply(409, {});
       const entry = self.pending.get(value.id); if (!entry) return reply(409, {});
       self.pending.delete(value.id); clearTimeout(entry.timer);
-      if (value.error) entry.reject(new Error(value.error)); else entry.resolve(value.result);
+      if (value.error) {
+        // detail names the engine guard that refused (BODY_OCCUPIED, PROTECTED_CELL, PLAYER_ENCLOSED, ...).
+        const error = new Error(value.error); if (typeof value.detail === 'string') error.detail = value.detail;
+        entry.reject(error);
+      } else entry.resolve(value.result);
       reply(200, { status: 'RECEIVED' });
     });
     await new Promise((yes, no) => { self.server.once('error', no); self.server.listen(config.port, '127.0.0.1', yes); });
@@ -61,14 +74,17 @@ export class LocalCourier {
   async handshake() {
     const h = await this.dispatch('handshake');
     if (h.worldRef !== this.manifest.worldRef || h.payloadVersion !== PAYLOAD_VERSION || h.payloadMatches !== true ||
-      h.loadedSourceDigest !== this.manifest.payloadDigest || h.worldeditAvailable !== true) throw new Error('PAYLOAD_VERSION_MISMATCH');
+      h.loadedSourceDigest !== this.manifest.payloadDigest || h.worldeditAvailable !== true ||
+      !engineGuards(h.engineGuards)) throw new Error('PAYLOAD_VERSION_MISMATCH');
+    this.engineGuards = h.engineGuards;
     return h;
   }
   snapshot(positions) { return this.dispatch('snapshot', { positions }); }
   readback(positions) { return this.dispatch('readback', { positions }); }
   inspect(positions) { return this.dispatch('inspect', { positions }); }
   inspectRegion(value) { return this.dispatch('inspect_region', value); }
-  prepareCheck(positions) { return this.dispatch('prepare_check', { positions }); }
+  /** effects ({position,nodeName}) make the engine run its enclosure guard as well. */
+  prepareCheck(positions, effects) { return this.dispatch('prepare_check', effects ? { positions, effects } : { positions }); }
   profile() { return this.dispatch('fact_profile'); }
   catalogue() { return this.dispatch('fact_catalogue'); }
   writePath() { return this.dispatch('fact_write_path'); }

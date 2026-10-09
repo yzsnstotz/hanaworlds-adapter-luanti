@@ -247,19 +247,172 @@ function Region:inspect(args)
   return '{"kind":"CHOICE","reasons":' .. list(out, quote) .. ',"names":null}'
 end
 
--- Recheck actual body geometry immediately before the native write.
-function Region:prepare_check(positions)
-  local core = self.core
-  if type(positions) ~= 'table' or #positions == 0 then return nil, 'SCHEMA_INVALID' end
+-- Engine write guards. Every refusal is SAFETY_INVARIANT_FAILED plus an
+-- Adapter-private detail naming the guard; no position, yaw or box leaves.
+--   BODY_OCCUPIED   a written cell overlaps a connected player's real box
+--   PROTECTED_CELL  core.is_protected refuses the cell (G2)
+--   PLAYER_ENCLOSED the write takes away a player's way out (G3)
+
+-- G2. The local-world courier carries no player identity, so the cell is
+-- asked for the empty name: any cell some protection mod claims is refused,
+-- owner or not. Per written cell; no is_area_protected sampling.
+function M.protection_capable(core) return type(core.is_protected) == 'function' end
+local function protection(core, positions)
+  if not M.protection_capable(core) then return nil, 'CAPABILITY_UNAVAILABLE' end
   for _, p in ipairs(positions) do
-    if type(p) ~= 'table' or #p ~= 3 then return nil, 'SCHEMA_INVALID' end
+    local ok, refused = pcall(core.is_protected, vec(p), '')
+    if not ok then return nil, 'TARGET_FACTS_INCOMPLETE' end
+    if refused then return nil, 'SAFETY_INVARIANT_FAILED', 'PROTECTED_CELL' end
   end
+  return true
+end
+
+-- G3. A player is modelled by their real box: the columns it overlaps and
+-- ceil(box height) cells tall. A feet cell is standable when all those cells
+-- are passable (air or a registered node with walkable == false; unknown is
+-- solid). From a standable cell the player may step to a horizontal
+-- neighbour, step up one cell when standing on something with headroom, or
+-- fall one cell. The player is out once the feet cell leaves the write's
+-- bounding box grown by one cell horizontally, rises above its top or drops
+-- below its bottom: beyond that the write changes nothing. The write is
+-- refused only when it turns "out" into "not out" for a connected player.
+local function passable(core, name)
+  if name == 'air' then return true end
+  local def = type(name) == 'string' and core.registered_nodes[name]
+  return type(def) == 'table' and def.walkable == false
+end
+local function escapes(core, body, box, after)
+  local h = math.max(1, math.ceil(body.hi[2] - body.lo[2]))
+  local function open(p)
+    local name = after and after[key(p)]
+    if name == nil then
+      local ok, node = pcall(core.get_node_or_nil, vec(p))
+      name = ok and node and node.name ~= 'ignore' and node.name or nil
+    end
+    return name ~= nil and passable(core, name)
+  end
+  local function standable(f)
+    for c = 0, h - 1 do if not open({f[1], f[2] + c, f[3]}) then return false end end
+    return true
+  end
+  local function out(f)
+    return f[1] < box.min[1] - 1 or f[1] > box.max[1] + 1 or f[3] < box.min[3] - 1
+      or f[3] > box.max[3] + 1 or f[2] > box.max[2] + 1 or f[2] + h - 1 < box.min[2]
+  end
+  local fy = math.floor(body.lo[2] + 0.5)
+  local queue, seen = {}, {}
+  for x = math.floor(body.lo[1] - 0.5) + 1, math.ceil(body.hi[1] + 0.5) - 1 do
+    for z = math.floor(body.lo[3] - 0.5) + 1, math.ceil(body.hi[3] + 0.5) - 1 do
+      local f = {x, fy, z}
+      if out(f) then return true end
+      queue[#queue + 1] = f; seen[key(f)] = true
+    end
+  end
+  local head = 1
+  while queue[head] do
+    local f = queue[head]; head = head + 1
+    local below = {f[1], f[2] - 1, f[3]}
+    local supported = not open(below)
+    local nexts = {}
+    if not supported then nexts[#nexts + 1] = below end
+    for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+      nexts[#nexts + 1] = {f[1] + d[1], f[2], f[3] + d[2]}
+      if supported and open({f[1], f[2] + h, f[3]}) then
+        nexts[#nexts + 1] = {f[1] + d[1], f[2] + 1, f[3] + d[2]}
+      end
+    end
+    for _, n in ipairs(nexts) do
+      local id = key(n)
+      if not seen[id] then
+        seen[id] = true
+        if standable(n) then
+          if out(n) then return true end
+          queue[#queue + 1] = n
+        end
+      end
+    end
+  end
+  return false
+end
+local function enclosure(core, body_list, effects)
+  local box = {min = {math.huge, math.huge, math.huge}, max = {-math.huge, -math.huge, -math.huge}}
+  local after = {}
+  for _, e in ipairs(effects) do
+    if type(e) ~= 'table' or type(e.position) ~= 'table' or #e.position ~= 3
+      or type(e.nodeName) ~= 'string' then return nil, 'SCHEMA_INVALID' end
+    after[key(e.position)] = e.nodeName
+    for i = 1, 3 do
+      box.min[i] = math.min(box.min[i], e.position[i]); box.max[i] = math.max(box.max[i], e.position[i])
+    end
+  end
+  for _, body in ipairs(body_list) do
+    if escapes(core, body, box, nil) and not escapes(core, body, box, after) then
+      return nil, 'SAFETY_INVARIANT_FAILED', 'PLAYER_ENCLOSED'
+    end
+  end
+  return true
+end
+
+local function positions_ok(positions)
+  if type(positions) ~= 'table' or #positions == 0 then return false end
+  for _, p in ipairs(positions) do
+    if type(p) ~= 'table' or #p ~= 3 then return false end
+  end
+  return true
+end
+
+-- Recheck actual bodies and protection immediately before the native write.
+-- With effects ({position, nodeName}) the enclosure guard runs as well.
+function Region:prepare_check(positions, effects)
+  local core = self.core
+  if not positions_ok(positions) then return nil, 'SCHEMA_INVALID' end
   local body_list = bodies(core)
   if not body_list then return nil, 'TARGET_FACTS_INCOMPLETE' end
   for _, p in ipairs(positions) do
-    if body_at(body_list, p) then return nil, 'SAFETY_INVARIANT_FAILED' end
+    if body_at(body_list, p) then return nil, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED' end
+  end
+  local ok, code, detail = protection(core, positions)
+  if not ok then return nil, code, detail end
+  if effects ~= nil then
+    ok, code, detail = enclosure(core, body_list, effects)
+    if not ok then return nil, code, detail end
   end
   return {checked = #positions}
+end
+
+-- G1. Before restore writes anything: every cell that would receive a
+-- non-air node it does not hold now must be clear of real bodies, and every
+-- restored cell must pass protection.
+function Region:restore_check(records)
+  local core = self.core
+  if type(records) ~= 'table' or #records == 0 then return nil, 'SCHEMA_INVALID' end
+  local all, solid = {}, {}
+  for _, r in ipairs(records) do
+    if type(r) ~= 'table' or type(r.position) ~= 'table' or #r.position ~= 3
+      or type(r.nodeName) ~= 'string' then return nil, 'SCHEMA_INVALID' end
+    all[#all + 1] = r.position
+    if r.nodeName ~= 'air' then
+      local ok, node = pcall(core.get_node_or_nil, vec(r.position))
+      if not ok or not node or node.name ~= r.nodeName then solid[#solid + 1] = r.position end
+    end
+  end
+  local body_list = bodies(core)
+  if not body_list then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  for _, p in ipairs(solid) do
+    if body_at(body_list, p) then return nil, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED' end
+  end
+  return protection(core, all)
+end
+
+-- What this payload actually enforces, per guard, as the courier operations
+-- that run it. A guard the engine cannot run is false, never an empty list.
+function M.guards(core)
+  return {
+    restoreBodyRecheck = {'restore'},
+    perCellProtection = M.protection_capable(core)
+      and {'prepare_check', 'apply', 'apply_state', 'restore', 'region_write'} or false,
+    playerEnclosure = {'prepare_check', 'apply', 'apply_state'},
+  }
 end
 
 M.pos_json = pos_json

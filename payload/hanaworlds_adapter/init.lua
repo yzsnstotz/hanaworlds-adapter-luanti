@@ -13,7 +13,8 @@ local digest = minetest.sha256(bytes)
 local engine = dofile(path .. '/engine.lua')
 local facts = dofile(path .. '/facts.lua')
 local voxel = dofile(path .. '/voxel.lua')
-local region = dofile(path .. '/region.lua').new({core=minetest,state_path=minetest.get_worldpath() .. '/hanaworlds-local-picks'})
+local region_module = dofile(path .. '/region.lua')
+local region = region_module.new({core=minetest,state_path=minetest.get_worldpath() .. '/hanaworlds-local-picks'})
 _G.hanaworlds_adapter = {record_pick=function(ref,session,world,node,yaw)
   if world ~= manifest.worldRef then return false end
   return region:record_pick(ref,session,world,node,yaw)
@@ -23,7 +24,8 @@ local function capabilities()
   return {worldRef=manifest.worldRef,payloadVersion=manifest.payloadVersion,
     loadedSourceDigest=digest,manifestDigest=manifest.payloadDigest,
     payloadMatches=digest==manifest.payloadDigest,
-    worldeditAvailable=type(rawget(_G,'worldedit'))=='table',worldeditVersion='local-static'}
+    worldeditAvailable=type(rawget(_G,'worldedit'))=='table',worldeditVersion='local-static',
+    engineGuards=region_module.guards(minetest)}
 end
 local was_ready=false
 transport.start(minetest.request_http_api(), engine, manifest, read,

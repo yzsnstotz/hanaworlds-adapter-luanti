@@ -36,7 +36,8 @@ export class LocalTransactions {
     }
     const capacity = await this.engine.capacity(cells.length);
     if (capacity?.allowed !== true) fail('LIMIT_EXCEEDED');
-    await this.engine.prepareCheck(r.operations.effects.map(x => x.position));
+    await this.engine.prepareCheck(r.operations.effects.map(x => x.position),
+      r.operations.effects.map(x => ({ position: x.position, nodeName: x.nodeName })));
     const before = await this.snapshot(cells);
     if (before.worldRef !== r.worldRef || before.records.some((x, i) => cellDigest(this.stateProfile, x) !== r.scope.cells[i].stateDigest)) fail('TRANSACTION_CONFLICT');
     return before;
@@ -54,7 +55,8 @@ export class LocalTransactions {
     if (saved) { if (!same(saved.request, r)) fail('REPLAY_MISMATCH'); return this.prepared(saved); }
     const before = await this.scopeNow(r);
     for (const other of Object.values(this.store.data.transactions)) {
-      if (['PREPARED','APPLYING','RECOVERY_PENDING'].includes(other.status) &&
+      // A RESTORE_FAILED record is still pending recovery: its cells stay reserved.
+      if (['PREPARED','APPLYING','RECOVERY_PENDING','RESTORE_FAILED'].includes(other.status) &&
         other.before.coveredPositions.some(p => before.coveredPositions.some(q => same(p, q)))) fail('TRANSACTION_CONFLICT');
     }
     const beforeImageDigest = D('before-image', before);
@@ -115,7 +117,11 @@ export class LocalTransactions {
       const actual = await this.snapshot(saved.before.coveredPositions);
       if (!same(view(actual), view(saved.before))) fail('RESTORE_FAILED');
       saved.status = 'ROLLED_BACK'; saved.after = actual; await this.store.put(saved); return this.receipt(saved);
-    } catch { saved.status = 'RESTORE_FAILED'; await this.store.put(saved); fail('RESTORE_FAILED'); }
+    } catch (error) {
+      // Recovery stays pending; keep which engine guard or step refused the restore.
+      saved.status = 'RESTORE_FAILED'; saved.restoreFailure = { code: error?.message ?? null, detail: error?.detail ?? null };
+      await this.store.put(saved); fail('RESTORE_FAILED');
+    }
   }
   async historyNow(r) {
     const facts = this.historyFacts();
@@ -158,7 +164,8 @@ export class LocalTransactions {
     if (saved.status !== 'PREPARED') fail('RECOVERY_PENDING');
     await this.historyNow({ ...saved.request, requestId: r.requestId, localContext: r.localContext });
     if (r.expectedWorldRevision !== saved.request.expectedWorldRevision || !same(r.expectedObjectRevisions, saved.request.expectedObjectRevisions)) fail('UNDO_CONFLICT');
-    await this.engine.prepareCheck(saved.target.coveredPositions);
+    await this.engine.prepareCheck(saved.target.coveredPositions,
+      saved.target.records.map(x => ({ position: x.position, nodeName: x.nodeName })));
     const before = await this.snapshot(saved.before.coveredPositions);
     if (!same(view(before), view(saved.before))) fail('UNDO_CONFLICT');
     await this.current(r); saved.status = 'APPLYING'; await this.store.put(saved);

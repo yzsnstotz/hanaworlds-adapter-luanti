@@ -70,10 +70,13 @@ export async function openFixtureWorld({ runRoot, scenario }) {
         const command = response ? (await response.json()).command : null;
         if (!command) { await new Promise(r => setTimeout(r, 5)); continue; }
         let body;
-        if (command.operation === 'handshake') body = { result: { worldRef: manifest.worldRef, payloadVersion: PAYLOAD_VERSION,
-          loadedSourceDigest: manifest.payloadDigest, manifestDigest: manifest.payloadDigest, payloadMatches: true,
-          worldeditAvailable: !!current.worldedit, worldeditVersion: 'local-static' } };
-        else {
+        if (command.operation === 'handshake') {
+          // Guard declaration comes from the payload's own region.lua against the fixture engine.
+          const guards = JSON.parse((await run('lua', [join(here, 'engine-fixture.lua'), payloadDir, scenarioFile, 'engine_guards'])).stdout);
+          body = { result: { worldRef: manifest.worldRef, payloadVersion: PAYLOAD_VERSION,
+            loadedSourceDigest: manifest.payloadDigest, manifestDigest: manifest.payloadDigest, payloadMatches: true,
+            worldeditAvailable: !!current.worldedit, worldeditVersion: 'local-static', engineGuards: guards.result } };
+        } else {
           const args = [join(here, 'engine-fixture.lua'), payloadDir, scenarioFile, command.operation];
           body = JSON.parse((await run('lua', args)).stdout);
         }

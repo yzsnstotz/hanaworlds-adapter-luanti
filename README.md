@@ -11,8 +11,9 @@ new flat local world creation; 0.7.0/payload 0.6.0 publishes Catalogue facts
 and verifiable callback evidence under Contracts scope `write-path-init/v1`
 (see below). New worlds carry payload 0.6.0; older payload worlds are not adopted.
 There is no player account, username/password, grant, AUTO mode, administrator
-approval or protection-region permission path in this package. Canvas owns
-transaction, affected-object and durable history decisions.
+approval or protection-region permission path in this package; since payload
+0.7.0 the engine only checks protection per written cell and refuses (see
+"Engine guards"). Canvas owns transaction, affected-object and durable history decisions.
 
 ## Public in-process ports
 
@@ -504,3 +505,17 @@ The provider's `host` is the published `LocalEngineControlPort`; the exact acqui
 ## Contracts dependency (Adapter 0.8.3)
 
 Adapter 0.8.3 keeps payload 0.6.2 and changes only how contracts are referenced: `hanaworlds-contracts` is `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#semver:^0.5.6`. The lower bound is the first released version that carries the config engine facts this source uses. npm caret semantics on a 0.x version allow `>=0.5.6 <0.6.0`. Compatibility between peers is decided separately, by the contracts' own same-major handshake/schema predicate. The previous exact tarball pin, its per-file pack manifest and the candidate-install script are removed; `npm run verify:contracts` checks the range, the lockfile's git resolution, the installed version and the SDK major predicate offline. Accepted and protected services keep their original packages and are not changed by this source revision.
+
+## Engine guards (Adapter 0.9.0 / payload 0.7.0)
+
+Payload 0.7.0 adds three engine-side write guards. Every refusal is `SAFETY_INVARIANT_FAILED` (restore: `RESTORE_FAILED`) plus an Adapter-private `detail` on the courier reply naming the guard; no position, yaw or box leaves the engine. Nothing is skipped when a guard cannot run: the write is refused.
+
+| Guard | Detail | Runs in (courier operations) | Rule |
+|---|---|---|---|
+| G1 `restoreBodyRecheck` | `BODY_OCCUPIED` | `restore` | Before the first restore write, every cell that would receive a non-air node it does not hold now is checked against every connected player's real collision box. Blocked ⇒ nothing written, `RESTORE_FAILED`; the host keeps the transaction `RESTORE_FAILED` with `restoreFailure {code, detail}` and its cells stay reserved against new Prepares. An engine built without the guard returns `RESTORE_FAILED`/`RESTORE_GUARD_UNAVAILABLE`. |
+| G2 `perCellProtection` | `PROTECTED_CELL` | `prepare_check`, `apply`, `apply_state`, `restore`, `region_write` | `core.is_protected(pos, '')` for every written cell (region write: every changed or extras-cleared cell). The local courier has no player identity, so the empty name is asked: any cell a protection mod claims is refused, owner or not. No `is_area_protected` sampling. Without `core.is_protected` the guard is declared `false` and every write is `CAPABILITY_UNAVAILABLE`. |
+| G3 `playerEnclosure` | `PLAYER_ENCLOSED` | `prepare_check` (Prepare passes its effects), `apply`, `apply_state` | Each connected player is their real box: the columns it overlaps, `ceil(box height)` cells tall. A feet cell is standable when those cells are passable (air, or a registered node with `walkable == false`; unknown counts as solid). Moves: horizontal step, step up one cell when standing on something with headroom, fall one cell. The player is out when the feet cell leaves the write's bounding box grown by one cell horizontally, rises above its top or drops below its bottom. The write is refused only if it turns "out" into "not out" for some player. Not run for `region_write` or `restore` (declared accordingly). |
+
+The handshake carries `engineGuards` from `region.lua` `guards()`: each guard is the list of operations that run it, or `false`. The host pairs only a payload whose declaration has exactly these three guards. Mapping onto the contracts' public capability names waits for `hanaworlds-contracts` v1.0.0-rc.1.
+
+Limits of G3 (design, not hidden): it is local to the write's box; a corridor capped far from the player, flying, swimming, climbing and ladders are not modelled; a player whose box already cannot reach "out" before the write is not protected by it. These are stated so a consumer can decide, not defaults to tune.

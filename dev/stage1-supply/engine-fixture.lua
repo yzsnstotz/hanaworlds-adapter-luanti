@@ -70,6 +70,7 @@ if operation == 'fact_write_backend' then result, code = facts.write_backend(cor
 elseif operation == 'fact_worldedit_runtime' then result, code = facts.worldedit_runtime(core)
 elseif operation == 'fact_catalogue' then result, code = facts.catalogue(core)
 elseif operation == 'fact_profile' then result, code = facts.state_profile(core, rawget(_G, 'worldedit'))
+elseif operation == 'engine_guards' then result = dofile(dir .. '/region.lua').guards(core) -- handshake declaration
 else code = 'UNSUPPORTED_FIXTURE_OPERATION' end
 if result and result.raw_json then io.write('{"result":' .. result.raw_json .. '}')
 elseif result then io.write('{"result":' .. encode(result) .. '}')

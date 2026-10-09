@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -68,7 +68,7 @@
   "scripts": {
     "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/stage1-facts.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
     "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs",
-    "test:lua": "lua test/local-world-region.lua",
+    "test:lua": "lua test/local-world-region.lua && lua test/engine-guards.lua",
     "verify:contracts": "node scripts/verify-contracts-range.mjs",
     "test:catalogue": "node --test test/local-catalogue.test.mjs",
     "test:region": "node --test test/local-region-io.test.mjs",
@@ -81,7 +81,8 @@
     "test:contracts": "node --test test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs",
     "test:public-host": "node --test test/public-host-exports.test.mjs",
     "test:stage1": "node --test test/stage1-facts.test.mjs && lua test/stage1-facts.lua",
-    "test:config-facts": "node --test test/config-engine-facts-contracts.test.mjs"
+    "test:config-facts": "node --test test/config-engine-facts-contracts.test.mjs",
+    "test:guards": "lua test/engine-guards.lua && node --test test/engine-guards-host.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0",
