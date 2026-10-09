@@ -157,9 +157,9 @@ export async function writeRegion(engine, request) {
   for (const group of groups) {
     try { await engine.regionWrite(command(group, true)); }
     catch (error) {
-      // Engine guards refuse in this check-only pass, before any write of the request. Only
-      // REGION_APPLY is declared (see safety-capabilities.mjs); a RESTORE refusal stays a plain error.
-      const refusal = apply ? refusalDetail('REGION_APPLY', error?.detail, { transactionRef: request.transactionId }) : null;
+      // Engine guards refuse in this check-only pass, before any write of the request. A RESTORE
+      // refusal is the engine form (no cause known here); Canvas adds the cause when it rolls back.
+      const refusal = refusalDetail(apply ? 'REGION_APPLY' : 'REGION_RESTORE', error?.detail, { transactionRef: request.transactionId });
       throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', refusal);
     }
   }

@@ -3,7 +3,7 @@
 // by test/real-region-io.mjs against real Luanti.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readRegion, writeRegion, protocolHandshake } from '../src/region-io.mjs';
+import { readRegion, writeRegion, protocolHandshake, RegionFault } from '../src/region-io.mjs';
 import { batches, blocksPerBatch } from '../src/region-batches.mjs';
 import { validateRegionRead, validateRegionWrite, requireKnownRegion, expectedRegionState, encodeRegionBlock,
   checkProtocolCompatibility, protocolRequirement, validateRequest, digestValue } from '#contracts';
@@ -13,7 +13,7 @@ const localContext = { connectionRef: 'c', connectionIncarnationRef: 'i', worldR
 const key = p => p.join(',');
 const blk = (x, y, z) => [x, y, z].map(v => Math.floor(v / 16)).join(',');
 
-function engine({ unknown = new Set(), failWriteAt = null } = {}) {
+function engine({ unknown = new Set(), failWriteAt = null, guardRefuse = null } = {}) {
   const cells = new Map(), meta = new Map(), log = [];
   const get = (x, y, z) => cells.get(`${x},${y},${z}`) ?? (y < 0 ? ['base:stone', 0] : ['air', 0]);
   const guardOf = b => {
@@ -50,6 +50,9 @@ function engine({ unknown = new Set(), failWriteAt = null } = {}) {
     async regionWrite(batch) {
       log.push(batch.checkOnly ? 'check' : 'write');
       for (const c of batch.chunks) if (guardOf(c) !== c.guard) throw new Error('TRANSACTION_CONFLICT');
+      // Engine guard double: the payload refuses in the check-only pass with a detail.
+      if (batch.checkOnly && guardRefuse?.purpose === batch.purpose)
+        throw Object.assign(new Error('SAFETY_INVARIANT_FAILED'), { detail: guardRefuse.detail });
       if (batch.checkOnly) return { written: false, checked: true };
       if (failWriteAt !== null && writes === failWriteAt) { failWriteAt = null; throw new Error('TRANSACTION_CONFLICT'); }
       writes++;
@@ -147,4 +150,30 @@ test('later batch failure: per-chunk WRITTEN/NOT_WRITTEN, never committed; RESTO
   const back = await read(e, 'p2');
   assert.deepEqual(back.chunks.map(c => c.stateDigest), before.chunks.map(c => c.stateDigest));
   assert.equal(JSON.stringify(e.meta.get('0,1,0')), JSON.stringify({ owner: 'x' })); // contract objects are frozen/null-prototype
+});
+
+test('guard refusals on WriteRegion: REGION_APPLY and REGION_RESTORE answer with GuardRefusal and the engine form, nothing written', async () => {
+  for (const [purpose, detail, guard, reason] of [['RESTORE', 'BODY_OCCUPIED', 'BODY_CLEARANCE', 'INVALID_GEOMETRY'],
+    ['RESTORE', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED'], ['APPLY', 'PROTECTED_CELL', 'CELL_PROTECTION', 'SCOPE_DENIED']]) {
+    const e = engine({ guardRefuse: { purpose, detail } });
+    const before = await read(e, 'g0');
+    const writes = purpose === 'APPLY' ? applyWrites(before) : before.chunks.map(c => ({ chunkPos: c.chunkPos,
+      expectedCurrentDigest: c.stateDigest, ops: null, state: c.state }));
+    const r = writeReq(purpose, writes, `g-${purpose}-${detail}`);
+    const fault = await writeRegion(e, r).then(() => null, x => x);
+    assert.ok(fault instanceof RegionFault && fault.refusal, `${purpose} ${detail}`);
+    const stage = purpose === 'APPLY' ? 'REGION_APPLY' : 'REGION_RESTORE';
+    assert.equal(JSON.stringify(fault.refusal.guardRefusal), JSON.stringify({ guard, stage, finding: detail }));
+    // rc.3 engine form at REGION_RESTORE: phase restore, no cause known to the stateless writer, nothing written.
+    const err = fault.refusal.error;
+    assert.equal(err.code, 'SAFETY_INVARIANT_FAILED'); assert.equal(err.reason, reason); assert.equal(err.mutationState, 'NONE');
+    assert.equal(err.phase, purpose === 'APPLY' ? 'apply' : 'restore'); assert.equal(err.causeCode, null);
+    validateRegionWrite(r, { contractVersion: W, requestId: r.requestId, result: null, ...fault.refusal });
+    assert.equal(e.writes, 0);
+  }
+  // Not a declared region guard: enclosure is never claimed for region writes.
+  const e = engine({ guardRefuse: { purpose: 'APPLY', detail: 'PLAYER_ENCLOSED' } });
+  const before = await read(e, 'g1');
+  const fault = await writeRegion(e, writeReq('APPLY', applyWrites(before), 'g-enc')).then(() => null, x => x);
+  assert.equal(fault.refusal, null);
 });

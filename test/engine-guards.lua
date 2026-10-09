@@ -231,6 +231,14 @@ r = call({operation = 'region_write', purpose = 'RESTORE', min = {4, 1, 0}, max 
   param2Runs = {0, 2}, guard = read.boxes[1].guard, extras = {}}}})
 assert(refused(r, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED') and writes == 0, r)
 
+-- G2 on region restores (REGION_RESTORE): a protected cell refuses the RESTORE check-only pass.
+reset(); protected['5,1,0'] = true; nodes['4,1,0'] = {name = 'air', param1 = 0, param2 = 0}
+read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+r = call({operation = 'region_write', purpose = 'RESTORE', min = {4, 1, 0}, max = {5, 1, 0}, checkOnly = true, chunks = {{
+  min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
+  param2Runs = {0, 2}, guard = read.boxes[1].guard, extras = {}}}})
+assert(refused(r, 'SAFETY_INVARIANT_FAILED', 'PROTECTED_CELL') and writes == 0, r)
+
 -- G3 enclosure on every declared operation.
 for _, op in ipairs({'prepare_check', 'apply', 'apply_state'}) do
   local function cmd_for(effects)

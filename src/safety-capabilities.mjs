@@ -19,13 +19,12 @@ const FINDING = Object.freeze({ BODY_OCCUPIED: 'BODY_CLEARANCE', PROTECTED_CELL:
 // Public stage -> courier operation that runs the guard there. PrepareRecoverable and
 // ApplyHistory call prepare_check with their effects before anything is written; ApplyHistory
 // then writes through apply_state, which runs it again.
+// REGION_APPLY and REGION_RESTORE are both voxel.write (purpose APPLY / RESTORE): every changed
+// solid cell against real bodies, every changed or extras-cleared cell against protection.
 // Not declared: INSPECT_REGION (an overlapping footprint is a placement CHOICE, not a guard
-// error), PREPARE_HISTORY (no engine check), and REGION_RESTORE: the engine does refuse there,
-// but WriteRegionRequest carries no cause for the restore, so the contract's REGION_RESTORE
-// error (RESTORE_FAILED whose causeCode names that cause) cannot be produced truthfully; see
-// the card REPORT change request.
+// error) and PREPARE_HISTORY (no engine check).
 const STAGE_OPERATION = Object.freeze({ PREPARE_RECOVERABLE: 'prepare_check', APPLY_COMPILED: 'apply',
-  APPLY_HISTORY: 'apply_state', RESTORE: 'restore', REGION_APPLY: 'region_write' });
+  APPLY_HISTORY: 'apply_state', RESTORE: 'restore', REGION_APPLY: 'region_write', REGION_RESTORE: 'region_write' });
 
 /** PublicCapabilities.engineGuards for a paired world, derived from its loaded payload's guards. */
 export function engineGuardDeclaration(guards) {
@@ -47,7 +46,9 @@ export function guardRefusal(stage, detail) {
   if (!guard || !ENGINE_GUARD_DECLARATION.coverage.find(c => c.guard === guard).stages.includes(stage)) return null;
   return { guard, stage, finding: detail };
 }
-/** { error, guardRefusal } for a guard refusal at `stage`, or null. `cause` is required at RESTORE. */
+/** { error, guardRefusal } for a guard refusal at `stage`, or null. At a restore stage `cause` (the
+ * failure that made the restore necessary) gives the transaction form; without it (a stateless
+ * WriteRegion RESTORE, which knows no cause) the contract's engine form: nothing written, causeCode null. */
 export function refusalDetail(stage, detail, { transactionRef = null, cause = null } = {}) {
   const refusal = guardRefusal(stage, detail);
   return refusal ? { error: guardRefusalError(refusal, { transactionRef, cause }), guardRefusal: refusal } : null;
