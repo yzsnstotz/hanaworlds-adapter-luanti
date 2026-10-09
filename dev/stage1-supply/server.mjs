@@ -18,38 +18,42 @@ const STAND = [-0.312, 0, -0.312, 0.312, 1.8, 0.312], SNEAK = [-0.312, 0, -0.312
 export const PLAYERS = {
   'one-standing': { label: 'One player "alice", standing box', players: [{ name: 'alice', collisionbox: STAND }] },
   'one-sneaking': { label: 'Same player "alice", sneaking box', players: [{ name: 'alice', collisionbox: SNEAK }] },
-  'other-player': { label: 'A different single player "bob", standing box', players: [{ name: 'bob', collisionbox: STAND }] },
   'none': { label: 'No connected player', players: [] },
   'two': { label: 'Two connected players', players: [{ name: 'alice', collisionbox: STAND }, { name: 'bob', collisionbox: STAND }] },
-  'unreadable': { label: 'One player with an unreadable collision box', players: [{ name: 'alice', collisionbox: [-0.3, 0, -0.3, 0.3] }] },
+};
+export const BACKEND = {
+  'declared': { label: 'Payload declares its write backend (as shipped)', writeBackendDeclared: true },
+  'not-declared': { label: 'Declaration removed (fixture only)', writeBackendDeclared: false },
 };
 export const WORLDEDIT = {
   'version-exposed': { label: 'WorldEdit loaded, exposes version 1.3', worldedit: { version_string: '1.3', version: { major: 1, minor: 3 } } },
   'version-hidden': { label: 'WorldEdit loaded, exposes no version', worldedit: { version_string: null } },
 };
-const choice = { player: 'one-standing', worldedit: 'version-exposed' };
+const choice = { player: 'one-standing', worldedit: 'version-exposed', backend: 'declared' };
 const scenario = () => ({ gameId: 'fixture_game', nodes: ['air', 'fixture:stone'], modnames: ['fixture_core', 'worldedit'],
-  worldedit: WORLDEDIT[choice.worldedit].worldedit, players: PLAYERS[choice.player].players });
+  worldedit: WORLDEDIT[choice.worldedit].worldedit, players: PLAYERS[choice.player].players,
+  writeBackendDeclared: BACKEND[choice.backend].writeBackendDeclared });
 
 const world = await openFixtureWorld({ runRoot, scenario: scenario() });
 let connected = false;
 const LAYERS = { input: 'FIXTURE (engine core + native Host model; not Luanti, not a real player/World/WorldEdit)',
   output: `REAL Adapter ${ADAPTER_VERSION} public path (payload ${PAYLOAD_VERSION} facts.lua + hanaworldsLuantiNativeFacts)` };
 const errorOf = e => ({ code: e.message, reason: e.reason ?? null, detail: e.detail ?? null });
-const state = () => ({ layers: LAYERS, worldRef: world.worldRef, connected, choice, players: PLAYERS, worldedit: WORLDEDIT,
-  notSupplied: [{ field: 'CompilationConfig.backendProfileId', status: 'NOT_SUPPLIED',
-    why: 'contracts 0.5.4 defines only Ref; meaning and producer await C-STAGE1-CONFIG-SEAM-01. No adapterId/payloadVersion/default is substituted.' }] });
+const state = () => ({ layers: LAYERS, worldRef: world.worldRef, connected, choice, players: PLAYERS, worldedit: WORLDEDIT, backend: BACKEND,
+  notSupplied: [{ field: 'SafetyProfile.avatarDimensions', status: 'UNAVAILABLE (always)',
+    why: 'actual collision boxes and their pose-dependent sizes stay inside the engine (INV-POSE-STAYS-IN-ENGINE). Changing the fixture players must not change any output. No 1x2x1 or other design size is produced.' }] });
 
 const api = {
   'GET /api/state': async () => state(),
   'POST /api/scenario': async body => {
     if (body.player !== undefined) { if (!PLAYERS[body.player]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'player' }); choice.player = body.player; }
     if (body.worldedit !== undefined) { if (!WORLDEDIT[body.worldedit]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'worldedit' }); choice.worldedit = body.worldedit; }
+    if (body.backend !== undefined) { if (!BACKEND[body.backend]) throw Object.assign(Error('SCHEMA_INVALID'), { detail: 'backend' }); choice.backend = body.backend; }
     await world.setScenario(scenario()); return state();
   },
   'POST /api/connect': async () => { if (!connected) { await world.connect(); connected = true; } return state(); },
   'POST /api/disconnect': async () => { if (connected) { await world.disconnect(); connected = false; } return state(); },
-  'POST /api/read/avatar': async () => world.facts.readAvatarEnvelope(world.worldRef),
+  'POST /api/read/config': async () => world.facts.readConfigEngineFacts(world.worldRef),
   'POST /api/read/worldedit': async () => world.facts.readWorldEditFacts(world.worldRef),
   'GET /api/ledger': async () => world.facts.readStage1FactLedger(world.worldRef),
 };

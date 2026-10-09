@@ -99,7 +99,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       serial=work.catch(()=>{});return work;
     },
     /** Stage 1 facts of the exact currently paired world, checked current before and after. */
-    readAvatarEnvelope(worldRef) { return stage1Read(worldRef, row => stage1.avatarEnvelope(row, row.engine)); },
+    readConfigEngineFacts(worldRef) { return stage1Read(worldRef, row => stage1.configEngineFacts(row, row.engine)); },
     readWorldEditFacts(worldRef) { return stage1Read(worldRef, row => stage1.worldEditFacts(row, row.engine)); },
     readStage1FactLedger(worldRef) {
       if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');

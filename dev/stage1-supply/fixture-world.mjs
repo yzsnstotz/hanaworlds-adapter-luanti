@@ -75,7 +75,6 @@ export async function openFixtureWorld({ runRoot, scenario }) {
           worldeditAvailable: !!current.worldedit, worldeditVersion: 'local-static' } };
         else {
           const args = [join(here, 'engine-fixture.lua'), payloadDir, scenarioFile, command.operation];
-          if (command.salt) args.push(command.salt);
           body = JSON.parse((await run('lua', args)).stdout);
         }
         await fetch(`http://127.0.0.1:${config.port}/result`, { method: 'POST', headers,

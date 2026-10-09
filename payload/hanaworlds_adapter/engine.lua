@@ -2,6 +2,11 @@
 -- world mutation is exposed until the private local Adapter transport supplies a current-world command
 -- and a host-fsynced PREPARED record.
 local M = {}
+-- The write backend Engine:apply implements: one WorldEdit set + set_param2 per
+-- effect cell, then a light refresh of the covered cells. Changing that write
+-- path requires a new backendProfileId.
+M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-worldedit-cell-write/v1',
+  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2'}
 local Engine = {}
 Engine.__index = Engine
 

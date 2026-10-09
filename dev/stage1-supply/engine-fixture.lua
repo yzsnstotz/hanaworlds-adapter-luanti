@@ -2,8 +2,8 @@
 -- fixture `core` built from a scenario file. Not Luanti; nothing here is a real
 -- player, World or WorldEdit. Pose accessors throw: a fact that reads position
 -- or look direction fails instead of silently leaking it.
--- usage: lua engine-fixture.lua <payload-dir> <scenario.lua> <operation> [salt]
-local dir, scenario_path, operation, salt = arg[1], arg[2], arg[3], arg[4]
+-- usage: lua engine-fixture.lua <payload-dir> <scenario.lua> <operation>
+local dir, scenario_path, operation = arg[1], arg[2], arg[3]
 local S = dofile(scenario_path)
 
 local function sha256(s)
@@ -62,7 +62,10 @@ end
 
 local facts = dofile(dir .. '/facts.lua')
 local result, code
-if operation == 'fact_avatar_envelope' then result, code = facts.avatar_envelope(core, salt)
+local engine_module = dofile(dir .. '/engine.lua')
+local declaration = engine_module.WRITE_BACKEND
+if S.writeBackendDeclared == false then declaration = nil end
+if operation == 'fact_write_backend' then result, code = facts.write_backend(core, declaration, rawget(_G, 'worldedit'))
 elseif operation == 'fact_worldedit_runtime' then result, code = facts.worldedit_runtime(core)
 elseif operation == 'fact_catalogue' then result, code = facts.catalogue(core)
 elseif operation == 'fact_profile' then result, code = facts.state_profile(core, rawget(_G, 'worldedit'))

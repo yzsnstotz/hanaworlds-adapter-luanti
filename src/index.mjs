@@ -31,7 +31,7 @@ export function apply(ctx, config = {}) {
   ctx.provide('hanaworldsWorldAdapterRegionV1', runtime.regionIO);
   ctx.provide('hanaworldsLuantiNativeFacts', { readScopedState: runtime.readScopedState, readCatalogue: runtime.readCatalogue,
     readWritePathEvidence: runtime.readWritePathEvidence, readRegionState: runtime.readRegionState,
-    readMaterialSources: runtime.readMaterialSources, readAvatarEnvelope: runtime.readAvatarEnvelope,
+    readMaterialSources: runtime.readMaterialSources, readConfigEngineFacts: runtime.readConfigEngineFacts,
     readWorldEditFacts: runtime.readWorldEditFacts, readStage1FactLedger: runtime.readStage1FactLedger });
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');

@@ -40,21 +40,21 @@ try {
   };
   await cdp('Page.enable'); await cdp('Runtime.enable');
   await cdp('Page.navigate', { url }); await settle();
-  // Step 1: open, connect the World, read the envelope.
-  await click('#connect'); await click('#readAvatar'); await shot(1, 'connect + read envelope (single standing player)');
-  // Step 2: same player sneaks.
-  await click('input[value="one-sneaking"]'); await click('#readAvatar'); await shot(2, 'sneaking box → new revision, previous retired');
-  // Step 3: no player / two players.
-  await click('input[value="none"]'); await click('#readAvatar'); await shot('3a', 'no player → named refusal');
-  await click('input[value="two"]'); await click('#readAvatar'); await shot('3b', 'two players → named refusal');
+  // Step 1: open, connect the World, read config engine facts.
+  await click('#connect'); await click('#readConfig'); await shot(1, 'connect + read: backend KNOWN (payload declaration), avatar UNAVAILABLE');
+  // Step 2: change the fixture players; nothing that leaves the Adapter changes.
+  await click('input[value="one-sneaking"]'); await click('#readConfig'); await shot('2a', 'sneaking → identical output');
+  await click('input[value="two"]'); await click('#readConfig'); await shot('2b', 'two players → identical output');
+  // Step 3: payload without a declaration.
+  await click('input[value="not-declared"]'); await click('#readConfig'); await shot(3, 'no declaration → writeBackend UNAVAILABLE');
   // Step 4: WorldEdit facts.
   await click('#readWE'); await shot('4a', 'WorldEdit loaded, version 1.3');
   await click('input[value="version-hidden"]'); await click('#readWE'); await shot('4b', 'WorldEdit version not exposed → UNKNOWN');
   // Step 5: disconnect → everything retired, reads refused.
-  await click('#disconnect'); await click('#readAvatar'); await shot(5, 'disconnect → WORLD_NOT_BOUND, ledger retired');
-  // Step 6: reconnect → new incarnation, standing player again.
-  await click('input[value="one-standing"]'); await click('input[value="version-exposed"]');
-  await click('#connect'); await click('#readAvatar'); await shot(6, 'reconnect → new domain/revision');
+  await click('#disconnect'); await click('#readConfig'); await shot(5, 'disconnect → WORLD_NOT_BOUND, ledger retired');
+  // Step 6: reconnect → new incarnation.
+  await click('input[value="one-standing"]'); await click('input[value="version-exposed"]'); await click('input[value="declared"]');
+  await click('#connect'); await click('#readConfig'); await shot(6, 'reconnect → new connection incarnation and sourceRevision');
   // Leave the service at its initial state for the owner.
   await click('#disconnect');
   await writeFile(join(out, 'walk.json'), JSON.stringify({ url, at: new Date().toISOString(), steps }, null, 1));

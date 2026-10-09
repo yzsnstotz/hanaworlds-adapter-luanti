@@ -295,35 +295,21 @@ function M.material_metadata(core)
     .. table.concat(looks, ',') .. '}}'}
 end
 
--- The single connected player's current collision envelope (extents only).
--- Position, yaw and the box offsets stay in the engine (INV-POSE-STAYS-IN-ENGINE);
--- the player is returned only as a salted digest so a change of player is
--- visible without releasing a name. No connected player, several players or an
--- unreadable box is a named refusal, never a guessed player or a design size.
-local function finite(n) return type(n) == 'number' and n == n and n ~= math.huge and n ~= -math.huge end
-function M.avatar_envelope(core, salt)
-  if type(salt) ~= 'string' or not salt:match('^[0-9a-f]+$') or #salt ~= 64 then
-    return nil, 'SCHEMA_INVALID'
+-- The write backend this loaded payload declares for compiled transactions
+-- (engine.lua WRITE_BACKEND), and whether the engine can run it now. The
+-- declaration comes only from the loaded payload, never from Adapter/package
+-- identity or a default. Player bodies stay engine-only (INV-POSE-STAYS-IN-ENGINE):
+-- no collision box, size, position or yaw is produced here.
+function M.write_backend(core, declaration, worldedit)
+  if type(declaration) ~= 'table' or type(declaration.backendProfileId) ~= 'string'
+    or declaration.backendProfileId == '' or type(declaration.nodeWriteSemantics) ~= 'string' then
+    return nil, 'NOT_DECLARED_BY_PAYLOAD'
   end
-  if not available(core, 'get_connected_players') or not available(core, 'sha256') then
-    return nil, 'CAPABILITY_UNAVAILABLE'
-  end
-  local players = core.get_connected_players()
-  if type(players) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
-  if #players == 0 then return nil, 'PLAYER_NOT_CONNECTED' end
-  if #players > 1 then return nil, 'PLAYER_NOT_SINGULAR' end
-  local player = players[1]
-  local name = player and player.get_player_name and player:get_player_name()
-  local props = player and player.get_properties and player:get_properties()
-  local box = type(props) == 'table' and props.collisionbox or nil
-  if type(name) ~= 'string' or name == '' or type(box) ~= 'table' then
-    return nil, 'COLLISIONBOX_UNREADABLE'
-  end
-  for i = 1, 6 do if not finite(box[i]) then return nil, 'COLLISIONBOX_UNREADABLE' end end
-  local width, height, depth = box[4] - box[1], box[5] - box[2], box[6] - box[3]
-  if not (width > 0 and height > 0 and depth > 0) then return nil, 'COLLISIONBOX_UNREADABLE' end
-  return {width = width, height = height, depth = depth,
-    playerRef = core.sha256(salt .. '|' .. name)}
+  local ready = type(worldedit) == 'table' and type(worldedit.set) == 'function'
+    and type(worldedit.set_param2) == 'function' and available(core, 'fix_light')
+    and available(core, 'get_node_light')
+  return {backendProfileId = declaration.backendProfileId,
+    nodeWriteSemantics = declaration.nodeWriteSemantics, ready = ready}
 end
 
 -- What the running engine actually loaded for WorldEdit: the mod name in the

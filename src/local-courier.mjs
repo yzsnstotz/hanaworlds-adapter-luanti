@@ -73,7 +73,7 @@ export class LocalCourier {
   catalogue() { return this.dispatch('fact_catalogue'); }
   writePath() { return this.dispatch('fact_write_path'); }
   materialMetadata() { return this.dispatch('fact_material_metadata'); }
-  avatarEnvelope(salt) { return this.dispatch('fact_avatar_envelope', { salt }); }
+  writeBackend() { return this.dispatch('fact_write_backend'); }
   worldEditRuntime() { return this.dispatch('fact_worldedit_runtime'); }
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
   regionLimits() { return this.dispatch('region_limits'); }

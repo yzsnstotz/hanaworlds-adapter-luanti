@@ -38,7 +38,7 @@
 <body>
 <main>
   <h1>Adapter · Stage 1 engine facts</h1>
-  <p class="sub">Player collision envelope and loaded WorldEdit for the current World, read through <code>hanaworldsLuantiNativeFacts</code>.</p>
+  <p class="sub">Config engine facts (declared write backend; avatar envelope stays in the engine) and loaded WorldEdit for the current World, read through <code>hanaworldsLuantiNativeFacts</code>.</p>
   <div class="banner" id="banner">FIXTURE INPUT — the engine (players, collision boxes, loaded mods, WorldEdit) and the native Host are fixtures. Not Luanti, not a real player, World or WorldEdit. Only the output is produced by the real Adapter code.</div>
   <div class="grid">
     <section>
@@ -47,8 +47,9 @@
       <button class="primary" id="connect">Connect World</button><button id="disconnect">Disconnect World</button>
       <fieldset><legend>Fixture: connected players</legend><div id="players"></div></fieldset>
       <fieldset><legend>Fixture: WorldEdit in the engine</legend><div id="worldedit"></div></fieldset>
+      <fieldset><legend>Fixture: payload write-backend declaration</legend><div id="backend"></div></fieldset>
       <h2>2 · Read</h2>
-      <button class="primary" id="readAvatar">Read collision envelope</button><button class="primary" id="readWE">Read WorldEdit facts</button>
+      <button class="primary" id="readConfig">Read config engine facts</button><button class="primary" id="readWE">Read WorldEdit facts</button>
       <h2 style="margin-top:12px">Not supplied</h2>
       <div id="missing" class="muted"></div>
     </section>
@@ -73,6 +74,7 @@ function render(s) {
     `<label><input type="radio" name="${name}" value="${k}" ${k === current ? 'checked' : ''}> ${v.label}</label>`).join('');
     $(box).querySelectorAll('input').forEach(i => i.onchange = async () => { const r = await call('POST', '/api/scenario', { [name]: i.value }); render(r.value); }); };
   radios('players', 'player', s.players, s.choice.player); radios('worldedit', 'worldedit', s.worldedit, s.choice.worldedit);
+  radios('backend', 'backend', s.backend, s.choice.backend);
   $('missing').innerHTML = s.notSupplied.map(m => `<div><b>${m.field}</b> — ${m.status}: ${m.why}</div>`).join('');
 }
 function show(label, r) {
@@ -83,12 +85,12 @@ function show(label, r) {
 }
 async function ledger() {
   const r = await call('GET', '/api/ledger'); if (!r.ok) return;
-  const rows = [...r.value.avatarEnvelope.map(x => ['envelope', x]), ...r.value.worldEdit.map(x => ['worldedit', x])];
+  const rows = [...r.value.configEngineFacts.map(x => ['config', x]), ...r.value.worldEdit.map(x => ['worldedit', x])];
   $('ledger').innerHTML = rows.map(([f, x]) => `<tr><td>${f}</td><td>${x.state}</td><td>${x.revision.slice(0, 32)}…</td><td>${(x.reasons ?? []).join(', ')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">empty</td></tr>';
 }
 $('connect').onclick = async () => { const r = await call('POST', '/api/connect'); if (r.ok) render(r.value); else show('Connect', r); ledger(); };
 $('disconnect').onclick = async () => { const r = await call('POST', '/api/disconnect'); if (r.ok) render(r.value); ledger(); };
-$('readAvatar').onclick = async () => show('Collision envelope', await call('POST', '/api/read/avatar'));
+$('readConfig').onclick = async () => show('Config engine facts', await call('POST', '/api/read/config'));
 $('readWE').onclick = async () => show('WorldEdit facts', await call('POST', '/api/read/worldedit'));
 call('GET', '/api/state').then(r => render(r.value)); ledger();
 </script>
