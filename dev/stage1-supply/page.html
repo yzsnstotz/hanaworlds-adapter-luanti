@@ -59,6 +59,7 @@
     <section>
       <h2>3 · Output <span class="tag real">REAL ADAPTER CODE</span><span class="tag fix" id="outTag">FROM FIXTURE INPUT</span></h2>
       <div id="status" class="muted">Nothing read yet.</div>
+      <div id="summary"></div>
       <pre id="out"></pre>
       <h2>Supply ledger (current / retired)</h2>
       <table><thead><tr><th>fact</th><th>state</th><th>revision</th><th>reasons</th></tr></thead><tbody id="ledger"></tbody></table>
@@ -71,10 +72,34 @@ async function call(method, path, body) {
   const r = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   return r.json();
 }
+// REAL mode speaks to the owner in plain words; the full machine result stays below.
+let REAL = false;
+const ZH = { CURRENT: '当前', RETIRED: '已撤回', CONNECTION_RETIRED: '世界已关闭', WORLD_NOT_BOUND: '世界没有打开', KNOWN: '已知', UNAVAILABLE: '不可用', UNKNOWN: '未知', LOADED: '已加载' };
+const STAGES = { PREPARE_RECOVERABLE: '准备', APPLY_COMPILED: '写入', APPLY_HISTORY: '撤销/重做写入', RESTORE: '回滚', REGION_APPLY: '大范围写入', REGION_RESTORE: '大范围回滚', INSPECT_REGION: '选址', PREPARE_HISTORY: '撤销/重做准备' };
+const GUARDS = { BODY_CLEARANCE: '不把方块放进玩家身体', CELL_PROTECTION: '不写保护区', PLAYER_ENCLOSURE: '不把玩家封住' };
+function summarize(label, r) {
+  if (!REAL) return '';
+  if (!r.ok) return `<p>${ZH[r.error.code] ?? r.error.code}，没有读出任何信息。</p>`;
+  const v = r.value, rows = [];
+  if (v.writeBackend) {
+    rows.push(`写入方式：<b>${ZH[v.writeBackend.availability]}</b>${v.writeBackend.backendProfileId ? '（' + v.writeBackend.backendProfileId + '，来自游戏里已加载的 Adapter 自己的声明）' : ''}`);
+    rows.push(`玩家体型：<b>${ZH[v.avatarEnvelope.availability]}</b>（真实体型只留在游戏引擎里用于安全检查，不对外提供）`);
+    rows.push(`本次连接编号：<code>${v.connection.connectionIncarnationRef}</code>`);
+  } else if (v.loadState) {
+    rows.push(`WorldEdit：<b>${ZH[v.loadState] ?? v.loadState}</b>，版本 <b>${v.version.status === 'KNOWN' ? v.version.value : ZH[v.version.status]}</b>（从游戏里已加载的 WorldEdit 读出）`);
+  } else if (v.engineGuards) {
+    for (const c of v.engineGuards.coverage) rows.push(`${GUARDS[c.guard]}：在 ${c.stages.length} 个环节检查（${c.stages.map(x => STAGES[x]).join('、')}）${c.protectionPrincipal === 'ANONYMOUS' ? '；不区分是谁在建，保护区一律不写' : ''}`);
+  }
+  return '<ul>' + rows.map(x => `<li>${x}</li>`).join('') + '</ul>';
+}
 function render(s) {
-  const real = s.layers.mode === 'REAL';
+  const real = s.layers.mode === 'REAL'; REAL = real;
   $('world').textContent = s.worldRef; $('conn').textContent = s.connected ? (real ? 'connected (real Luanti server)' : 'connected (fixture native)') : 'not connected';
   if (real) {
+    $('world').textContent = `本卡测试世界（${s.real.game.title} ${s.real.game.version}，平坦地形）`;
+    $('conn').textContent = s.connected ? '已打开（真实游戏世界）' : '未打开';
+    $('connect').textContent = '打开这个世界'; $('disconnect').textContent = '关闭这个世界';
+    $('readConfig').textContent = '查看写入方式和玩家体型'; $('readWE').textContent = '查看 WorldEdit'; $('readGuards').textContent = '查看安全检查';
     $('banner').className = 'ok'; $('banner').textContent = 'REAL INPUT — ' + s.layers.input + '.';
     $('inTag').className = 'tag real'; $('inTag').textContent = 'REAL WORLD'; $('outTag').className = 'tag real'; $('outTag').textContent = 'FROM REAL WORLD';
     $('fixtureInputs').hidden = true; $('realInput').hidden = false; $('readGuards').hidden = false;
@@ -91,20 +116,23 @@ function render(s) {
 }
 function show(label, r) {
   $('status').className = r.ok ? 'ok' : 'err';
-  $('status').textContent = r.ok ? `${label}: supplied` : `${label}: refused — ${r.error.code}${r.error.reason ? ' / ' + r.error.reason : ''}${r.error.detail ? ' / ' + r.error.detail : ''}`;
+  $('status').textContent = REAL ? (r.ok ? `${label}：已提供` : `${label}：拒绝 — ${ZH[r.error.code] ?? r.error.code}`)
+    : r.ok ? `${label}: supplied` : `${label}: refused — ${r.error.code}${r.error.reason ? ' / ' + r.error.reason : ''}${r.error.detail ? ' / ' + r.error.detail : ''}`;
+  $('summary').innerHTML = summarize(label, r);
   $('out').textContent = JSON.stringify(r.ok ? r.value : r.error, null, 2);
   ledger();
 }
 async function ledger() {
   const r = await call('GET', '/api/ledger'); if (!r.ok) return;
   const rows = [...r.value.configEngineFacts.map(x => ['config', x]), ...r.value.worldEdit.map(x => ['worldedit', x])];
-  $('ledger').innerHTML = rows.map(([f, x]) => `<tr><td>${f}</td><td>${x.state}</td><td>${x.revision.slice(0, 32)}…</td><td>${(x.reasons ?? []).join(', ')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">empty</td></tr>';
+  const fact = f => REAL ? (f === 'config' ? '写入方式和玩家体型' : 'WorldEdit') : f, st = x => REAL ? (ZH[x] ?? x) : x;
+  $('ledger').innerHTML = rows.map(([f, x]) => `<tr><td>${fact(f)}</td><td>${st(x.state)}</td><td>${x.revision.slice(0, 32)}…</td><td>${(x.reasons ?? []).map(st).join(', ')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">empty</td></tr>';
 }
 $('connect').onclick = async () => { const r = await call('POST', '/api/connect'); if (r.ok) render(r.value); else show('Connect', r); ledger(); };
 $('disconnect').onclick = async () => { const r = await call('POST', '/api/disconnect'); if (r.ok) render(r.value); ledger(); };
-$('readConfig').onclick = async () => show('Config engine facts', await call('POST', '/api/read/config'));
-$('readWE').onclick = async () => show('WorldEdit facts', await call('POST', '/api/read/worldedit'));
-$('readGuards').onclick = async () => show('Engine guard coverage', await call('POST', '/api/read/guards'));
+$('readConfig').onclick = async () => show(REAL ? '写入方式和玩家体型' : 'Config engine facts', await call('POST', '/api/read/config'));
+$('readWE').onclick = async () => show(REAL ? 'WorldEdit' : 'WorldEdit facts', await call('POST', '/api/read/worldedit'));
+$('readGuards').onclick = async () => show(REAL ? '安全检查' : 'Engine guard coverage', await call('POST', '/api/read/guards'));
 call('GET', '/api/state').then(r => render(r.value)); ledger();
 </script>
 </body>

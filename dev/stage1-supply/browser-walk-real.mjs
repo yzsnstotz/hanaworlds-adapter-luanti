@@ -44,22 +44,17 @@ try {
   const until = async (expr, ms = 120000) => { const end = Date.now() + ms;
     while (Date.now() < end) { if (await evaluate(expr)) return; await new Promise(y => setTimeout(y, 250)); } throw Error(`WALK_TIMEOUT ${expr}`); };
   const read = async sel => { await evaluate(`document.getElementById('status').textContent=''`); await click(sel); await until(`document.getElementById('status').textContent!==''`); };
-  // Step 1: open, connect the real World, read config engine facts.
-  await until(`document.getElementById('world').textContent.startsWith('luanti:')`);
-  await click('#connect'); await until(`document.getElementById('conn').textContent.startsWith('connected')`);
-  await read('#readConfig'); await shot(1, 'real World connected; config facts: write backend KNOWN from the loaded payload, avatar UNAVAILABLE');
-  // Step 2: WorldEdit facts from the loaded real mod.
-  await read('#readWE'); await shot(2, 'real WorldEdit LOADED, version from the loaded mod');
-  // Step 3: engine guard coverage as declared on the paired connection.
-  await read('#readGuards'); await shot(3, 'engine guards per guard and stage; CELL_PROTECTION ANONYMOUS; PLAYER_ENCLOSURE prepare/apply/history only');
-  // Step 4: disconnect → facts retired, reads refused.
-  await click('#disconnect'); await until(`document.getElementById('conn').textContent==='not connected'`);
-  await read('#readConfig'); await shot(4, 'stopped → WORLD_NOT_BOUND, ledger RETIRED');
-  // Step 5: reconnect → new connection incarnation.
-  await click('#connect'); await until(`document.getElementById('conn').textContent.startsWith('connected')`);
-  await read('#readConfig'); await shot(5, 'reconnected → new connection incarnation and sourceRevision');
+  const opened = `document.getElementById('conn').textContent.startsWith('已打开')`, closed = `document.getElementById('conn').textContent==='未打开'`;
+  // The six USER_CHECKLIST steps, as the owner does them.
+  await until(`document.getElementById('world').textContent.startsWith('本卡测试世界')`);
+  await click('#connect'); await until(opened); await shot(1, 'open the test World: status 已打开（真实游戏世界）');
+  await read('#readConfig'); await shot(2, 'write method 已知 + player body 不可用; no name/size/position/facing');
+  await read('#readWE'); await shot(3, 'WorldEdit 已加载, version 1.3');
+  await read('#readGuards'); await shot(4, 'three safety checks: 6 / 6 (ANONYMOUS) / 3 stages');
+  await click('#disconnect'); await until(closed); await read('#readConfig'); await shot(5, 'closed World: refused 世界没有打开, records 已撤回');
+  await click('#connect'); await until(opened); await read('#readConfig'); await shot(6, 'reopened: new connection number');
   // Leave the service at its initial state for the owner.
-  await click('#disconnect'); await until(`document.getElementById('conn').textContent==='not connected'`);
+  await click('#disconnect'); await until(closed);
   await writeFile(join(out, 'walk.json'), JSON.stringify({ url, at: new Date().toISOString(), steps }, null, 1));
   console.log(JSON.stringify(steps.map(s => ({ step: s.step, status: s.status })), null, 1));
 } finally { ws?.close(); chrome.kill(); }
