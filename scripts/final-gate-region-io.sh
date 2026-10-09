@@ -14,7 +14,7 @@ X=$R/extract-050; mkdir -p $X; tar -xzf "$T" -C $X; P=$X/package
 ( cd $P && npm install --omit=dev --ignore-scripts --no-audit --no-fund --cache $R/npm-cache ) > "$F/package-install.log" 2>&1
 ( cd $P; n=0; bad=0; for f in $(find . -type f -not -path './node_modules/*' -not -name package-lock.json | sed 's|^\./||' | sort); do n=$((n+1)); a=$(shasum -a 256 "$f" | cut -d' ' -f1); b=$(cd "$S" && git show HEAD:"$f" | shasum -a 256 | cut -d' ' -f1); [ "$a" = "$b" ] || { bad=$((bad+1)); echo "MISMATCH $f"; }; done; echo "entries=$n mismatches=$bad" ) > "$F/artifact-entries.txt"
 node --input-type=module -e "const m=await import('$P/src/index.mjs');const s=await import('$S/src/index.mjs');console.log(JSON.stringify({package:await m.payloadDigest(),source:await s.payloadDigest()}))" > "$F/payload-digest.json"
-( cd "$P" && node scripts/verify-contracts-pin.mjs 2>/dev/null || (cd "$S" && node scripts/verify-contracts-pin.mjs) ) > "$F/contracts-pin.json" 2>&1
+( cd "$P" && node scripts/verify-contracts-range.mjs 2>/dev/null || (cd "$S" && node scripts/verify-contracts-range.mjs) ) > "$F/contracts-pin.json" 2>&1
 mkdir -p $P/test && cp "$S/test/local-region-io.test.mjs" $P/test/ && ( cd $P && node --test test/local-region-io.test.mjs ) > "$F/package-test.log" 2>&1; echo "EXIT=$?" >> "$F/package-test.log"; rm -rf $P/test
 for kind in source package; do PK=$S; [ $kind = package ] && PK=$P
   for gate in region percell; do E=$F/$kind-$gate-runtime; mkdir -p $E

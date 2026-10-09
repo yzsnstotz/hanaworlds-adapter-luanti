@@ -1,4 +1,4 @@
-// SOURCE/FIXTURE only: exact public candidate fixtures plus Adapter-owned fact producer.
+// SOURCE/FIXTURE only: installed public contracts fixtures plus Adapter-owned fact producer.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,12 +7,12 @@ import { createStage1Facts } from '../src/stage1-facts.mjs';
 const fx = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/config-engine-facts'))));
 const catalogue = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/main')))).request.catalogue;
 const named = (error, want) => { const e = c.publicError(error); assert.equal(e.code, want.code); assert.equal(e.reason, want.reason); return true; };
-test('exact candidate provider valid and invalid public fixtures', () => {
-  assert.equal(c.version, '0.5.5-rc.1');
+test('provider valid and invalid public fixtures', () => {
+  c.checkContractsVersion(`hanaworlds-contracts@${c.version}`);
   for (const x of fx.provider.valid) c.validateConfigEngineFacts(x.facts, catalogue, fx.connection);
   for (const x of fx.provider.invalid) assert.throws(() => c.validateConfigEngineFacts(x.facts, catalogue, fx.connection), e => named(e, x.expect));
 });
-test('exact candidate consumer known backend, unavailable backend and avatar refusal', () => {
+test('consumer known backend, unavailable backend and avatar refusal', () => {
   for (const x of fx.consumer.assemble) {
     if (typeof x.backendProfileId === 'object') assert.throws(() => c.requireKnownWriteBackend(x.facts), e => named(e, x.backendProfileId));
     else assert.equal(c.requireKnownWriteBackend(x.facts), x.backendProfileId);
@@ -24,7 +24,7 @@ test('exact candidate consumer known backend, unavailable backend and avatar ref
     if (x.previousRejected) assert.throws(() => c.validateConfigEngineFacts(x.previous, catalogue, x.currentConnection), e => named(e, x.previousRejected));
   }
 });
-test('Adapter provider records satisfy candidate and existing typed refusals survive publicError', async () => {
+test('Adapter provider records satisfy contracts and existing typed refusals survive publicError', async () => {
   const row = { ...fx.connection, incarnation: fx.connection.connectionIncarnationRef, payloadVersion: 'fixture-payload', payloadDigest: 'fixture-digest' };
   const producer = createStage1Facts();
   const declaration = fx.provider.valid[1].facts.writeBackend;

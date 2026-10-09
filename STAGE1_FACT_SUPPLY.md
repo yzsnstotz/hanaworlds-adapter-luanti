@@ -1,4 +1,4 @@
-# Stage 1 engine fact supply (Adapter 0.8.2 / payload 0.6.2 / contracts 0.5.5-rc.1)
+# Stage 1 engine fact supply (Adapter 0.8.3 / payload 0.6.2 / contracts git #semver:^0.5.6)
 
 2026-10-09 · hanaworlds-adapter-luanti-SUPPLY-01 · **SOURCE + FIXTURE only.** No real Luanti,
 World, Session or player has been read with this code. The real read needs a separate PM GO.
@@ -46,8 +46,9 @@ consumes for `readCatalogue`). No new key, wire, operation or contract type.
   Changing that write path requires a new `backendProfileId`. The id string is the payload's
   declaration; its spelling is this worker's choice.
 - **sourceRevision**: exact candidate SDK `digestValue('config-engine-facts', projection).sha256`;
-  all emitted records pass `validateType('ConfigEngineFacts')`. Exact tag and pack members are
-  pinned in `scripts/contracts-pin.mjs` / `.json`. Candidate SOURCE/FIXTURE only; formal not GO.
+  all emitted records pass `validateType('ConfigEngineFacts')`. Since 0.8.3 contracts come from the
+  contract source as `#semver:^0.5.6` (first released version with these fields), checked offline by
+  `scripts/verify-contracts-range.mjs`; no exact pin or pack manifest. SOURCE/FIXTURE only.
 
 ### WorldEdit (adapter-worldedit-runtime/v1)
 

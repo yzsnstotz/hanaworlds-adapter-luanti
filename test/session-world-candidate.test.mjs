@@ -1,12 +1,13 @@
-// Minimal consumption of this exact published candidate's normative fixture; not provider/runtime proof.
+// Minimal consumption of the installed contracts' normative fixture; not provider/runtime proof.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from '#contracts';
 import fixture from 'hanaworlds-contracts/fixtures/session-world' with {type:'json'};
-test('candidate exact handshake accepts itself and rejects old exact package',()=>{
- assert.equal(C.contractHandshake.contracts,'hanaworlds-contracts@0.5.5-rc.1');
+test('handshake accepts itself and the same contracts major, rejects another major',()=>{
+ assert.equal(C.contractHandshake.contracts,`hanaworlds-contracts@${C.version}`);C.checkContractsVersion(C.contractHandshake.contracts);
  assert.equal(C.checkContractHandshake(C.contractHandshake).result,'HANDSHAKE_VERSION_MATCH');
- assert.throws(()=>C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@0.5.3'}));
+ assert.equal(C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@0.5.3'}).result,'HANDSHAKE_VERSION_MATCH');
+ assert.throws(()=>C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@1.0.0'}),e=>e.code==='UNSUPPORTED_VERSION');
 });
 test('all fifteen public Session/world sequence envelopes and trusted Session directory validate',()=>{
  for(const row of fixture.ownerAScenario)C.validateBoundResponse(row.wire,row.operation,row.request,row.response);

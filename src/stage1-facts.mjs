@@ -4,7 +4,7 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /** Stage 1 engine facts for Canvas configuration. Read-only, in memory only.
  *
- * - config-engine-facts/v1 (shape of the contracts 0.5.5-rc.1 candidate port
+ * - config-engine-facts/v1 (shape of the contracts ^0.5.6 port
  *   ConfigEngineFactsPort.readConfigEngineFacts): the write backend the loaded payload
  *   declares, and the avatar envelope, which is always UNAVAILABLE: actual collision
  *   boxes and their pose-dependent sizes are used only inside the engine

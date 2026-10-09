@@ -80,7 +80,7 @@ const sourceDigest=await (await import(pathToFileURL(s+'/src/index.mjs'))).paylo
 assert.equal(packageDigest,sourceDigest);
 console.log(JSON.stringify({package:packageDigest,source:sourceDigest}));
 JS
-step "$F/contracts-pin.json" node scripts/verify-contracts-pin.mjs
+step "$F/contracts-pin.json" node scripts/verify-contracts-range.mjs
 mkdir -p "$P/test/support"
 cp "$S/test/local-region-io.test.mjs" "$S/test/local-flat-world.test.mjs" "$S/test/local-material-facts.test.mjs" "$P/test/"
 cp "$S/test/support/material-facts.lua" "$P/test/support/"

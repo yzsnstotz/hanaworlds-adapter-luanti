@@ -43,7 +43,7 @@ ignored, isolated world data. The new v3 files were written for this origin.
 | `test/v4-native-storage.test.mjs` | 0.2.0 Adapter fixture test. |
 | `src/workshop-relay.mjs` | 0.2.0 origin glue (late-bound Workshop relay). |
 | `payload/hanaworlds_adapter/region.lua` | 0.2.0 Luanti API glue written for this origin (region search, relay/pick records, Prepare recheck). Calls engine APIs only; no WorldEdit, Luanti engine or areas source copied. The facing/search rules follow the approved HanaWorlds contract text, not third-party code. |
-| `scripts/verify-contracts-pin.mjs` | 0.2.0 origin tooling. |
+| `scripts/verify-contracts-range.mjs` | 0.8.3 origin tooling (replaces the 0.2.0 exact-pin verifier). |
 | `test/v4-workshop-relay.test.mjs` | 0.2.0 Adapter fixture test. |
 | `test/transport-errors.lua` | 0.2.0 Adapter test double for the courier error path. |
 | `test/real-region.mjs` | 0.2.0 diagnostic engine runner; refers to an ignored external WorldEdit copy and the admitted 0.1.1 package, never bundles them. |

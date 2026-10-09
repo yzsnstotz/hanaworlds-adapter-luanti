@@ -20,6 +20,6 @@ test('official Loader row passes localWorldRoots and uses same-root native provi
   assert.equal(ctx.get('hanaworldsNativeEngineControl'),native);
   const plan=await ctx.get('hanaworldsLuantiLocalWorlds').describeFlatWorldCreation({requesterRef:'fixture:host',userPath:root});
   assert.deepEqual(plan.roots,[join(root,'worlds')]);assert.equal(plan.missing.some(m=>m.need==='WORLD_ROOT'),false);
-  assert.equal(ctx.get('hanaworldsWorldAdapterV6').contractHandshake.contracts,'hanaworlds-contracts@0.5.5-rc.1');
+  const C=await import('hanaworlds-contracts');assert.equal(ctx.get('hanaworldsWorldAdapterV6').contractHandshake.contracts,`hanaworlds-contracts@${C.version}`);C.checkContractsVersion(ctx.get('hanaworldsWorldAdapterV6').contractHandshake.contracts);
  } finally {await ctx.fiber.dispose();await rm(root,{recursive:true});}
 });
