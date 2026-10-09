@@ -222,7 +222,8 @@ function Region:inspect(args)
         end
         if next(bad) == nil then
           -- Chosen footprint plus support layer: every cell of the bounding box.
-          local rows, occupied = {}, {}, {}
+          -- Bodies were checked above inside the engine; no body geometry is returned.
+          local rows = {}
           local all = {}
           for _, p in ipairs(cells) do all[#all + 1] = p end
           for _, p in ipairs(support) do all[#all + 1] = p end
@@ -231,10 +232,8 @@ function Region:inspect(args)
             rows[#rows + 1] = '{"position":' .. pos_json(p) .. ',"state":' .. quote(cs.kind)
               .. (cs.kind == 'OCCUPIED' and (',"nodeName":' .. quote(cs.nodeName)
                 .. ',"param2":' .. int(cs.param2)) or '') .. '}'
-            if body_at(body_list, p) then occupied[#occupied + 1] = p end
           end
           return '{"kind":"REGION","cells":[' .. table.concat(rows, ',') .. ']'
-            .. ',"body":' .. list(occupied, pos_json)
             .. ',"entranceFacing":' .. quote(ENTRANCE[k + 1]) .. '}'
         end
         for reason in pairs(bad) do reasons[reason] = true end

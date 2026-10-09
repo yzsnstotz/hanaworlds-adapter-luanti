@@ -1,4 +1,4 @@
 export const ADAPTER_ID = 'hanaworlds-adapter-luanti';
-export const ADAPTER_VERSION = '0.9.0';
-export const PAYLOAD_VERSION = '0.7.0';
+export const ADAPTER_VERSION = '0.10.0';
+export const PAYLOAD_VERSION = '0.8.0';
 export const PAYLOAD_FILES = Object.freeze(['mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua', 'facts.lua', 'voxel.lua']);

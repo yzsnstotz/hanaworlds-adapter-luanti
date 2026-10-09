@@ -23,7 +23,7 @@ let facts;try{
  const id=await ctx.loader.create({id:'hanaworlds-luanti-adapter',name:'hanaworlds-adapter-luanti',config:{localWorldRoots:[worlds]}});await ctx.loader.await();
  assert.equal(ctx.loader.resolve(id).fiber.state,2);assert.equal(ctx.get('hanaworldsNativeEngineControl'),owned.host);assert.equal(ctx.get('hanaworldsLuantiInspectionContext'),bridge);
  const adapter=ctx.get('hanaworldsWorldAdapterV6');assert.equal(adapter.contractHandshake.contracts,`hanaworlds-contracts@${C.version}`);C.checkContractsVersion(adapter.contractHandshake.contracts);
- const request={contractVersion:'world-adapter/v6',sessionRef:'own:readonly-request-shape',requestId:'own:read-connections',adapterId:'hanaworlds-adapter-luanti'};
+ const request={contractVersion:'world-adapter/v7',sessionRef:'own:readonly-request-shape',requestId:'own:read-connections',adapterId:'hanaworlds-adapter-luanti'};
  const connections=await adapter.call('DiscoverConnections',request);const worldInventory=await ctx.get('hanaworldsLuantiLocalWorlds').discover();
  assert.equal(connections.error,null);assert.deepEqual(connections.result.connections,[]);assert.deepEqual(worldInventory,[]);
  const native=ctx.get('hanaworldsNativeEngineControl');await assert.rejects(native.inspect({controlRef:'own:absent',worldPath:join(worlds,'never-created'),requesterRef:'own:assembly',operationRef:'own:unrun'}),/CURRENT_WORLD_MISMATCH/);

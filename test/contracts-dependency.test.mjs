@@ -24,13 +24,17 @@ const dependency = spec => dir => {
 };
 test('contracts come from the contract source git semver range and the installed version satisfies it', () => {
   const r = verify(); assert.equal(r.exit, 0, JSON.stringify(r)); assert.equal(r.ok, true);
-  assert.match(r.range, /^\^\d+\.\d+\.\d+$/);
+  assert.match(r.range, /^\^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
 });
 for (const [name, mutate] of [
   ['exact tag tarball', dependency('https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.6')],
   ['commit pin', dependency(`${SOURCE}#f84974eb07e30b683f4c1b1712145b756d5671ed`)],
   ['workspace link', dependency('file:../hanaworlds-contracts')],
   ['vendor copy', dir => mkdirSync(join(dir, 'vendor/hanaworlds-contracts'), { recursive: true })],
-  ['installed below range', dependency(`${SOURCE}#semver:^0.5.7`)],
-  ['installed outside 0.x caret', dependency(`${SOURCE}#semver:^0.4.0`)],
+  // Installed is 1.0.0-rc.1: a later prerelease, the plain release, the old major and a
+  // different X.Y.Z prerelease lower bound must all refuse it.
+  ['installed below a later prerelease', dependency(`${SOURCE}#semver:^1.0.0-rc.2`)],
+  ['prerelease below a release bound', dependency(`${SOURCE}#semver:^1.0.0`)],
+  ['installed outside the old major', dependency(`${SOURCE}#semver:^0.5.6`)],
+  ['prerelease of another X.Y.Z', dependency(`${SOURCE}#semver:^0.9.0-rc.1`)],
 ]) test(`range verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });

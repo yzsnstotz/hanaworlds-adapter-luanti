@@ -53,6 +53,7 @@ local core = {
   sha256 = sha256, write_json = function(v) return encode(v) end,
   get_node_or_nil = function() end, get_meta = function() end, get_node_timer = function() end,
   get_node_light = function() end, fix_light = function() end,
+  is_protected = function() return false end, -- Luanti builtin default: no protection mod loaded
 }
 _G.minetest, _G.core = core, core
 if S.worldedit then

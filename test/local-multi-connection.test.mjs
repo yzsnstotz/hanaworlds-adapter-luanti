@@ -36,7 +36,7 @@ async function setup(t) {
   const acquire=w=>local.port.acquire({requesterRef:'host',userPath:root,connectionRef:w.connectionRef,action:'BIND_RUNNING_WORLD'});
   const query=l=>({requesterRef:'host',connectionRef:l.connectionRef,leaseRef:l.leaseRef});
   const pair=async w=>{const lease=await acquire(w);return {lease,paired:await local.port.pair(query(lease))};};
-  const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v6',sessionRef:'fixture:S1',requestId:'inventory',adapterId:'hanaworlds-adapter-luanti'});
+  const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v7',sessionRef:'fixture:S1',requestId:'inventory',adapterId:'hanaworlds-adapter-luanti'});
   return {root,local,runtime,records,stopped,engines,handshakeFailures,inspectionFailuresOnLoad,make,acquire,query,pair,inventory};
 }
 

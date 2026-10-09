@@ -36,7 +36,7 @@ try{
  await load('hanaworlds-adapter-luanti',{localWorldRoots:[worlds]});
  assert.equal(original(root.get('hanaworldsNativeEngineControl')),original(owned.host));assert.equal(original(root.get('hanaworldsLuantiInspectionContext')),original(bridge));
  const adapter=root.get('hanaworldsWorldAdapterV6');assert.equal(C.canonicalJSON(adapter.contractHandshake),C.canonicalJSON(C.contractHandshake));
- const request={contractVersion:'world-adapter/v6',sessionRef:'own:readonly-request-shape',requestId:'own:discover-empty',adapterId:'hanaworlds-adapter-luanti'};
+ const request={contractVersion:'world-adapter/v7',sessionRef:'own:readonly-request-shape',requestId:'own:discover-empty',adapterId:'hanaworlds-adapter-luanti'};
  const connections=await adapter.call('DiscoverConnections',request);assert.equal(connections.error,null);assert.deepEqual(connections.result.connections,[]);
  const inventory=await root.get('hanaworldsLuantiLocalWorlds').discover();assert.deepEqual(inventory,[]);
  await assert.rejects(root.get('hanaworldsNativeEngineControl').inspect({controlRef:'own:absent',worldPath:join(worlds,'never-created'),requesterRef:'own:assembly',operationRef:'own:unrun'}),/CURRENT_WORLD_MISMATCH/);

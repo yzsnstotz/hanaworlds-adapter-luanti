@@ -5,10 +5,10 @@ import {canonicalJSON,validateBoundRequest,validateBoundResponse} from '#contrac
 const fail=code=>{throw Error(code);};const original=value=>value?.[Symbol.for('cordis.original')]??value;
 export function createInspectionContext({resolveCanvas,resolveOracle}) {
  return {async read(request){
-  validateBoundRequest('world-adapter/v6','InspectWorld',request);
+  validateBoundRequest('world-adapter/v7','InspectWorld',request);
   const canvas=resolveCanvas(),oracle=resolveOracle();if(typeof canvas?.call!=='function'||typeof oracle?.read!=='function')fail('CAPABILITY_UNAVAILABLE');
   const check=()=>{if(original(resolveCanvas())!==original(canvas)||original(resolveOracle())!==original(oracle))fail('CURRENT_WORLD_MISMATCH');};
-  async function call(name,extra={}){check();const q=validateBoundRequest('canvas/v5',name,{contractVersion:'canvas/v5',requestId:randomUUID(),sessionRef:request.sessionRef,worldRef:request.worldRef,...extra});const r=validateBoundResponse('canvas/v5',name,q,await canvas.call(name,q));check();if(r.error)fail(r.error.code);if(!r.result)fail('TARGET_FACTS_INCOMPLETE');return r.result;}
+  async function call(name,extra={}){check();const q=validateBoundRequest('canvas/v6',name,{contractVersion:'canvas/v6',requestId:randomUUID(),sessionRef:request.sessionRef,worldRef:request.worldRef,...extra});const r=validateBoundResponse('canvas/v6',name,q,await canvas.call(name,q));check();if(r.error)fail(r.error.code);if(!r.result)fail('TARGET_FACTS_INCOMPLETE');return r.result;}
   const revision=await oracle.read(request.worldRef);check();if(revision!==request.expectedWorldRevision)fail('STALE_REVISION');
   const r1=await call('ReadWorldSelectionContext'),selection=r1.selection;
   if(selection.status!=='BOUND'||selection.context.currentSession!==request.sessionRef||selection.context.activeWorldRef!==request.worldRef||canonicalJSON(selection.context.localContext)!==canonicalJSON(request.localContext))fail('CURRENT_WORLD_MISMATCH');

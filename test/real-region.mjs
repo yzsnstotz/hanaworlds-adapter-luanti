@@ -273,8 +273,7 @@ try {
     assert.deepEqual(insp.targetFacts.sampledBounds, { min: [1, 0, 3], max: [1, 1, 3] });
     assert.equal(insp.entranceFacing, '-Z');
     note('inspect-real-player', { sampledBounds: insp.targetFacts.sampledBounds,
-      entranceFacing: insp.entranceFacing, protectedPositions: insp.protectedPositions,
-      bodyOccupiedPositions: insp.bodyOccupiedPositions });
+      entranceFacing: insp.entranceFacing, protectedPositions: insp.protectedPositions });
     const body = await port.call('PrepareRecoverableTransaction', prepareRequest(up.worldRef, 'tx-body', [0, 1, 0]));
     assert.equal(body.error?.code, 'SAFETY_INVARIANT_FAILED');
     const prot = await port.call('PrepareRecoverableTransaction', prepareRequest(up.worldRef, 'tx-protected', [0, 1, 3]));

@@ -222,6 +222,15 @@ r = call({operation = 'region_write', purpose = 'APPLY', min = {4, 1, 0}, max = 
   param2Runs = {0, 2}, guard = read.boxes[1].guard}}})
 assert(r:find('"written":true', 1, true) and r:find('"error":null', 1, true), r)
 
+-- G1 on region restores (world-adapter-region/v1:restore-body-recheck): the check-only pass
+-- refuses a RESTORE that would put a solid node into a real body; nothing is written.
+reset(); players = {{4, 0.5, 0}}
+read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+r = call({operation = 'region_write', purpose = 'RESTORE', min = {4, 1, 0}, max = {5, 1, 0}, checkOnly = true, chunks = {{
+  min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
+  param2Runs = {0, 2}, guard = read.boxes[1].guard, extras = {}}}})
+assert(refused(r, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED') and writes == 0, r)
+
 -- G3 enclosure on every declared operation.
 for _, op in ipairs({'prepare_check', 'apply', 'apply_state'}) do
   local function cmd_for(effects)

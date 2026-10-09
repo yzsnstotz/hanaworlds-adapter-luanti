@@ -11,6 +11,6 @@ test('current Adapter advertises the installed contracts package and required wr
  assert.equal(p.contractHandshake.contracts,`${installed.name}@${installed.version}`);checkContractsVersion(p.contractHandshake.contracts);
  assert.deepEqual(p.contractHandshake,contractHandshake);
  for(const port of [p,r])validateType('ProtocolHandshake',port.protocolHandshake);
- assert.ok(p.protocolHandshake.capabilities.includes('world-adapter/v6:callback-free-write'));assert.ok(p.protocolHandshake.capabilities.includes('world-adapter/v6:write-path-state-facts'));assert.ok(r.protocolHandshake.capabilities.includes('world-adapter-region/v1:callback-free-write'));
+ assert.ok(p.protocolHandshake.capabilities.includes('world-adapter/v7:callback-free-write'));assert.ok(p.protocolHandshake.capabilities.includes('world-adapter/v7:write-path-state-facts'));assert.ok(r.protocolHandshake.capabilities.includes('world-adapter-region/v1:callback-free-write'));
  }finally{await service.close()}
 });

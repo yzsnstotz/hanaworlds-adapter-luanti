@@ -1,3 +1,4 @@
+import { guardFailure } from './safety-capabilities.mjs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
@@ -10,7 +11,7 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
 import { createStage1Facts } from './stage1-facts.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
-const WIRE = 'world-adapter/v6';
+const WIRE = 'world-adapter/v7';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
 const fail = code => { throw new Error(code); };
@@ -192,8 +193,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (row.engine.closed || request.worldRef !== row.worldRef || request.localContext.connectionRef !== row.connectionRef ||
       request.localContext.connectionIncarnationRef !== row.incarnation || request.localContext.worldRef !== row.worldRef) fail('CURRENT_WORLD_MISMATCH');
     const canvas = resolveCanvas(); if (typeof canvas?.call !== 'function') fail('CAPABILITY_UNAVAILABLE');
-    const input={contractVersion:'canvas/v5',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
-    const reply=validateBoundResponse('canvas/v5','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
+    const input={contractVersion:'canvas/v6',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
+    const reply=validateBoundResponse('canvas/v6','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
     const selection=reply.result?.selection;
     if ((resolveCanvas()?.[Symbol.for('cordis.original')] ?? resolveCanvas()) !== (canvas[Symbol.for('cordis.original')] ?? canvas) ||
       reply.error || selection?.status !== 'BOUND' || selection.connectionRef !== row.connectionRef ||
@@ -284,7 +285,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       checkOracle();
       if(raw.kind==='CHOICE') return {outcome:'PLACEMENT_CHOICE_REQUIRED',choice:{anchorKind:r.anchor.kind,
         reasons:[...new Set(raw.reasons)].sort(),options:['PICK_WORLD_POINT'],placementSettings:st,observedWorldRevision:observed}};
-      if(raw.kind!=='REGION' || !Array.isArray(raw.cells) || !raw.cells.length) fail('INSPECTION_FAILED');
+      // world-adapter/v7: no body geometry crosses; the engine refused body cells itself.
+      if(raw.kind!=='REGION' || !Array.isArray(raw.cells) || !raw.cells.length || 'body' in raw) fail('INSPECTION_FAILED');
       positions=raw.cells.map(c=>c.position).sort(comparePosition);
       bounds={min:[0,1,2].map(i=>Math.min(...positions.map(p=>p[i]))),max:[0,1,2].map(i=>Math.max(...positions.map(p=>p[i])))};
       source='REGION_INSPECTED';
@@ -316,7 +318,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if(name==='InspectWorld') return targetFacts;
     return {outcome:'REGION_INSPECTED',inspection:{inspectionId:r.inspectionId,anchorKind:r.anchor.kind,targetFacts,
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},
-      bodyOccupiedPositions:raw.body.sort(comparePosition),entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
+      entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
   }
   // world-adapter-region/v1 for the Canvas transaction owner: current paired
   // world/selection only, serialized with every other courier use.
@@ -352,6 +354,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           else validateRegionWrite(r, response);
           return response;
         } catch (error) {
+          if (error instanceof RegionFault && error.publicError) return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE,
+            requestId: r.requestId, result: null, error: error.publicError });
           const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE, requestId: r.requestId, result: null,
             error: { code, phase: 'validate', retryability: 'AFTER_NEW_FACTS', mutationState: 'NONE',
@@ -396,6 +400,11 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: await perform(name, r, row), error: null });
         } catch (error) {
           const saved = r.transactionId && rows.get(r.localContext?.connectionRef)?.store.get(r.transactionId);
+          // An engine guard refusal is answered with the contract's exact safety-capability error.
+          const named = saved?.status === 'RESTORE_FAILED' && error.message === 'RESTORE_FAILED'
+            ? guardFailure(WIRE, saved.restoreFailure?.detail, { restore: true, transactionRef: r.transactionId })
+            : guardFailure(WIRE, error.detail, { transactionRef: r.transactionId ?? null });
+          if (named) return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: null, error: named });
           const mutationState = saved && !['PREPARED','ABORTED_PREPARED'].includes(saved.status) ? 'UNKNOWN' : 'NONE';
           const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateBoundResponse(WIRE, name, r, { contractVersion: WIRE, requestId: r.requestId, result: null,

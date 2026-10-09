@@ -1,3 +1,4 @@
+import { REGION_SAFETY, WORLD_ADAPTER_SAFETY, guardFailure } from './safety-capabilities.mjs';
 import { validateType, digestValue, encodeRegionBlock, expandRegionBlock, regionBlockBox,
   regionChunksOfBox, comparePosition } from '#contracts';
 import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns, BLOCK } from './region-batches.mjs';
@@ -16,7 +17,7 @@ const sha = (kind, v) => digestValue(kind, v).sha256;
 const floorBlock = n => Math.floor(n / BLOCK);
 const blockOf = box => box.min.map(floorBlock);
 export class RegionFault extends Error {
-  constructor(code, reason) { super(code); this.reason = reason; }
+  constructor(code, reason, publicError = null) { super(code); this.reason = reason; this.publicError = publicError; }
 }
 
 export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
@@ -25,18 +26,18 @@ export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake',
   // callback-free-write: region writes and restores are VoxelManip node data (voxel.lua).
   capabilities: ['world-adapter-region/v1:callback-free-write', 'world-adapter-region/v1:chunked-read',
     'world-adapter-region/v1:chunked-write', 'world-adapter-region/v1:lighting-complete',
-    'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state'],
+    'world-adapter-region/v1:load-then-know', 'world-adapter-region/v1:restore-state', ...REGION_SAFETY].sort(), // RefSet: UTF-16 ascending
   // Provenance is a record only; an installed package cannot know its own tar digest.
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
-/** world-adapter/v6 runtime protocol (minor 1, write-path-init/v1): per-cell writes and
+/** world-adapter/v7 runtime protocol (minor 0; contracts 1.0 reset minors): per-cell writes and
  * restores are WorldEdit set/set_param2 (VoxelManip) plus swap_node, and the Catalogue
  * publishes hasCallbacks/hasPersistentState under that scope. */
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter', major: 6, minor: 1 }],
-  capabilities: ['world-adapter/v6:callback-free-write', 'world-adapter/v6:write-path-state-facts'],
+  protocols: [{ protocol: 'world-adapter', major: 7, minor: 0 }],
+  capabilities: ['world-adapter/v7:callback-free-write', 'world-adapter/v7:write-path-state-facts', ...WORLD_ADAPTER_SAFETY].sort(),
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
@@ -155,7 +156,11 @@ export async function writeRegion(engine, request) {
     chunks: group.items.map(i => i.command), checkOnly });
   for (const group of groups) {
     try { await engine.regionWrite(command(group, true)); }
-    catch (error) { throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR'); }
+    catch (error) {
+      // Engine guards refuse in this check-only pass, before any write of the request.
+      const named = guardFailure('world-adapter-region/v1', error?.detail, { restore: !apply, transactionRef: request.transactionId });
+      throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', named);
+    }
   }
   const status = new Map(), facts = [];
   let lightComplete = true, failure = null;

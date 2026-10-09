@@ -18,6 +18,8 @@ core.is_protected=function() error('Inspection asks no protection') end
 local result=assert(region:inspect({worldRef='local',sessionRef='s',anchor={kind='CURRENT_VIEW',invocationId='i'},
   footprint={widthCells=1,depthCells=1,heightCells=1},settings={frontGapCells=2,forwardSearchCells=16,lateralSearchCells=8,verticalSearchCells=4},walkable={stone=true}}))
 assert(result:find('"kind":"REGION"',1,true));assert(not result:find('protected',1,true))
+-- world-adapter/v7 (contracts 1.0): no body geometry leaves the engine, even with a body next to the region.
+assert(not result:find('"body"',1,true) and not result:find('bodyOccupied',1,true))
 core.get_connected_players=function() return {} end
 local none,code=region:inspect({worldRef='local',sessionRef='s',anchor={kind='CURRENT_VIEW',invocationId='i'},
   footprint={widthCells=1,depthCells=1,heightCells=1},settings={frontGapCells=2,forwardSearchCells=16,lateralSearchCells=8,verticalSearchCells=4},walkable={stone=true}})

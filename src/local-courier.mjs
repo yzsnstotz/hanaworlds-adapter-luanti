@@ -4,15 +4,8 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { payloadDigest } from './local-worlds.mjs';
 import { PAYLOAD_VERSION } from './version.mjs';
+import { sameGuards } from './safety-capabilities.mjs';
 
-/** Guards the loaded payload enforces (payload region.lua guards()): each is the list of
- * courier operations that run it, or false when the engine cannot run it. */
-export const ENGINE_GUARDS = Object.freeze(['restoreBodyRecheck', 'perCellProtection', 'playerEnclosure']);
-function engineGuards(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) &&
-    Object.keys(value).sort().join() === [...ENGINE_GUARDS].sort().join() &&
-    Object.values(value).every(v => v === false || (Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'string')));
-}
 
 /** Private loopback transport; no model/Canvas public HTTP mutator. */
 export class LocalCourier {
@@ -74,8 +67,10 @@ export class LocalCourier {
   async handshake() {
     const h = await this.dispatch('handshake');
     if (h.worldRef !== this.manifest.worldRef || h.payloadVersion !== PAYLOAD_VERSION || h.payloadMatches !== true ||
-      h.loadedSourceDigest !== this.manifest.payloadDigest || h.worldeditAvailable !== true ||
-      !engineGuards(h.engineGuards)) throw new Error('PAYLOAD_VERSION_MISMATCH');
+      h.loadedSourceDigest !== this.manifest.payloadDigest || h.worldeditAvailable !== true) throw new Error('PAYLOAD_VERSION_MISMATCH');
+    // The advertised safety capabilities hold only if this engine runs every guard
+    // (e.g. no core.is_protected => perCellProtection false): such a world is not paired.
+    if (!sameGuards(h.engineGuards)) throw new Error('CAPABILITY_UNAVAILABLE');
     this.engineGuards = h.engineGuards;
     return h;
   }
