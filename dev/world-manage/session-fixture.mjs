@@ -14,17 +14,17 @@ export function createSessionWorldFixture({resolveAdapter}) {
  const bump=ref=>{if(ref&&worlds.has(ref))worlds.get(ref).inventoryRevision=`fixture-world-inventory:${randomUUID()}`;};
  const wrap=(wire,name,q,result,error=null)=>C.validateBoundResponse(wire,name,q,{contractVersion:wire,requestId:q.requestId,result,error});
  function error(wire,name,q,e){const code=C.schemaBundle.definitions.ErrorCode.enum.includes(e.message)?e.message:'CAPABILITY_UNAVAILABLE';return wrap(wire,name,q,null,{code,phase:'validate',retryability:'AFTER_NEW_FACTS',mutationState:'NONE',transactionRef:null,causeCode:null,reason:code==='SESSION_DELETE_UNSUPPORTED'?'DELETE_SEAM_ABSENT':'REQUIRED_FACT_UNKNOWN'});}
- const workshop={contractHandshake:C.contractHandshake,async call(name,input){const q=C.validateBoundRequest('session/v5',name,input);try{
-  if(name==='ListSessions')return wrap('session/v5',name,q,directory);
-  if(name==='ReadSessionIdentity')return wrap('session/v5',name,q,identity(q.sessionRef));
+ const workshop={contractHandshake:C.contractHandshake,async call(name,input){const q=C.validateBoundRequest('session/v4',name,input);try{
+  if(name==='ListSessions')return wrap('session/v4',name,q,directory);
+  if(name==='ReadSessionIdentity')return wrap('session/v4',name,q,identity(q.sessionRef));
   if(name==='DeleteSession'){identity(q.sessionRef);fail('SESSION_DELETE_UNSUPPORTED');}
   fail('UNSUPPORTED_OPERATION');
- }catch(e){return error('session/v5',name,q,e);}}};
- async function sessionCall(name,input){const q={contractVersion:'session/v5',requestId:randomUUID(),...input};const r=C.validateBoundResponse('session/v5',name,q,await workshop.call(name,q));if(r.error)fail(r.error.code);return r.result;}
+ }catch(e){return error('session/v4',name,q,e);}}};
+ async function sessionCall(name,input){const q={contractVersion:'session/v4',requestId:randomUUID(),...input};const r=C.validateBoundResponse('session/v4',name,q,await workshop.call(name,q));if(r.error)fail(r.error.code);return r.result;}
  async function adapterCall(name,input){const q={contractVersion:'world-adapter/v7',requestId:randomUUID(),...input};const provider=resolveAdapter();const r=C.validateBoundResponse('world-adapter/v7',name,q,await provider.call(name,q));if(r.error)fail(r.error.code);return r.result;}
  const inventoryFor=async(sessionRef,worldRef)=>{const i=await adapterCall('DiscoverConnections',{sessionRef,adapterId:'hanaworlds-adapter-luanti'});return {...i,connections:i.connections.filter(c=>c.worldRef===worldRef)};};
  const selectionInventory=worldRef=>({worldRef,inventoryRevision:world(worldRef).inventoryRevision,sessionRefs:[...contexts].filter(([,c])=>c.activeWorldRef===worldRef).map(([ref])=>ref).sort(),retirementReservationRef:reservations.get(worldRef)?.reservationRef??null});
- const canvas={contractHandshake:C.contractHandshake,async call(name,input){const q=C.validateBoundRequest('canvas/v7',name,input);try{let result;
+ const canvas={contractHandshake:C.contractHandshake,async call(name,input){const q=C.validateBoundRequest('canvas/v6',name,input);try{let result;
   if(name==='ReadWorldSelectionContext'){
    await sessionCall('ReadSessionIdentity',{sessionRef:q.sessionRef});const current=context(q.sessionRef);
    result={sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:await inventoryFor(q.sessionRef,q.worldRef),selection:current.activeWorldRef===null?{status:'UNBOUND',...identity(q.sessionRef)}:{status:'BOUND',connectionRef:current.localContext.connectionRef,context:current}};
@@ -54,8 +54,8 @@ export function createSessionWorldFixture({resolveAdapter}) {
    const current=context(q.sessionRef);if(current.activeWorldRef!==q.worldRef||!same(current.localContext,q.localContext))fail('CURRENT_WORLD_MISMATCH');
    result={worldRef:q.worldRef,registryRevision:'fixture-empty-registry:1',objects:[]};
   }else fail('UNSUPPORTED_OPERATION');
-  return wrap('canvas/v7',name,q,result);
- }catch(e){return error('canvas/v7',name,q,e);}}};
+  return wrap('canvas/v6',name,q,result);
+ }catch(e){return error('canvas/v6',name,q,e);}}};
  return {canvas,workshop,directory,
   // Fixture Canvas-owned precondition only; not a new public SDK operation or Adapter authority.
   precondition:ref=>context(ref).selectionRevision,

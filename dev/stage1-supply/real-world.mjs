@@ -141,8 +141,8 @@ export async function openRealWorld({ runRoot, game, worldedit, log = () => {} }
   await adapterFiber.await();
   const canvasFiber = ctx.plugin({ name: 'hanaworlds-canvas', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
     if (name !== 'ReadWorldSelectionContext') throw Error('FIXTURE_CANVAS_ONLY_READS_SELECTION');
-    C.validateBoundRequest('canvas/v7', name, r);
-    return C.validateBoundResponse('canvas/v7', name, r, { contractVersion: 'canvas/v7', requestId: r.requestId, error: null, result: {
+    C.validateBoundRequest('canvas/v6', name, r);
+    return C.validateBoundResponse('canvas/v6', name, r, { contractVersion: 'canvas/v6', requestId: r.requestId, error: null, result: {
       sessionRef: r.sessionRef, worldRef: r.worldRef, inventory: { capabilityRevision: 'fixture-inventory-1', connections: [] },
       selection: { status: 'BOUND', connectionRef: localContext.connectionRef, context: { currentSession: r.sessionRef, activeWorldRef: localContext.worldRef,
         orderedSelectedObjectRefs: [], sessionRevision: 'fixture-session-1', selectionRevision: localContext.selectionRevision, localContext } } } });

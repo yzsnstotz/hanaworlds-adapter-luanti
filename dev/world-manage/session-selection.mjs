@@ -12,15 +12,15 @@ export function createSessionSelectionConsumer({ resolveCanvas, ensureConnection
   async function call(name, input) {
     const provider = resolveCanvas();
     if (typeof provider?.call !== 'function') fail('CAPABILITY_UNAVAILABLE');
-    const request = validateBoundRequest('canvas/v7', name, input);
-    const response = validateBoundResponse('canvas/v7', name, request, await provider.call(name, request));
+    const request = validateBoundRequest('canvas/v6', name, input);
+    const response = validateBoundResponse('canvas/v6', name, request, await provider.call(name, request));
     if (original(resolveCanvas()) !== original(provider)) fail('CURRENT_WORLD_MISMATCH');
     if (response.error) fail(response.error.code);
     if (!response.result) fail('REQUIRED_FACT_UNKNOWN');
     return response.result;
   }
   function read({ sessionRef, worldRef }) {
-    return call('ReadWorldSelectionContext', {contractVersion:'canvas/v7',requestId:randomUUID(),sessionRef,worldRef});
+    return call('ReadWorldSelectionContext', {contractVersion:'canvas/v6',requestId:randomUUID(),sessionRef,worldRef});
   }
   return {
     read: input => serial(() => read(input)),
@@ -28,7 +28,7 @@ export function createSessionSelectionConsumer({ resolveCanvas, ensureConnection
       const {sessionRef,worldRef,expectedRevision}=input;
       const before=await read({sessionRef,worldRef});
       if(before.selection.status!=='BOUND'||before.selection.context.activeWorldRef!==worldRef)fail('CURRENT_WORLD_MISMATCH');
-      const context=await call('UnselectWorldConnection',{contractVersion:'canvas/v7',requestId:randomUUID(),sessionRef,worldRef,expectedRevision,expectedContext:before.selection.context.localContext});
+      const context=await call('UnselectWorldConnection',{contractVersion:'canvas/v6',requestId:randomUUID(),sessionRef,worldRef,expectedRevision,expectedContext:before.selection.context.localContext});
       if(context.activeWorldRef!==null||context.localContext!==null)fail('CURRENT_WORLD_MISMATCH');
       const after=await read({sessionRef,worldRef});if(after.selection.status!=='UNBOUND')fail('CURRENT_WORLD_MISMATCH');
       return context;
@@ -41,7 +41,7 @@ export function createSessionSelectionConsumer({ resolveCanvas, ensureConnection
       if (connection.worldRef !== worldRef || connection.connectionRef !== connectionRef) fail('CURRENT_WORLD_MISMATCH');
       const previous = before.selection.status === 'BOUND' ? before.selection.context : null;
       const expectedContext = previous?.localContext ?? null;
-      const base = {contractVersion:'canvas/v7',requestId:randomUUID(),sessionRef,expectedRevision,expectedContext};
+      const base = {contractVersion:'canvas/v6',requestId:randomUUID(),sessionRef,expectedRevision,expectedContext};
       const switched = previous && previous.activeWorldRef !== worldRef;
       if (previous && !previous.activeWorldRef) fail('CURRENT_WORLD_MISMATCH');
       const context = switched

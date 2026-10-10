@@ -1,7 +1,7 @@
 import type { InspectWorldRequest, OperationMap, Ref, Revision } from 'hanaworlds-contracts';
 export type CanvasReadOperation = 'ReadWorldSelectionContext' | 'ListObjects';
 export interface CanvasReadPort {
- call<N extends CanvasReadOperation>(name: N, input: OperationMap['canvas/v7'][N]['request']): Promise<OperationMap['canvas/v7'][N]['response']>;
+ call<N extends CanvasReadOperation>(name: N, input: OperationMap['canvas/v6'][N]['request']): Promise<OperationMap['canvas/v6'][N]['response']>;
 }
 export interface WorldRevisionOracle { read(worldRef: Ref): Promise<Revision>; }
 export interface InspectionContextOptions {

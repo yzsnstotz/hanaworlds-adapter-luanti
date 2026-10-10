@@ -3,12 +3,12 @@ import test from 'node:test';
 import * as C from '#contracts';
 const mod=await import('../src/world-retirement.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
 function fixture({sessions=[],reserveFailure=false}={}) {
- const calls=[];const provider={async call(name,q){C.validateBoundRequest('canvas/v7',name,q);calls.push({name,q});
+ const calls=[];const provider={async call(name,q){C.validateBoundRequest('canvas/v6',name,q);calls.push({name,q});
  if(name==='ReserveWorldRetirement'&&reserveFailure)throw Error('STALE_REVISION');
  const result=name==='ListWorldSelections'?{worldRef:q.worldRef,inventoryRevision:'inventory:1',sessionRefs:sessions,retirementReservationRef:null}:
  name==='ReserveWorldRetirement'?{worldRef:q.worldRef,reservationRef:'reservation:1',inventoryRevision:q.expectedInventoryRevision}:
  {worldRef:q.worldRef,reservationRef:q.reservationRef,outcome:q.outcome,inventoryRevision:'inventory:3'};
- return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result,error:null});}};
+ return C.validateBoundResponse('canvas/v6',name,q,{contractVersion:'canvas/v6',requestId:q.requestId,result,error:null});}};
  assert.ok(mod,'retirement consumer is missing');return {provider,calls,run:remove=>mod.withWorldRetirement(()=>provider,'world:A',remove)};
 }
 test('any Canvas Session binding blocks Adapter removal before reservation',async()=>{const f=fixture({sessions:['S2']});let removed=false;await assert.rejects(f.run(async()=>{removed=true;}),/TRANSACTION_CONFLICT/);assert.equal(removed,false);assert.deepEqual(f.calls.map(c=>c.name),['ListWorldSelections']);});

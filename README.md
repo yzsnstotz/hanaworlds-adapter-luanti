@@ -565,6 +565,7 @@ pass through unchanged. Ordinary write failures with verified rollback carry the
 existing ReceiptProjection.error (mutationState ROLLED_BACK), while zero-write guard refusals keep
 the contract-defined NONE shape. No contract schema or wire identifier changed.
 
-## Contracts 2.0.0 candidate alignment (Adapter 0.14.0)
 
-This package consumes the contract-source git range `^2.0.0-rc.1`. Its Canvas client calls and receipt projections use `canvas/v7`; `world-adapter/v7` and `world-adapter-region/v2` remain unchanged. This is protocol and dependency alignment only: no confirmed-placement business is added to the Adapter and the Lua payload remains 0.10.2. New package consumption requires a fresh normal provision/pair and current facts; protected accepted instances are not upgraded. Engine facts and guards are unchanged.
+## Contracts 1.x compatibility (Adapter 0.14.1)
+
+This package restores the public contract-source range `^1.0.0`, Canvas `canvas/v6`, and development Session fixture `session/v4`. The withdrawn 0.14.0 major alignment added no Adapter business behavior. NativeFacts air/glass supply, public rollback causes, and History transport are retained; the Lua payload remains byte-identical at 0.10.2. Existing worlds and protected instances are not upgraded. A later compatible 1.1 contract does not require Adapter business adaptation.
