@@ -1,3 +1,16 @@
+# adapter-10 material presentation (2026-10-11)
+
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · unchanged D-7 runtime; native strip_escapes cleans externally supplied labels. API checked against doc/lua_api.md at this tag; no engine code copied or bundled.
+- VoxeLibre · existing 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · unchanged D-8 game base. The runtime regression uses an original labelled fixture game, not VoxeLibre.
+- hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · unchanged published C-world-facts presentation, schemas, examples and validators.
+- pngjs · 7.0.0 · MIT · https://github.com/pngjs/pngjs · unchanged PNG decoder and generated test texture.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged canonical JSON dependency.
+- Node.js · 24.13.1 · MIT with bundled notices · https://nodejs.org/dist/v24.13.1/ · existing runtime/test runner.
+- Lua · 5.5.1 · MIT · https://www.lua.org/ · existing payload fixture and syntax checks.
+
+No new dependency or changed base usage. Projection, label filtering and tests
+are original MIT Adapter code. WorldEdit is not used by this card's runtime gate.
+
 # adapter-09 StateProfile readback / restore (2026-10-11)
 
 - hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · unchanged published world-adapter/v8 schemas, validators and StateProfile rules. Installed LICENSE/NOTICE retained.

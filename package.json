@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -102,7 +102,7 @@
     "test:region": "node --test test/local-region-io.test.mjs",
     "test:flat": "node --test test/local-flat-world.test.mjs test/local-worlds-v2-examples.test.mjs test/local-world-source.test.mjs",
     "test:source": "node --test test/local-world-source.test.mjs test/local-worlds-v2-examples.test.mjs",
-    "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs",
+    "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs test/world-source-facts.test.mjs",
     "test:switch": "node --test test/local-world-switch.test.mjs",
     "test:delete": "node --test test/local-world-delete.test.mjs",
     "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs test/contracts-v2-runtime.test.mjs && lua test/contracts-v2-state.lua",

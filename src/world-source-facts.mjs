@@ -1,9 +1,9 @@
 import { canonicalJSON, digestValue, validateType, validateCatalogueFacts,
-  validateMaterialSourceFacts, validateEngineFacts, validateWriteProfile,
+  validateEngineFacts, validateWriteProfile,
   validateWorldSourceCapabilities, ContractError } from '#contracts';
 import { WORLD_GEOMETRY } from './world-vocabulary.mjs';
 import { engineGuardDeclaration } from './safety-capabilities.mjs';
-import { resolveMaterialSources, textureColor } from './material-sources.mjs';
+import { resolveMaterialSources, materialSourceFacts } from './material-sources.mjs';
 import { createHash } from 'node:crypto';
 const digest = (kind, value) => digestValue(kind, value).sha256;
 const opaqueRevision = value => createHash('sha256').update(canonicalJSON(value)).digest('hex');
@@ -61,26 +61,15 @@ export async function readWorldSourceFact(operation,row) {
   if(operation==='ReadCatalogue'||operation==='ReadMaterialSources') {
     const metadata=await engine.materialMetadata();
     if(canonicalJSON(metadata.catalogue)!==canonicalJSON(before))refuse('CURRENT_WORLD_MISMATCH');
-    const presentation=structuredClone(engine.vocabulary.presentation);
     const sources=await resolveMaterialSources(metadata,connection);
-    const textures=new Map(sources.textures.map(t=>[t.bytesDigest,t.bytes]));
-    for(const row of sources.snapshot.materials)if(row.texture) {
-      const color=textureColor({mediaType:row.texture.mediaType,bytes:textures.get(row.texture.bytesDigest)});
-      if(color!==null)presentation[row.materialRef].color=color;
-    }
+    const materialFacts=materialSourceFacts(sources,engine.vocabulary.presentation,before,connection);
+    const presentation=materialFacts.presentation;
     if(operation==='ReadCatalogue') {
       const orientations=[...new Set(Object.values(before.materials).flatMap(m=>m.orientations??[]))].sort((a,b)=>a-b);
       out=validateCatalogueFacts({profileVersion:'catalogue-facts/v1',connection,catalogue:before,catalogueDigest,
         presentation,orientationIndex:orientations.map(orientation=>({orientation,quarterTurnsAboutUp:null,upsideDown:null}))},connection);
     } else {
-      // Wire consumers see opaque asset identities, not engine media/mod names.
-      const {sourceRevision,...projection}=sources.snapshot;
-      const snapshot={...projection,materials:projection.materials.map(m=>({...m,texture:m.texture?{...m.texture,
-        textureName:`asset:${m.texture.bytesDigest}`,sourceRef:`source:${opaqueRevision(m.texture.sourceRef)}`}:null}))};
-      const refs=new Set(snapshot.materials.map(m=>m.materialRef));
-      out=validateMaterialSourceFacts({profileVersion:'material-source-facts/v1',
-        snapshot:{...snapshot,sourceRevision:digest('material-sources',snapshot)},
-        presentation:Object.fromEntries(Object.entries(presentation).filter(([ref])=>refs.has(ref)))},before,connection);
+      out=materialFacts;
     }
     const confirmed=await engine.materialMetadata();
     if(canonicalJSON(confirmed)!==canonicalJSON(metadata))refuse('CURRENT_WORLD_MISMATCH');

@@ -60,7 +60,17 @@ test('five named reads bind neutral vocabulary, presentation, configuration and 
   const sources=(await f.read('ReadMaterialSources')).result;
   C.validateMaterialSourceFacts(sources,catalogue.catalogue,f.connection);
   assert.ok(sources.snapshot.materials.some(m=>m.availability==='KNOWN'));
+  assert.deepEqual(Object.keys(sources.presentation).sort(),sources.snapshot.materials.map(m=>m.materialRef).sort());
+  assert.deepEqual(plain(sources.presentation),plain(catalogue.presentation));
+  const known=sources.snapshot.materials.find(m=>m.availability==='KNOWN');
+  assert.deepEqual(plain(sources.presentation[known.materialRef]),{displayName:'Fixture material',color:'#ff0000'});
+  for(const m of sources.snapshot.materials) {
+    assert.ok(Object.hasOwn(sources.presentation[m.materialRef],'displayName'));
+    assert.ok(Object.hasOwn(sources.presentation[m.materialRef],'color'));
+    if(m.texture)assert.match(m.texture.textureName,/^asset:[a-f0-9]{64}$/);
+  }
   assert.equal(JSON.stringify(sources).includes('fx:'),false);
+  assert.equal(JSON.stringify(sources).includes('fixture.png'),false);
   const engine=(await f.read('ReadEngineFacts')).result;
   C.validateEngineFacts(engine,f.connection);
   assert.deepEqual(plain(engine.engineBounds),{min:[-31000,-31000,-31000],max:[31000,31000,31000]});

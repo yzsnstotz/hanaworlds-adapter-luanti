@@ -1,4 +1,4 @@
-# World source facts (adapter 0.18.0)
+# World source facts (adapter 0.18.2)
 
 The Luanti adapter provides `world-facts/v1` through
 `hanaworldsWorldSourceFacts.call(operation, request)` and the returned
@@ -21,6 +21,18 @@ is checked before and after the read; asset reads also recheck metadata and byte
 and write/engine/capability reads recheck the payload declaration and engine limits.
 Currency/decode refusals retain the published common errors. Nothing starts,
 provisions, selects or writes a world. Unknown facts never become defaults.
+
+`ReadMaterialSources.presentation[materialRef]` always contains `displayName`
+and `color`, including for UNKNOWN texture sources. Names come from loaded node
+descriptions, with Luanti escape markup removed by its native `strip_escapes` API;
+blank text and registered node identifiers are unknown (`null`). No engine node
+name is substituted as a label. Colours come from a verified simple PNG's
+alpha-weighted sRGB pixels, or the declared six-digit sRGB node colour when the
+texture is unsupported/unreadable. Unavailable colours remain `null`.
+The named source snapshot uses `asset:<digest>` and `source:<digest>` identities;
+native texture/mod names and byte blobs remain inside the source's byte port.
+`ReadCatalogue` uses the same presentation projection. Published examples and
+the minimal mock retain one nullable presentation entry for every material ref.
 
 The StateProfile derives `lighting` from readback, preserves no state field and
 clears `inventory`, `metadata` and `timer` on normal writes. Undo/restore retains
@@ -59,7 +71,7 @@ permits that form; new consumers use WriteProfile/WorldSourceCapabilities.
 Neutral service names are `hanaworldsWorldSourceFacts`, `hanaworldsLocalWorlds`
 and `hanaworldsInspectionContext`. The old Luanti facts/local-worlds names remain
 exact aliases for this transition minor; inspection resolves the neutral name first.
-Payload version 0.11.0 adds fact_world_source. Older loaded payloads must be
+Payload version 0.12.1 includes clean external material labels. Older loaded payloads must be
 re-provisioned through the existing lifecycle path, not silently upgraded here.
 
 `hanaworlds-adapter-luanti/world-source-facts-mock` exports

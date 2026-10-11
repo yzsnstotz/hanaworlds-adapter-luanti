@@ -2,7 +2,11 @@
 -- The stub mimics Luanti registered_nodes after builtin defaults were applied.
 local facts = dofile('payload/hanaworlds_adapter/facts.lua')
 local function json(v)
-  if type(v) == 'string' then return '"' .. v:gsub('\\', '\\\\'):gsub('"', '\\"') .. '"' end
+  if type(v) == 'string' then return '"' .. v:gsub('[%z\1-\31\\"]', function(c)
+    if c == '\\' then return '\\\\' end
+    if c == '"' then return '\\"' end
+    return string.format('\\u%04x', c:byte())
+  end) .. '"' end
   if type(v) == 'number' or type(v) == 'boolean' then return tostring(v) end
   return 'null'
 end
@@ -57,6 +61,20 @@ local core = {
   write_json = json,
 }
 local mode = arg and arg[1]
+if mode == 'presentation' or mode == 'presentation-no-strip' then
+  nodes['fx:plain'].description = 'fx:plain'
+  nodes['fx:six'].description = 'Uses fx:plain'
+  nodes['fx:facedir'].description = '\27(T@fx_domain) Stone \27E\27(c@#ffffff)'
+  nodes['fx:facedir'].color = '#ABCDEF'
+  nodes['fx:faces'].description = ' \n '
+  nodes['fx:placed'].description = 'Placed stone'
+  if mode == 'presentation' then
+    core.strip_escapes = function(value)
+      assert(value == nodes['fx:facedir'].description)
+      return ' Stone '
+    end
+  end
+end
 if mode == 'collision-air-solid' then core.registered_nodes.air.walkable = true end
 if mode == 'collision-air-unknown' then core.registered_nodes.air.walkable = nil end
 if mode == 'collision-air-nonbool' then core.registered_nodes.air.walkable = 'false' end

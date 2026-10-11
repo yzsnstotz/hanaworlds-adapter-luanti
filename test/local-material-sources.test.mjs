@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { PNG } from 'pngjs';
 const root=process.env.HW_MATERIAL_PACKAGE;
 const load=p=>import(root?pathToFileURL(join(root,p)):new URL('../'+p,import.meta.url));
 const C=await import('#contracts');
 const {apply}=await load('src/index.mjs');
 const connection={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:'fixture-incarnation'};
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==','base64');
+const png=PNG.sync.write({width:1,height:1,data:Buffer.from([255,0,0,255])});
+const plain=value=>JSON.parse(JSON.stringify(value));
 const hash=b=>createHash('sha256').update(b).digest('hex');
 async function setup(run){
  const dir=await mkdtemp(join(tmpdir(),'hw-material-unit-'));
@@ -25,6 +27,31 @@ async function setup(run){
  }finally{await rm(dir,{recursive:true,force:true});}
 }
 const resolver=async()=> (await load('src/material-sources.mjs')).resolveMaterialSources;
+
+test('wire material facts attach presentation to every ref and keep native asset names private',()=>setup(async m=>{
+ const api=await load('src/material-sources.mjs');
+ assert.equal(typeof api.materialSourceFacts,'function');
+ const sources=await api.resolveMaterialSources(m,connection);
+ const result=api.materialSourceFacts(sources,{'native:stone':{displayName:'Stone',color:null}},m.catalogue,connection);
+ assert.deepEqual(plain(result.presentation['native:stone']),{displayName:'Stone',color:'#ff0000'});
+ assert.match(result.snapshot.materials[0].texture.textureName,/^asset:[a-f0-9]{64}$/);
+ assert.match(result.snapshot.materials[0].texture.sourceRef,/^source:[a-f0-9]{64}$/);
+ assert.equal(JSON.stringify(result).includes('native.png'),false);
+ assert.equal(JSON.stringify(result).includes('mod:native'),false);
+ assert.equal(Object.hasOwn(result,'textures'),false);
+ C.validateMaterialSourceFacts(result,m.catalogue,connection);
+}));
+test('unknown textures keep declared colour, missing presentation stays explicit null',()=>setup(async m=>{
+ const api=await load('src/material-sources.mjs');
+ assert.equal(typeof api.materialSourceFacts,'function');
+ m.appearance['native:stone'].supported=false;
+ const sources=await api.resolveMaterialSources(m,connection);
+ const declared={'native:stone':{displayName:'Stone',color:'#123456'}};
+ assert.deepEqual(plain(api.materialSourceFacts(sources,declared,m.catalogue,connection).presentation),declared);
+ assert.deepEqual(plain(api.materialSourceFacts(sources,{},m.catalogue,connection).presentation),
+  {'native:stone':{displayName:null,color:null}});
+ assert.deepEqual(declared,{'native:stone':{displayName:'Stone',color:'#123456'}});
+}));
 
 test('public readonly supplier exists and rejects unbound, invalid and closed worlds',async()=>{
  const services=new Map();const instance=apply({get(){},effect(f){f();},provide(n,v){services.set(n,v);},webServer:{register(){return()=>{};}}});
