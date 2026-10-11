@@ -79,6 +79,10 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       if type(facts) ~= 'table' or type(facts.write_backend) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
       else result, code = facts.write_backend(minetest, engine_module.WRITE_BACKEND, engine_module.native_writer) end
+    elseif command.operation == 'fact_world_source' then
+      if type(facts) ~= 'table' or type(facts.source_declaration) ~= 'function' then
+        code = 'CAPABILITY_UNAVAILABLE'
+      else result, code = facts.source_declaration(minetest, engine_module.WRITE_BACKEND, engine_module.native_writer) end
     elseif command.operation == 'fact_worldedit_runtime' then
       if type(facts) ~= 'table' or type(facts.worldedit_runtime) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'

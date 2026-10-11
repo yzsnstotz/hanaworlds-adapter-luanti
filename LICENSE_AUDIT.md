@@ -1,3 +1,13 @@
+# adapter-08 world source facts (2026-10-11)
+
+- hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · unchanged published world-facts/v1 and world-adapter/v8 minor 1 schemas, validators and fixture examples. Installed LICENSE/NOTICE retained.
+- pngjs · 7.0.0 · MIT · https://github.com/pngjs/pngjs · PNG decoding for source-owned representative colours. Exact npm version/integrity in package-lock.json; installed LICENSE retained; no transitive dependencies.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · unchanged D-7 runtime; loaded node definitions, native writer and region capabilities, no engine source bundled.
+- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · unchanged D-8 runtime content; mcl_playerplus body declarations inspected for the source's fixed planning envelope, no game source/media copied.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged deterministic JSON.
+- Node.js · 24.13.1 · MIT with bundled notices · https://nodejs.org/dist/v24.13.1/ · existing runtime/test runner.
+- Lua · 5.5.1 · MIT · https://www.lua.org/ · existing payload fixture/syntax checks; not bundled.
+
 # adapter-07 native readiness + historical receipt record (2026-10-11)
 
 - hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · published world-adapter/v8 QueryTransaction historical receipt pair (historicalReceiptResponse / readHistoricalReceipt); peeled source 5af62be25dcab110fcbb8502183922010f078f04. Installed LICENSE/NOTICE retained.

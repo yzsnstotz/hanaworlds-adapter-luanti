@@ -27,14 +27,14 @@ export function apply(ctx, config = {}) {
   const runtime = createLocalRuntime({ ctx, homePath: get('dshHomePath'),
     resolveCanvas: () => get('hanaworldsCanvasV5'), resolveRegistry: () => get('hanaworldsCanvasFootprintRegistry'),
     resolveHistory: () => get('hanaworldsCanvasHistoryFacts'), resolveOracle: () => get('hanaworldsWorldRevisionOracle'),
-    resolveInspection: () => get('hanaworldsLuantiInspectionContext'),
+    resolveInspection: () => get('hanaworldsInspectionContext') ?? get('hanaworldsLuantiInspectionContext'),
     inspectConnection: ref => local.inspectConnection(ref) });
   local = createLocalWorldPort({ roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
     creationRoot: config.localCreationRoot, gameId: config.localGameId,
     resolveControl: () => get('hanaworldsNativeEngineControl'), resolveCanvas: () => get('hanaworldsCanvasV5'), runtime });
   let unregister, closing;
   const service = {
-    worldAdapter: runtime.port, localWorlds: local.port,
+    worldAdapter: runtime.port, worldFacts: runtime.worldFacts, localWorlds: local.port,
     close() {
       const remove = unregister; unregister = undefined; remove?.();
       return closing ??= (async () => { await local.close(); await runtime.close(); })().catch(error => { closing = undefined; throw error; });
@@ -45,11 +45,14 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => () => service.close());
   ctx.provide('hanaworldsWorldAdapterV6', runtime.port);
   ctx.provide('hanaworldsLuantiLocalWorlds', local.port);
+  ctx.provide('hanaworldsLocalWorlds', local.port);
   ctx.provide('hanaworldsWorldAdapterRegionV1', runtime.regionIO);
   // Every failure leaving this service is a contract ContractError (publicError), never a bare Error.
   const facts = Object.fromEntries(['readScopedState', 'readCatalogue', 'readWritePathEvidence', 'readRegionState',
     'readMaterialSources', 'readConfigEngineFacts', 'readWorldEditFacts', 'readStage1FactLedger']
     .map(name => [name, publicFailures(runtime[name])]));
+  Object.assign(facts,runtime.worldFacts);
+  ctx.provide('hanaworldsWorldSourceFacts', facts);
   ctx.provide('hanaworldsLuantiNativeFacts', facts);
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');

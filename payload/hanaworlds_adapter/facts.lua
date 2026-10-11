@@ -147,6 +147,8 @@ local function catalogue(core)
       if not has_init and not has_state then persistent = false end
     end
     local known = {
+      displayName = type(def.description) == 'string' and def.description ~= '' and def.description or nil,
+      color = type(def.color) == 'string' and def.color:match('^#%x%x%x%x%x%x$') and def.color:lower() or nil,
       walkable = def.walkable,
       liquidType = ({none = 'none', source = 'source', flowing = 'flowing'})[def.liquidtype],
       damagePerSecond = type(def.damage_per_second) == 'number'
@@ -160,7 +162,7 @@ local function catalogue(core)
       hasPersistentState = persistent,
     }
     local allowed = legal_param2(def)
-    local fields = {'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
+    local fields = {'displayName', 'color', 'walkable', 'collisionBoxes', 'liquidType', 'damagePerSecond',
       'lightSource', 'param2Type', 'allowedParam2', 'hasCallbacks', 'hasPersistentState',
       'definitionRevision'}
     -- Effective node collision set: Luanti 5.17 collision.cpp skips every known
@@ -174,6 +176,7 @@ local function catalogue(core)
     if collision_json == 'null' then unknown[#unknown + 1] = 'collisionBoxes' end
     if allowed == nil then unknown[#unknown + 1] = 'allowedParam2' end
     local scalar = {}
+    scalar[#scalar + 1] = 'presentation=' .. json({displayName = known.displayName, color = known.color})
     if type(known.walkable) ~= 'boolean' then known.walkable = nil end
     for _, field in ipairs({'walkable', 'liquidType', 'damagePerSecond', 'lightSource',
       'param2Type', 'hasCallbacks', 'hasPersistentState'}) do
@@ -328,6 +331,34 @@ function M.write_backend(core, declaration, native_writer)
   local bound = type(native_writer) == 'function' and native_writer() == true
   local ready = bound and available(core, 'fix_light') and available(core, 'get_node_light')
   return {writeBackend = {profileId = declaration.backendProfileId, revision = declaration.revision}, ready = ready}
+end
+
+-- Source-owned planning envelope for D-8 VoxeLibre, not a live collision box.
+-- mcl_playerplus normal/sneaking/riding/swimming/elytra bodies fit within a
+-- 1 x 2 x 1 grid envelope. Actual bodies (including modded ones) are checked
+-- inside write guards. Other games receive no implicit dimensions.
+function M.source_declaration(core, declaration, native_writer)
+  local out, code = M.write_backend(core, declaration, native_writer)
+  if not out then return nil, code end
+  out.writeMethods = {}
+  if out.ready then
+    out.writeMethods[1] = 'PER_CELL'
+    if available(core, 'get_voxel_manip') and available(core, 'emerge_area')
+      and available(core, 'find_nodes_with_meta') then out.writeMethods[2] = 'REGION' end
+  end
+  out.avatarEnvelope = {availability = 'UNAVAILABLE', reason = 'NO_PUBLIC_SOURCE'}
+  local info = available(core, 'get_game_info') and core.get_game_info() or nil
+  local mods = available(core, 'get_modnames') and core.get_modnames() or nil
+  if type(info) == 'table' and (info.id == 'mineclone2' or info.id == 'voxelibre') and type(mods) == 'table' then
+    for _, mod in ipairs(mods) do
+      if mod == 'mcl_playerplus' then
+        out.avatarEnvelope = {availability = 'KNOWN', basis = 'WORLD_SOURCE_DECLARATION',
+          size = {width = 1, height = 2, depth = 1}}
+        break
+      end
+    end
+  end
+  return out
 end
 
 -- What the running engine actually loaded for WorldEdit: the mod name in the
