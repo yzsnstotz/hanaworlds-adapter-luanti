@@ -1,3 +1,9 @@
+Current package verification tool: pnpm 11.28.5, MIT, https://github.com/pnpm/pnpm;
+development-only, exact registry identity/integrity in package-lock.json. Used to
+verify normal strict production installation of real Adapter tgz artifacts.
+The generated runtime is dist/runtime/contracts.mjs; provenance and retained
+MIT SDK notices are recorded in dist/runtime-build.json and dist/contracts-*.
+
 # principles section 5 packaging correction (2026-10-11)
 
 - hanaworlds-contracts · 2.13.0 · MIT · published Git tag v2.13.0 / f8baf189099b517cacfe8a0b385d140932923b17 · development API/fixture/type input; SDK runtime compiled locally by the plugin build. Embedded upstream LICENSE/NOTICE retained.

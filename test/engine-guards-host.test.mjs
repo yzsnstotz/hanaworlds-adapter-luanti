@@ -11,6 +11,7 @@ import { ENGINE_GUARDS, ENGINE_GUARD_DECLARATION, engineGuardDeclaration, refusa
 import { protocolHandshake, worldAdapterProtocolHandshake } from '../src/region-io.mjs';
 import { LocalRecords } from '../src/local-records.mjs';
 import { LocalTransactions } from '../src/local-transactions.mjs';
+import { STATE_PROFILE, GEOMETRY_PROFILE } from '../src/world-vocabulary.mjs';
 import { PAYLOAD_VERSION } from '../src/version.mjs';
 
 const manifest = { worldRef: 'local:w', payloadDigest: 'p'.repeat(64) };
@@ -95,8 +96,8 @@ test('rc.3 engineGuards: declared per guard and stage exactly as the payload run
   // rc.1 capability ids are gone from both handshakes; protocol majors follow rc.2/rc.3.
   for (const h of [worldAdapterProtocolHandshake, protocolHandshake])
     assert.ok(!h.capabilities.some(c => /body|protection|enclosure/.test(c)));
-  assert.equal(JSON.stringify(worldAdapterProtocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter', major: 7, minor: 0 }]));
-  assert.equal(JSON.stringify(protocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter-region', major: 2, minor: 0 }]));
+  assert.equal(JSON.stringify(worldAdapterProtocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter', major: 8, minor: 1 }]));
+  assert.equal(JSON.stringify(protocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter-region', major: 3, minor: 0 }]));
 });
 
 test('guard refusals are public GuardRefusal plus the exact contract error; undeclared stages claim nothing', () => {
@@ -143,10 +144,9 @@ test('receipts: RESTORE_FAILED keeps both causes (applyFailure), a guard-refused
       assert.equal(receipt.applyFailure.guardRefusal?.finding ?? null, failure.failureDetail ?? null);
       assert.equal(receipt.guardRefusal?.stage ?? null, restore ? 'RESTORE' : null);
     }
-    const stateProfile = { profileVersion: 'state-profile/v2', nodeFields: ['nodeName', 'param1', 'param2'], metadataMode: 'exact',
-      inventoryMode: 'exact', timerMode: 'exact', derivedLightMode: 'recompute-with-readback' };
+    const stateProfile = STATE_PROFILE;
     const after = { worldRef: manifest.worldRef, coveredPositions: [[0, 1, 0]], stateProfile, records: [{ position: [0, 1, 0],
-      nodeName: 'air', param1: 0, param2: 0, metadata: {}, inventory: {}, timer: null }] };
+      geometryProfile: GEOMETRY_PROFILE, materialRef: 'fixture:empty', orientation: 0, state: {} }] };
     const rolled = tx.receipt({ ...base, status: 'ROLLED_BACK', failureCode: 'SAFETY_INVARIANT_FAILED', failureStage: 'APPLY_COMPILED',
       failureDetail: 'PROTECTED_CELL', after: { ...after, worldRevision: 'scope-state:y' } });
     assert.equal(JSON.stringify(rolled.guardRefusal), JSON.stringify({ guard: 'CELL_PROTECTION', stage: 'APPLY_COMPILED', finding: 'PROTECTED_CELL' }));
@@ -159,7 +159,7 @@ test('receipts: RESTORE_FAILED keeps both causes (applyFailure), a guard-refused
   const ctx = {connectionRef:'c', connectionIncarnationRef:'i', worldRef:manifest.worldRef, selectionRevision:'s'};
   const tx = new LocalTransactions({});
   const r = tx.receipt({transactionId:'t', operationDigest:'1'.repeat(64),transactionPayloadDigest:'2'.repeat(64),
-    before:{worldRevision:'before'},after:{worldRef:manifest.worldRef,worldRevision:'restored',coveredPositions:[],records:[],stateProfile:{profileVersion:'state-profile/v2',nodeFields:['nodeName','param1','param2'],metadataMode:'exact',inventoryMode:'exact',timerMode:'exact',derivedLightMode:'recompute-with-readback'}},
+    before:{worldRevision:'before'},after:{worldRef:manifest.worldRef,worldRevision:'restored',coveredPositions:[],records:[],stateProfile:STATE_PROFILE},
     request:{localContext:ctx},status:'ROLLED_BACK',failureCode:'READBACK_MISMATCH'});
   assert.equal(r.error?.code, 'READBACK_MISMATCH'); assert.equal(r.error.mutationState, 'ROLLED_BACK');
   assert.equal(r.error.reason, 'READBACK_ERROR'); assert.equal(r.guardRefusal, null);

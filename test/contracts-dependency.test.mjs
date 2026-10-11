@@ -44,3 +44,12 @@ test('verification refuses contracts in production dependencies', () => {
  const r = verify(edit('package.json', v => { v.dependencies['hanaworlds-contracts'] = v.devDependencies['hanaworlds-contracts']; }));
  assert.equal(r.exit, 1); assert.ok(r.problems.includes('contracts must be development-only'));
 });
+
+test('tag verification refuses another valid repository SHA', () => {
+ const r=verify(edit('package-lock.json', v=>{v.packages['node_modules/hanaworlds-contracts'].resolved='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#'+'0'.repeat(40);}));
+ assert.equal(r.exit,1);assert.ok(r.problems.includes('locked source differs from the verified published tag'));
+});
+test('tag verification refuses altered installed schema content', () => {
+ const r=verify(dir=>{const p=join(dir,'node_modules/hanaworlds-contracts/schemas/local/contracts.schema.json');writeFileSync(p,readFileSync(p,'utf8')+'\n');});
+ assert.equal(r.exit,1);assert.ok(r.problems.some(p=>p.startsWith('tagged source content mismatch:')));
+});

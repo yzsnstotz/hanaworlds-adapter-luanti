@@ -51,16 +51,28 @@ one real read. Owner worlds need the App Host's public connection supply.
 
 ## Development API and production package
 
-hanaworlds-contracts is an exact-tag devDependency. A supported Node 24 development
-install runs prepare to compile its SDK into dist/contracts.mjs and emit local public
-declarations; npm run build and npm pack also regenerate these outputs. Production
-packages contain the outputs and required MIT attribution, resolve #contracts locally,
-and install/run without the contract package, esbuild or TypeScript. Existing public
-export paths and protocol identities remain unchanged. Build provenance and file
-digests are recorded in dist/contracts-build.json.
+hanaworlds-contracts is an exact-tag devDependency. Supported Node 24 installs and
+normal builds generate the Adapter's public runtime modules under dist/runtime;
+private #contracts imports in development sources are lowered to local relative
+artifact imports. A selected SDK value module is compiled from the pinned tag,
+with declaration files and required MIT attribution copied from that same supply.
+The production tar contains no SDK package, repository or development build tools.
+Public export paths, neutral protocols and native payload behavior remain unchanged.
+The #contracts mapping is a local development alias; production artifacts do not load it.
+Source tag/SHA, verified input digests and output digests are in dist/runtime-build.json.
 
-The original npm test gate also installs an actual tar offline with --omit=dev and
---ignore-scripts, imports every public runtime export, exercises fixture exchanges
-and the real Adapter factory, and compiles a consumer of every public declaration.
-The test denies external contract imports; its temporary consumer is SOURCE/PACKAGE
-evidence, not a product Host or UI acceptance.
+npm run test:package-boundary is included in npm test, build and normal prepack.
+It examines a real normal npm pack tgz and all public entries, reachable code,
+package imports, declarations and packaged resources. It rejects corrupt manifests,
+external SDK loads, computed module loads, external development-resource reads,
+missing local resources and changed generated values. Its internal normal pack
+still rebuilds artifacts; only recursion into a second copy of the same gate is omitted.
+
+The gate installs that tgz using pnpm 11.28.5 with default strict production policy,
+a fresh consumer/config directory and no development SDK. It loads all public
+runtime/fixture exports, reads actual owned local-world files and the native payload,
+consumes protocol errors across separate SDK implementations and verifies public
+declarations with development TypeScript. Missing bundles fail real Node loading;
+exotic subdependencies and unreviewed builds fail real strict installation.
+This is SOURCE/BUILD/PACKAGE evidence. Official Host/Client, Luanti execution, UI and
+owner acceptance remain separate product gates.

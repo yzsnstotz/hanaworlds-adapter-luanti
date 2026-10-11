@@ -13,50 +13,34 @@
     "node": ">=24.13.1 <25"
   },
   "exports": {
-    ".": "./src/index.mjs",
+    ".": "./dist/runtime/index.mjs",
     "./host": {
       "types": "./src/host.d.ts",
-      "import": "./src/host.mjs"
+      "import": "./dist/runtime/host.mjs"
     },
     "./inspection-context": {
       "types": "./src/inspection-context.d.ts",
-      "import": "./src/inspection-context.mjs"
+      "import": "./dist/runtime/inspection-context.mjs"
     },
     "./local-worlds-v2-mock": {
       "types": "./src/local-worlds-v2-mock.d.ts",
-      "import": "./src/local-worlds-v2-mock.mjs"
+      "import": "./dist/runtime/local-worlds-v2-mock.mjs"
     },
     "./source-locator": {
       "types": "./src/source-locator.d.ts",
-      "import": "./src/source-locator.mjs"
+      "import": "./dist/runtime/source-locator.mjs"
     },
     "./fixtures/local-world-source.json": "./fixtures/local-world-source.json",
     "./world-source-facts-mock": {
       "types": "./src/world-source-facts-mock.d.ts",
-      "import": "./src/world-source-facts-mock.mjs"
+      "import": "./dist/runtime/world-source-facts-mock.mjs"
     },
     "./fixtures/world-source-facts.json": "./fixtures/world-source-facts.json"
   },
   "imports": {
-    "#contracts": "./dist/contracts.mjs"
+    "#contracts": "./dist/runtime/contracts.mjs"
   },
   "files": [
-    "src/index.mjs",
-    "src/version.mjs",
-    "src/local-worlds.mjs",
-    "src/local-world-port.mjs",
-    "src/local-runtime.mjs",
-    "src/local-transactions.mjs",
-    "src/local-records.mjs",
-    "src/local-courier.mjs",
-    "src/native-storage.mjs",
-    "src/material-sources.mjs",
-    "src/stage1-facts.mjs",
-    "src/safety-capabilities.mjs",
-    "src/region-io.mjs",
-    "src/region-batches.mjs",
-    "src/flat-world.mjs",
-    "src/local-world-deletion.mjs",
     "payload/hanaworlds_adapter/mod.conf",
     "payload/hanaworlds_adapter/init.lua",
     "payload/hanaworlds_adapter/engine.lua",
@@ -69,26 +53,21 @@
     "LICENSE_AUDIT.md",
     "NOTICE",
     "DEFERRED-LOCAL-WORLD.md",
-    "src/world-retirement.mjs",
-    "src/host.mjs",
     "src/host.d.ts",
-    "src/inspection-context.mjs",
     "src/inspection-context.d.ts",
-    "src/world-vocabulary.mjs",
-    "src/local-worlds-v2-mock.mjs",
     "src/local-worlds-v2-mock.d.ts",
     "fixtures/local-worlds-v2.json",
-    "src/source-locator.mjs",
     "src/source-locator.d.ts",
     "fixtures/local-world-source.json",
     "docs/source-locator.md",
-    "src/world-source-facts.mjs",
-    "src/world-source-facts-mock.mjs",
     "src/world-source-facts-mock.d.ts",
     "fixtures/world-source-facts.json",
     "docs/world-source-facts.md",
-    "src/source-startup.mjs",
-    "dist/"
+    "dist/runtime/",
+    "dist/runtime-build.json",
+    "dist/contracts-types/",
+    "dist/contracts-LICENSE",
+    "dist/contracts-NOTICE"
   ],
   "dsh": {
     "bundle": {
@@ -96,8 +75,8 @@
     }
   },
   "scripts": {
-    "build": "npm run build:contracts && node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/world-source-facts.mjs && node --check src/world-source-facts-mock.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/source-startup.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
-    "test": "node scripts/sync-public-fixtures.mjs --check && node --test test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs test/production-package.test.mjs && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua",
+    "build": "npm run build:artifacts && npm run test:package-boundary",
+    "test": "node scripts/sync-public-fixtures.mjs --check && node --test test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua && npm run test:package-boundary && npm run test:guards",
     "test:lua": "lua test/facts.lua && lua test/engine-native.lua && lua test/stage1-facts.lua && lua test/local-world-region.lua && lua test/engine-guards.lua",
     "verify:contracts": "node scripts/verify-contracts-range.mjs",
     "test:catalogue": "node --test test/local-catalogue.test.mjs",
@@ -116,10 +95,12 @@
     "test:guards": "lua test/engine-guards.lua && node --test test/engine-guards-host.test.mjs",
     "sync:fixtures": "node scripts/sync-public-fixtures.mjs",
     "build:contracts": "node scripts/build-contracts.mjs",
-    "pretest": "npm run build:contracts",
-    "pretest:contracts": "npm run build:contracts",
-    "prepack": "npm run build",
-    "prepare": "npm run build:contracts"
+    "pretest": "npm run build:contracts && node scripts/build-runtime.mjs",
+    "pretest:contracts": "npm run build:contracts && node scripts/build-runtime.mjs",
+    "prepack": "node scripts/prepack.mjs",
+    "prepare": "npm run build:contracts && node scripts/build-runtime.mjs",
+    "build:artifacts": "npm run build:contracts && node scripts/build-runtime.mjs && node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/world-source-facts.mjs && node --check src/world-source-facts-mock.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/source-startup.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "test:package-boundary": "node --test --test-concurrency=1 test/package-boundary.test.mjs test/production-package.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0",
@@ -129,6 +110,7 @@
     "@deepseek-ai/cordis": "4.0.4",
     "esbuild": "0.28.2",
     "hanaworlds-contracts": "git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "pnpm": "11.28.5"
   }
 }
