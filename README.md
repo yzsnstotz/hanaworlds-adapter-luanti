@@ -1,7 +1,7 @@
-# HanaWorlds Luanti Adapter 0.16.0 · contracts 2.5.0
+# HanaWorlds Luanti Adapter 0.17.0 · contracts 2.8.0
 
 The world source uses the exact published dependency
-`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.5.0`.
+`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.8.0`.
 The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/v8`),
 `hanaworldsWorldAdapterRegionV1` (wire `world-adapter-region/v3`), and
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
@@ -20,8 +20,21 @@ is recomputed by the engine and excluded from state comparisons.
 
 Config facts carry the loaded payload's opaque backend identity and the released
 `UNAVAILABLE/NO_PUBLIC_SOURCE` avatar fact. New named fact operations, display names/colors,
-public player envelopes and replacement of the existing WorldEdit per-cell writer belong
-to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added here.
+public player envelopes belong to later cards (adapter-08/10). Cell writes use native
+`swap_node` (adapter-06); WorldEdit is neither a dependency nor a readiness prerequisite (adapter-07).
+The payload binds the engine's own (C) `swap_node` when it loads and writes only through it
+(write backend revision `native-cell-write/2`): a game that later replaces the global — VoxeLibre
+0.92.3 `mcl_observers` wraps it, runs observer code and returns nothing — is never written through.
+If the global was already replaced before the payload loaded, the StateProfile is
+`CAPABILITY_UNAVAILABLE` with detail `NATIVE_WRITER_REPLACED_BEFORE_LOAD` (or
+`NATIVE_WRITER_MISSING` / `NATIVE_WRITER_UNVERIFIABLE`) and the write backend is not ready.
+Transaction cell reads load before reading (`core.load_area`): with no player keeping a block
+active, Luanti unloads it once its usage timer passes `server_unload_unused_data_timeout`.
+
+`QueryTransaction` answers with the durable receipt exactly as it was issued, with its stored
+receipt digest and the current request context (`currentLocalContext`, contracts 2.8.0
+historical receipt). After a server stop and reconnect the receipt keeps its written
+`connectionIncarnationRef`; it is never re-bound, and the current-context check is unchanged.
 
 `hanaworldsLuantiLocalWorlds` provides these `local-worlds/v2` operations:
 - `discover({contractVersion, requestId, worldRoot})`: neutral world inventory within
@@ -273,9 +286,8 @@ or rendered-appearance claim, no RGB values, no cache.
 
 Catalogue `hasCallbacks` / `hasPersistentState` (payload 0.6.0) follow the
 Contracts 0.5.2 scope **`write-path-init/v1`**: the declared write/restore path
-and its initialization requirements. Per-cell writes/restores use separately
-installed WorldEdit `set` / `set_param2` (VoxelManip) plus `swap_node`; region
-writes/restores use VoxelManip. These node-data paths execute no node-definition
+and its initialization requirements. Per-cell writes/restores use native
+`swap_node` (no WorldEdit, D-15); region writes/restores use VoxelManip. These node-data paths execute no node-definition
 callbacks. Full state (metadata, inventory, timers) is still read back and
 included in digests; Canvas retains transaction and Undo decisions.
 
@@ -394,8 +406,8 @@ Choices are never guessed: with no `gameId`, exactly one installed game that
 allows `flat` is used, otherwise `GAME_SELECTION_REQUIRED`/`GAME_NOT_INSTALLED`
 with `details.choices`; a game that disallows `flat` is `MAPGEN_NOT_SUPPORTED`;
 with several roots and no `root`, `WORLD_ROOT_REQUIRED` with the choices. The
-per-cell StateProfile needs WorldEdit; without it creation fails
-`PREREQUISITE_MISSING` naming the mod and where it is looked for. An existing
+per-cell StateProfile needs only native engine APIs; WorldEdit is not a creation
+prerequisite (adapter-07). An existing
 name is `WORLD_EXISTS` and is never overwritten; with no `worldName` a new
 `hanaworlds-flat-<UTC>-<hex>` name is used. On any failure the staging directory
 is removed and no world is created or selected. Existing worlds are not migrated.

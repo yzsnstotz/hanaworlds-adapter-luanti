@@ -1,6 +1,6 @@
 // SOURCE/FIXTURE: world-adapter-region/v3 host logic against an in-memory engine
 // double. Engine semantics (VoxelManip/emerge/light/metadata) are exercised only
-// by test/real-region-io.mjs against real Luanti.
+// by test/real-native-paths.mjs against real Luanti without WorldEdit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readRegion, writeRegion, protocolHandshake, RegionFault } from '../src/region-io.mjs';

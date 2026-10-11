@@ -99,6 +99,7 @@ _G.worldedit = nil
 local region_module = dofile('payload/hanaworlds_adapter/region.lua')
 local region = region_module.new({core = core})
 local voxel = dofile('payload/hanaworlds_adapter/voxel.lua')
+dofile('test/support/engine-c.lua')(core.swap_node) -- FIXTURE engine function
 local engine_module = dofile('payload/hanaworlds_adapter/engine.lua')
 local transport = dofile('payload/hanaworlds_adapter/transport.lua')
 

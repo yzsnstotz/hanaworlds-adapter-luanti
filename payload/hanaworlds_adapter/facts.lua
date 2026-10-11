@@ -4,15 +4,16 @@ local M = {}
 
 local function available(core, name) return type(core[name]) == 'function' end
 
-function M.state_profile(core, worldedit)
+-- native_writer is the payload engine's binding of the engine's own swap_node
+-- (engine.lua M.native_writer): a game-replaced global is not the native writer.
+function M.state_profile(core, native_writer)
   for _, name in ipairs({'get_node_or_nil', 'get_meta', 'get_node_timer',
     'get_node_light', 'fix_light'}) do
     if not available(core, name) then return nil, 'CAPABILITY_UNAVAILABLE' end
   end
-  if type(worldedit) ~= 'table' or type(worldedit.set) ~= 'function'
-    or type(worldedit.set_param2) ~= 'function' then
-    return nil, 'CAPABILITY_UNAVAILABLE'
-  end
+  if type(native_writer) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE', 'NATIVE_WRITER_UNKNOWN' end
+  local bound, reason = native_writer()
+  if not bound then return nil, 'CAPABILITY_UNAVAILABLE', reason end
   return {profileVersion = 'state-profile/v2',
     nodeFields = {'nodeName', 'param1', 'param2'}, metadataMode = 'exact',
     inventoryMode = 'exact', timerMode = 'exact',
@@ -70,9 +71,9 @@ local function legal_param2(def)
 end
 
 -- Catalogue hasCallbacks/hasPersistentState follow Contracts scope write-path-init/v1:
--- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (VoxelManip
--- node data via WorldEdit set/set_param2 and this payload's region writer, swap_node
--- for restores), on which the engine runs no node-definition callback. Player
+-- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (native
+-- swap_node for cell images and VoxelManip for region batches), on which the
+-- engine runs no node-definition callback. Player
 -- callbacks, ABM/LBM and other later world dynamics are out of that scope and are
 -- caught by full-state readback digests, not claimed absent.
 -- Engine-documented node-definition callback fields (Luanti 5.17 lua_api.md,
@@ -319,13 +320,13 @@ end
 -- declaration comes only from the loaded payload, never from Adapter/package
 -- identity or a default. Player bodies stay engine-only (INV-POSE-STAYS-IN-ENGINE):
 -- no collision box, size, position or yaw is produced here.
-function M.write_backend(core, declaration)
+function M.write_backend(core, declaration, native_writer)
   if type(declaration) ~= 'table' or type(declaration.backendProfileId) ~= 'string'
     or declaration.backendProfileId == '' or type(declaration.revision) ~= 'string' or declaration.revision == '' then
     return nil, 'NOT_DECLARED_BY_PAYLOAD'
   end
-  local ready = available(core, 'swap_node') and available(core, 'fix_light')
-    and available(core, 'get_node_light')
+  local bound = type(native_writer) == 'function' and native_writer() == true
+  local ready = bound and available(core, 'fix_light') and available(core, 'get_node_light')
   return {writeBackend = {profileId = declaration.backendProfileId, revision = declaration.revision}, ready = ready}
 end
 

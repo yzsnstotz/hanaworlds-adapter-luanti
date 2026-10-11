@@ -86,6 +86,16 @@ export class LocalTransactions {
       { error: { code: 'RESTORE_FAILED', phase: 'restore', retryability: 'AFTER_MANUAL_RECOVERY', mutationState: 'UNKNOWN',
         transactionRef: record.transactionId, causeCode: cause, reason: 'REQUIRED_FACT_UNKNOWN' }, guardRefusal: null };
   }
+  // A receipt is kept as issued, with its digest: QueryTransaction answers with it unchanged after a
+  // reconnect (never re-bound to the new incarnation). A record that never issued one has its derived receipt.
+  async issue(saved) {
+    const receipt = this.receipt(saved);
+    saved.issuedReceipt = { receipt, receiptDigest: D('receipt', receipt) }; await this.store.put(saved); return receipt;
+  }
+  stored(record) {
+    if (record.issuedReceipt) return record.issuedReceipt;
+    const receipt = this.receipt(record); return { receipt, receiptDigest: D('receipt', receipt) };
+  }
   receipt(record) {
     const applyFailure = record.status === 'RESTORE_FAILED' ? this.applyFailure(record) : null;
     const restore = applyFailure ? this.restoreFailure(record, applyFailure.error.code) : null;
@@ -115,7 +125,7 @@ export class LocalTransactions {
     if (r.operationDigest !== saved.operationDigest || r.scopeDigest !== saved.request.scopeDigest ||
       !same(r.operations, saved.request.operations) || !same(r.scope, saved.request.scope) ||
       !same(r.preparedTransaction, Object.fromEntries(Object.entries(this.prepared(saved)).filter(([k]) => k !== 'beforeStateReadbackDigest')))) fail('REPLAY_MISMATCH');
-    if (['VERIFIED','ROLLED_BACK'].includes(saved.status)) return this.receipt(saved);
+    if (['VERIFIED','ROLLED_BACK'].includes(saved.status)) return this.stored(saved).receipt;
     if (saved.status !== 'PREPARED') fail('RECOVERY_PENDING');
     const before = await this.scopeNow(r); if (!stateMatches(before, saved.before)) fail('TRANSACTION_CONFLICT');
     const selected = new Set(r.operations.effects.map(x => canonicalJSON(x.position)));
@@ -134,7 +144,7 @@ export class LocalTransactions {
         return e ? { ...e, state } : x;
       });
       if (!stateMatches(after,{...after,records:expected})) fail('READBACK_MISMATCH');
-      saved = { ...saved, after, status: 'VERIFIED' }; await this.store.put(saved); return this.receipt(saved);
+      saved = { ...saved, after, status: 'VERIFIED' }; return this.issue(saved);
     } catch (error) {
       saved.failureCode=schemaBundle.definitions.ErrorCode.enum.includes(error.message)?error.message:'APPLY_FAILED';
       // Engine guard that refused at apply, before its first write: kept for the receipt.
@@ -149,7 +159,7 @@ export class LocalTransactions {
       if (restored?.status !== 'ROLLED_BACK') fail('RESTORE_FAILED');
       const actual = await this.snapshot(saved.before.coveredPositions);
       if (!stateMatches(actual, saved.before)) fail('RESTORE_FAILED');
-      saved.status = 'ROLLED_BACK'; saved.after = actual; await this.store.put(saved); return this.receipt(saved);
+      saved.status = 'ROLLED_BACK'; saved.after = actual; return this.issue(saved);
     } catch (error) {
       // Recovery stays pending; keep which engine guard or step refused the restore.
       saved.status = 'RESTORE_FAILED'; saved.restoreFailure = { code: error?.message ?? null, detail: error?.detail ?? null };
@@ -169,7 +179,7 @@ export class LocalTransactions {
   async prepareHistory(r) {
     await this.current(r); await this.historyNow(r); const origin = this.store.get(r.originTransactionId);
     if (!origin || origin.status !== 'VERIFIED' || origin.request.worldRef !== r.worldRef ||
-      D('receipt', this.receipt(origin)) !== r.originVerifiedReceiptDigest || origin.beforeImageDigest !== r.originBeforeImageDigest ||
+      this.stored(origin).receiptDigest !== r.originVerifiedReceiptDigest || origin.beforeImageDigest !== r.originBeforeImageDigest ||
       D('readback', view(origin.before)) !== r.originBeforeStateReadbackDigest ||
       D('readback', view(origin.after)) !== r.originAfterReadbackDigest) fail('SAVED_RESOURCE_UNAVAILABLE');
     const projection = Object.fromEntries(Object.keys(schemaBundle.definitions.HistoryOperationProjection.properties).map(k => [k, r[k]]));
@@ -195,7 +205,7 @@ export class LocalTransactions {
     await this.current(r); let saved = this.store.get(r.transactionId);
     if (!saved || !same(saved.prepared, r.preparedHistoryTransaction) || saved.request.originTransactionId !== r.originTransactionId ||
       saved.request.direction !== r.direction || saved.operationDigest !== r.historyOperationDigest) fail('REPLAY_MISMATCH');
-    if (['VERIFIED','ROLLED_BACK'].includes(saved.status)) return this.receipt(saved);
+    if (['VERIFIED','ROLLED_BACK'].includes(saved.status)) return this.stored(saved).receipt;
     if (saved.status !== 'PREPARED') fail('RECOVERY_PENDING');
     await this.historyNow({ ...saved.request, requestId: r.requestId, localContext: r.localContext });
     if (r.expectedWorldRevision !== saved.request.expectedWorldRevision || !same(r.expectedObjectRevisions, saved.request.expectedObjectRevisions)) fail('UNDO_CONFLICT');
@@ -209,7 +219,7 @@ export class LocalTransactions {
       if (result?.status !== 'APPLIED_PENDING_READBACK') fail('APPLY_FAILED');
       const after = await this.snapshot(saved.target.coveredPositions);
       if (!stateMatches(after, saved.target)) fail('READBACK_MISMATCH');
-      saved.status = 'VERIFIED'; saved.after = after; await this.store.put(saved); return this.receipt(saved);
+      saved.status = 'VERIFIED'; saved.after = after; return this.issue(saved);
     } catch (error) {
       saved.failureCode = schemaBundle.definitions.ErrorCode.enum.includes(error.message) ? error.message : 'APPLY_FAILED';
       saved.failureStage = 'APPLY_HISTORY'; if (typeof error.detail === 'string') saved.failureDetail = error.detail;

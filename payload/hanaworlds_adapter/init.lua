@@ -24,7 +24,6 @@ local function capabilities()
   return {worldRef=manifest.worldRef,payloadVersion=manifest.payloadVersion,
     loadedSourceDigest=digest,manifestDigest=manifest.payloadDigest,
     payloadMatches=digest==manifest.payloadDigest,
-    worldeditAvailable=type(rawget(_G,'worldedit'))=='table',worldeditVersion='local-static',
     engineGuards=region_module.guards(minetest)}
 end
 local was_ready=false

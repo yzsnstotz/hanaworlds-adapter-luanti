@@ -67,7 +67,7 @@ export class LocalCourier {
   async handshake() {
     const h = await this.dispatch('handshake');
     if (h.worldRef !== this.manifest.worldRef || h.payloadVersion !== PAYLOAD_VERSION || h.payloadMatches !== true ||
-      h.loadedSourceDigest !== this.manifest.payloadDigest || h.worldeditAvailable !== true) throw new Error('PAYLOAD_VERSION_MISMATCH');
+      h.loadedSourceDigest !== this.manifest.payloadDigest) throw new Error('PAYLOAD_VERSION_MISMATCH');
     // The advertised safety capabilities hold only if this engine runs every guard
     // (e.g. no core.is_protected => perCellProtection false): such a world is not paired.
     if (!sameGuards(h.engineGuards)) throw new Error('CAPABILITY_UNAVAILABLE');

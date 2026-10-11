@@ -4,11 +4,32 @@
 local M = {}
 -- The write backend Engine:apply implements: one native swap_node per effect
 -- cell, then a light refresh of the covered cells. Changing that write
--- path requires a new backendProfileId.
+-- path requires a new backendProfileId. Revision 2: the engine function bound at
+-- load is written with, never a game's replacement of the global.
 M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-native-cell-write/v1',
-  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'native-cell-write/1'}
+  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'native-cell-write/2'}
 local Engine = {}
 Engine.__index = Engine
+
+-- The engine's own swap_node, bound once while mods load. Games may replace the
+-- global later (VoxeLibre 0.92.3 mcl_observers wraps it, runs observer code and
+-- returns nothing); writing through such a wrapper is not this backend's
+-- callback-free native path, so only the engine (C) function is ever written with.
+local function engine_function(fn)
+  if type(fn) ~= 'function' or type(debug) ~= 'table' or type(debug.getinfo) ~= 'function' then return false end
+  local info = debug.getinfo(fn, 'S')
+  return type(info) == 'table' and info.what == 'C'
+end
+local native_swap = engine_function(minetest.swap_node) and minetest.swap_node or nil
+local writer_reason = native_swap and nil
+  or type(minetest.swap_node) ~= 'function' and 'NATIVE_WRITER_MISSING'
+  or (type(debug) ~= 'table' or type(debug.getinfo) ~= 'function') and 'NATIVE_WRITER_UNVERIFIABLE'
+  or 'NATIVE_WRITER_REPLACED_BEFORE_LOAD'
+-- true, or false plus the named reason the native writer is not bound.
+function M.native_writer()
+  if native_swap then return true end
+  return false, writer_reason
+end
 
 local function position(cell)
   if type(cell) ~= 'table' or #cell ~= 3 then return nil end
@@ -23,6 +44,14 @@ local function public_record(cell)
   local pos = position(cell)
   if not pos then return nil, 'SCHEMA_INVALID' end
   local node = minetest.get_node_or_nil(pos)
+  -- Load, then read. Luanti unloads a block no player keeps active once its usage
+  -- timer passes server_unload_unused_data_timeout, however often it is read or
+  -- written (Map::timerUpdate). load_area is the engine's synchronous load from
+  -- disk; an ungenerated cell stays 'ignore' and is reported, never invented.
+  if node == nil and type(minetest.load_area) == 'function' then
+    minetest.load_area(pos)
+    node = minetest.get_node_or_nil(pos)
+  end
   if not node or node.name == 'ignore' then return nil, 'TARGET_FACTS_INCOMPLETE' end
   local meta = minetest.get_meta(pos):to_table()
   if not meta or type(meta.fields) ~= 'table' or type(meta.inventory) ~= 'table' then
@@ -217,12 +246,12 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
       return nil, 'TRANSACTION_CONFLICT'
     end
   end
-  if type(minetest.swap_node) ~= 'function' or not light_capable() then
-    return nil, 'CAPABILITY_UNAVAILABLE' end
+  if not native_swap or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE', writer_reason end
   local count = 0
   for _, effect in ipairs(effects) do
     local pos = position(effect.position)
-    local ok, changed = pcall(minetest.swap_node, pos,
+    local ok, changed = pcall(native_swap, pos,
       {name = effect.nodeName, param1 = 0, param2 = effect.param2})
     if not ok or changed ~= true then return nil, 'APPLY_FAILED' end
     count = count + 1
@@ -248,8 +277,8 @@ function Engine:apply_state(target_image, before_image, prepared)
     or #target_image.records ~= #before_image.coveredPositions then
     return nil, 'SCHEMA_INVALID'
   end
-  if type(minetest.swap_node) ~= 'function' or not light_capable() then
-    return nil, 'CAPABILITY_UNAVAILABLE' end
+  if not native_swap or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE', writer_reason end
   -- Check every cell and non-derived current state before the first write.
   for i, target in ipairs(target_image.records) do
     local prior = before_image.records[i]
@@ -287,7 +316,7 @@ function Engine:apply_state(target_image, before_image, prepared)
   for _, target in ipairs(target_image.records) do
     local pos = position(target.position)
     local state_ok = pcall(function()
-      assert(minetest.swap_node(pos, {name = target.nodeName,
+      assert(native_swap(pos, {name = target.nodeName,
         param1 = target.param1, param2 = target.param2}) == true)
       assert(minetest.get_meta(pos):from_table({fields = target.metadata,
         inventory = target.inventory}) ~= false)
@@ -311,8 +340,8 @@ function Engine:restore(before_image, recovery)
     or not recovery or recovery.status ~= 'RESTORING' then return nil, 'CAPABILITY_UNAVAILABLE' end
   if type(before_image) ~= 'table' or type(before_image.records) ~= 'table'
     or #before_image.records == 0 then return nil, 'SCHEMA_INVALID' end
-  if type(minetest.swap_node) ~= 'function' or not light_capable() then
-    return nil, 'CAPABILITY_UNAVAILABLE' end
+  if not native_swap or not light_capable() then
+    return nil, 'CAPABILITY_UNAVAILABLE', writer_reason end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
     if not pos then return nil, 'RESTORE_FAILED' end
@@ -326,7 +355,7 @@ function Engine:restore(before_image, recovery)
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
     if not self.verifyRestore(before_image, recovery) then return nil, 'RESTORE_FAILED' end
-    local swap_ok, changed = pcall(minetest.swap_node, pos, {name = record.nodeName,
+    local swap_ok, changed = pcall(native_swap, pos, {name = record.nodeName,
       param1 = record.param1, param2 = record.param2})
     if not swap_ok or changed ~= true then return nil, 'RESTORE_FAILED' end
     local meta_ok, restored = pcall(function()

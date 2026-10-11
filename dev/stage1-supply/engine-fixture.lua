@@ -52,7 +52,7 @@ local core = {
   registered_nodes = nodes, registered_on_mapblocks_changed = {},
   sha256 = sha256, write_json = function(v) return encode(v) end,
   get_node_or_nil = function() end, get_meta = function() end, get_node_timer = function() end,
-  get_node_light = function() end, fix_light = function() end,
+  get_node_light = function() end, fix_light = function() end, swap_node = function() return true end,
   is_protected = function() return false end, -- Luanti builtin default: no protection mod loaded
 }
 _G.minetest, _G.core = core, core
@@ -62,15 +62,22 @@ if S.worldedit then
 end
 
 if S.writeBackendReady == false then core.fix_light = nil end
+-- The fixture swap_node stands for the engine's C function (as engine.lua binds it at load).
+local fixture_swap, getinfo = core.swap_node, debug.getinfo
+debug.getinfo = function(fn, ...)
+  local info = getinfo(fn, ...)
+  if fn == fixture_swap and type(info) == 'table' then info.what = 'C' end
+  return info
+end
 local facts = dofile(dir .. '/facts.lua')
 local result, code
 local engine_module = dofile(dir .. '/engine.lua')
 local declaration = engine_module.WRITE_BACKEND
 if S.writeBackendDeclared == false then declaration = nil end
-if operation == 'fact_write_backend' then result, code = facts.write_backend(core, declaration, rawget(_G, 'worldedit'))
+if operation == 'fact_write_backend' then result, code = facts.write_backend(core, declaration, engine_module.native_writer)
 elseif operation == 'fact_worldedit_runtime' then result, code = facts.worldedit_runtime(core)
 elseif operation == 'fact_catalogue' then result, code = facts.catalogue(core)
-elseif operation == 'fact_profile' then result, code = facts.state_profile(core, rawget(_G, 'worldedit'))
+elseif operation == 'fact_profile' then result, code = facts.state_profile(core, engine_module.native_writer)
 elseif operation == 'region_limits' then result = {mapblockSize = 16, mapgenLimit = 31000, maxBodyBytes = 4194304, registeredNodes = 2, longestNodeName = 13}
 elseif operation == 'engine_guards' then result = dofile(dir .. '/region.lua').guards(core) -- handshake declaration
 else code = 'UNSUPPORTED_FIXTURE_OPERATION' end

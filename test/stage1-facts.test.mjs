@@ -29,7 +29,7 @@ test('config engine facts: payload-declared backend KNOWN, avatar always UNAVAIL
   assert.equal(f.profileVersion, 'config-engine-facts/v2');
   assert.deepEqual({ ...f.connection }, { worldRef: w.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef });
   assert.deepEqual(JSON.parse(JSON.stringify(f.writeBackend)), { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
-    writeBackend: {profileId:'hanaworlds-luanti-worldedit-cell-write/v1',revision:'cell-write/1'} });
+    writeBackend: {profileId:'hanaworlds-luanti-native-cell-write/v1',revision:'native-cell-write/2'} });
   assert.deepEqual({ ...f.avatarEnvelope }, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
   assert.equal(f.catalogueDigest, digestValue('catalogue', await w.facts.readCatalogue(w.worldRef)).sha256);
   const { sourceRevision, ...projection } = f;
@@ -73,11 +73,15 @@ test('WorldEdit: loaded runtime version, or UNKNOWN when the loaded mod exposes 
   assert.deepEqual(unknown.supersedes.reasons, ['WORLDEDIT_CHANGED']);
 });
 
-test('WorldEdit not loaded: the existing pairing refuses the World (no bound World without WorldEdit)', async t => {
+test('WorldEdit not loaded: pairing and native backend facts remain available', async t => {
   const w = await world(t, base([], null));
-  await assert.rejects(w.connect(), /CURRENT_WORLD_MISMATCH/);
-  await assert.rejects(w.facts.readWorldEditFacts(w.worldRef), /WORLD_NOT_BOUND/);
-  await assert.rejects(w.facts.readConfigEngineFacts(w.worldRef), /WORLD_NOT_BOUND/);
+  await w.connect();
+  const diagnostic = await w.facts.readWorldEditFacts(w.worldRef);
+  assert.equal(diagnostic.loadState, 'NOT_LOADED');
+  assert.deepEqual(diagnostic.version, {status:'UNKNOWN', reason:'NOT_LOADED'});
+  const facts = await w.facts.readConfigEngineFacts(w.worldRef);
+  assert.equal(facts.writeBackend.availability, 'KNOWN');
+  assert.equal(facts.writeBackend.writeBackend.profileId, 'hanaworlds-luanti-native-cell-write/v1');
 });
 
 test('connection lifecycle: retire withdraws all facts; a new incarnation is a new domain', async t => {

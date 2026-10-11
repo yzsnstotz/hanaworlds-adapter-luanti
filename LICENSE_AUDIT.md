@@ -1,3 +1,11 @@
+# adapter-07 native readiness + historical receipt record (2026-10-11)
+
+- hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · published world-adapter/v8 QueryTransaction historical receipt pair (historicalReceiptResponse / readHistoricalReceipt); peeled source 5af62be25dcab110fcbb8502183922010f078f04. Installed LICENSE/NOTICE retained.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external headless runtime for the real gate; not bundled. Behaviour checked (not copied) against src/map.cpp Map::timerUpdate, src/serverenvironment.cpp activateBlock, src/servermap.cpp emergeBlock and src/script/lua_api/l_env.cpp l_load_area; uses the documented core.load_area and debug.getinfo.
+- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content for the real gate; not bundled. Its mods/ITEMS/REDSTONE/mcl_observers/init.lua replacement of minetest.swap_node was read to find the J3 APPLY_FAILED cause; nothing copied.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged.
+- No new dependency. WorldEdit is no longer referenced by mod.conf or readiness.
+
 # adapter-local-source-01 describeSourceWorld record (2026-10-11)
 
 - hanaworlds-contracts · 2.5.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.5.0 · published local-worlds/v2 describeSourceWorld schema/SDK, consumer helper and createLocalWorldSourceMock; peeled source f0c6751e984bb15081ea70c351ccbb484c91226c. Installed LICENSE/NOTICE retained.
@@ -255,3 +263,18 @@ origin/license attribution is retained from the prior public Adapter supply.
 ## F-AD-SESSION-WORLD-BIND-01 isolated inputs (2026-10-09)
 
 No game/engine/WorldEdit content is bundled in the Adapter npm artifact. Own runtime copied the installed official Luanti 5.17.0 app including its notices (LGPL-2.1-or-later); only own child processes/profile are used. VoxeLibre 0.92.3 source at a523240fb89713ffa6302696e8275bbd7de3bd49: official codeload ZIP, 85004136 bytes, SHA256 4c3b3cacdd745c870a4330df20672b3418ac3c22dd20909faa3af4d15d14f3f5, GPL-3.0-or-later code / media notices retained. WorldEdit 62ffafe3bcb386600c431ef3840d91c3c8f85639: official Uberi/Minetest-WorldEdit codeload ZIP, 138409 bytes, SHA256 79d9424d7f21f2c6362f726b95fc56f18889c4af8cdd868be43635a16479215e, AGPL-3.0, original license files retained. These new-source ZIP identities differ from historical distribution archives and are not substituted for them.
+
+## adapter-07 native readiness and runtime gate (2026-10-11)
+
+Readiness cleanup and test harness are original MIT Adapter code; no new dependency.
+Luanti 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 ·
+App-supplied headless runtime (D-7), isolated test profiles only.
+VoxeLibre 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media ·
+https://content.luanti.org/packages/Wuzzy/mineclone2/ · App-supplied game archive (D-8),
+not included in the npm artifact. Included notices are retained in the isolated input.
+Published hanaworlds-contracts 2.3.0 · MIT · original pinned Git tag v2.3.0 ·
+current neutral contract validation. canonicalize 5.1.0 · Apache-2.0 · npm registry ·
+existing canonical JSON dependency. Node 24.13.1 · MIT with third-party notices ·
+nodejs.org · test runner; Lua 5.5.1 · MIT · lua.org · source/fixture tests.
+WorldEdit is neither installed nor loaded by the new runtime gate. Its historical
+read-only diagnostics report absence; native readiness does not depend on it.

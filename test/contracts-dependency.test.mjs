@@ -34,8 +34,8 @@ for (const [name, mutate] of [
   // The #semver: range form is no longer accepted: the dependency is the published tag.
   ['semver range of the installed major', dependency(`${SOURCE}#semver:^2.0.0`)],
   ['github shorthand of the same tag', dependency('github:yzsnstotz/hanaworlds-contracts#v2.0.0')],
-  // Installed is the formal 2.5.0: any other tag must refuse it.
-  ['a later release tag', dependency(`${SOURCE}#v2.0.1`)],
+  // Installed is the formal 2.8.0: any other tag must refuse it.
+  ['a later release tag', dependency(`${SOURCE}#v2.8.1`)],
   ['the old major tag', dependency(`${SOURCE}#v1.0.0`)],
-  ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.0.0-rc.3`)],
+  ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.8.0-rc.3`)],
 ]) test(`tag verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });
