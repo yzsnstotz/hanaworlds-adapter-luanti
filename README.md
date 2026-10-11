@@ -34,6 +34,14 @@ to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added he
   No WorldEdit install or `load_mod_worldedit` setting is required for creation.
   Invalid/colliding names return `INVALID_NAME`; unavailable templates/content
   return `ADAPTER_UNAVAILABLE`. No game or root is guessed when there is a choice.
+- `pair({contractVersion, requestId, worldRef})`: consumes the native lifecycle
+  owner's existing `BIND_RUNNING_WORLD` lease for that exact world, or reads its
+  already paired connection. Returns the complete `LocalConnectionReadback` from
+  `world-adapter/v8`, including capabilities, payload identity and the actual
+  connection incarnation. Missing, unstarted or stale connections return
+  `CONNECTION_NOT_FOUND`; a failed loaded-payload check returns
+  `PAYLOAD_VERSION_MISMATCH`. Pair does not launch or stop another world and
+  does not select a Canvas session.
 - `deleteWorld({contractVersion, requestId, worldRef, confirmationName})`: only
   exact Adapter-created worlds, with current name confirmation, no active leases
   or unsettled journal, and a Canvas world-retirement reservation. A missing world
@@ -43,11 +51,14 @@ to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added he
 
 Requests and receipts use the published SDK's closed schemas and bind `requestId`.
 Creation facts stay source-owned; consumers carry them unchanged. Native Host
-provision/acquire/pair helpers remain separate from these three v2 operations;
-v2 pair and engine-runtime integration are outside adapter-03.
+provision/acquire/pair helpers remain native lifecycle operations. The v2 pair
+seam is adapter-04; engine-runtime integration remains a separate card.
 The `./local-worlds-v2-mock` package entry exports `createLocalWorldsMock()`;
-its three async operations use [published examples](fixtures/local-worlds-v2.json)
-and the SDK's stateless fixture provider. It has no world/runtime side effects.
+its four async operations use [examples](fixtures/local-worlds-v2.json)
+and the SDK's stateless fixture provider. `createLocalConnectionReadbackMock()`
+returns an async `ReadLocalConnection(request)` function with the same complete
+fixture connection. Both include the declared pair/readback refusals and have
+no world/runtime side effects.
 
 Fresh installs use payload 0.10.3 and contracts 2 durable records. Older payloads/records
 are refused; no migration or compatibility path is provided. D-19 authority/grant and
@@ -118,42 +129,26 @@ or old-wire compatibility. Acquire again with `BIND_RUNNING_WORLD`, then
 new connection incarnation. Every scoped request rechecks the actual Host
 process/world/operation association and the Canvas selection context.
 
-### Same-service second world (0.7.1)
+### Same-service world switching (adapter-04)
 
-No new public fields or wire are required. After pairing A, the Host may stop
-its exact owned A process. Create independent B normally, then
-`acquire({connectionRef:B.connectionRef, requesterRef, userPath,
-action:'BIND_RUNNING_WORLD'})` and `pair({connectionRef:B.connectionRef,
-requesterRef, leaseRef:BLease.leaseRef})` on the same service. Pair returns the
-existing observation plus `paired:true`, B's world/payload identity and a fresh
-`connectionIncarnationRef`. It does not select a Canvas world or session.
+Native connections are independent: pairing B preserves A for any other session
+still using it. The lifecycle owner explicitly stops A with `stopWorld` when it
+is no longer needed. Retirement requires the original Host's finite
+`withStoppedWorld` callback with the exact captured process/world/operation;
+unknown stop status or a mismatched PID cannot retire that connection.
 
-Before pairing B, Adapter invokes the original A control provider's existing
-`withStoppedWorld(AQuery, consume)` using its captured controlRef, requester,
-world path and operation. Host must retain that ownership record after A exits
-and supply its actual exited PID/world/operation inside a finite awaited callback.
-It may stop the owned process as part of this existing operation. A generic
-CURRENT-inspection error, a stopped fact outside the callback, a replaced
-provider, missing callback, unknown identity or mismatched PID is insufficient.
-Those cases reject pair B with `CURRENT_WORLD_MISMATCH`; B is not returned as
-paired, and Host owns cleanup of rejected native sessions. No restart/reinstall
-of Adapter, caller-held lifecycle facts, or guessed process identity is used.
+After retirement, A's old lease and `ReadLocalConnection` fail. Acquire a new
+running-world lease to pair A again: its world and connection references remain
+stable, while its connection incarnation is fresh. Repeating v2 pair on a live
+bound world returns checked readback without acquiring another process.
+`ReadLocalConnection` checks native identity before and after building the receipt;
+an exited world returns `CONNECTION_NOT_FOUND` instead of cached readiness.
 
-A's CURRENT reads fail as soon as Host inspection no longer verifies it. Its
-control query is retained solely for the stop callback, never as a current lease.
-After that callback verifies A's exact identity, all A leases are invalidated,
-serialized runtime work drains, the old courier closes, and A's runtime record
-is removed before pairing B. Old world/connection reads and lease reuse reject;
-connection inventory contains only B after success. If failure occurs after
-A retirement, A stays invalidated; no old binding is restored. Failed B does not
-become a current connection. Whole-service `close()` remains permanent disposal.
-
-Host implementations that discard A's control/exit record or cannot honor
-`withStoppedWorld` for that owned stopped process must supply that existing
-public lifecycle capability before consuming this sequence. Same-connection
-re-pair remains unsupported. Source and installed-package evidence exercises
-the public Host peer with real isolated Luanti children; Desktop integration,
-Canvas selection and product Enter game are separate gates.
+`npm run test:switch` exercises A → B → A with actual Adapter lifecycle/runtime
+handlers and explicit native Host/engine fixtures. It also covers independent
+connections, exact stopped-world retirement, loaded-payload failure and native
+exit during readback. This is SOURCE/FIXTURE evidence; real Luanti runtime,
+Desktop/Canvas composition and product acceptance remain separate gates.
 
 Canvas supplies `hanaworldsCanvasV5.call('ReadWorldSelectionContext', ...)`
 using the exact 0.4.0 `WorldSelectionContext.selection` envelope. Existing
