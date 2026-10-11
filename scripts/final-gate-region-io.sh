@@ -13,6 +13,7 @@ F=${2:?fresh evidence directory required}
 case "${HW_VOXELIBRE_PATH:-ALL}" in ALL|J3|J5) ;; *) echo "Invalid VoxeLibre test path" >&2; exit 2 ;; esac
 case "$F" in /Users/yzliu/.cache/hana-world-runs/adapter-07/*) ;; *) echo 'Evidence must be inside this card run directory' >&2; exit 2 ;; esac
 mkdir -p "$F/tmp" "$F/tests"
+export npm_config_cache="$F/npm-cache"
 export TMPDIR="$F/tmp" HW_ADAPTER_TEST_ROOT="$F/tests" HW_BIND_TEST_ROOT="$F/tests" HW_STAGE1_RUN="$F/stage1" npm_config_update_notifier=false
 cd "$S"
 { node --version; "$HW_LUANTI" --version; git rev-parse HEAD; } > "$F/runtime.txt"
