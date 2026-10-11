@@ -34,7 +34,7 @@ for (const [name, mutate] of [
   // The #semver: range form is no longer accepted: the dependency is the published tag.
   ['semver range of the installed major', dependency(`${SOURCE}#semver:^2.0.0`)],
   ['github shorthand of the same tag', dependency('github:yzsnstotz/hanaworlds-contracts#v2.0.0')],
-  // Installed is the formal 2.0.0: any other tag must refuse it.
+  // Installed is the formal 2.3.0: any other tag must refuse it.
   ['a later release tag', dependency(`${SOURCE}#v2.0.1`)],
   ['the old major tag', dependency(`${SOURCE}#v1.0.0`)],
   ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.0.0-rc.3`)],

@@ -14,7 +14,8 @@ advertises region 1.1 with callback-free-write plus its existing read/write,
 load, lighting and restore capabilities. K3 consumers check protocol major,
 minor and required capabilities; provenance hashes do not decide compatibility.
 
-New flat-world creation remains `createFlatWorld` / `describeFlatWorldCreation`
+C-local-worlds v2 provides `createWorld` (`templateId: 'flat'`), `discover` and
+name-confirmed `deleteWorld`. Native Host helpers remain `createFlatWorld` / `describeFlatWorldCreation`
 on `hanaworldsLuantiLocalWorlds`: Luanti flat mapgen in the new world's own
 map_meta.txt, current payload pre-installed, explicit prerequisite/game-choice
 errors, never overwriting a world. Region I/O uses emerge_area + VoxelManip

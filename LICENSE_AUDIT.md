@@ -1,3 +1,18 @@
+# adapter-03 dependency and base record (2026-10-11)
+
+- hanaworlds-contracts · 2.3.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.3.0 · published local-worlds/v2 schema/SDK and fixture mock, peeled source f89b05f61f5db79c32c6d63b3ea5c3b79c5c53ef; installed LICENSE/NOTICE retained.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged deterministic JSON dependency.
+- Luanti · existing 5.17 API base · LGPL-2.1-or-later · https://github.com/luanti-org/luanti · D-7 external runtime; flat mapgen config only, no engine code bundled. This card did not run the engine.
+- VoxeLibre · existing 0.92.3 base · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external content; existing game discovery/declared flat-option wiring, no game code bundled. This card uses fixture games only.
+- Node.js · 24.13.1 · MIT with bundled third-party notices · https://nodejs.org/dist/v24.13.1/ · card test runner.
+
+Flat creation no longer checks, requires or enables WorldEdit. The existing
+per-cell writer is outside this card (adapter-06/07); this change makes no claim
+that every Adapter write path has already switched to native APIs.
+The v2 seam, examples and minimal mock wrapper are original MIT Adapter code.
+
+---
+
 # adapter-01 · 0.15.0 dependency and base record (2026-10-11)
 
 - hanaworlds-contracts · 2.0.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.0.0 · published Git SDK/schema, source 3377ea81513d9a9446dccd4b626b4bfc183dc711; installed LICENSE/NOTICE retained.

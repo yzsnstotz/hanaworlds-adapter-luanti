@@ -1,7 +1,7 @@
-# HanaWorlds Luanti Adapter 0.15.0 · contracts 2.0.0
+# HanaWorlds Luanti Adapter 0.15.0 · contracts 2.3.0
 
 The world source uses the exact published dependency
-`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.0.0`.
+`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.3.0`.
 The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/v8`),
 `hanaworldsWorldAdapterRegionV1` (wire `world-adapter-region/v3`), and
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
@@ -22,6 +22,32 @@ Config facts carry the loaded payload's opaque backend identity and the released
 `UNAVAILABLE/NO_PUBLIC_SOURCE` avatar fact. New named fact operations, display names/colors,
 public player envelopes and replacement of the existing WorldEdit per-cell writer belong
 to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added here.
+
+`hanaworldsLuantiLocalWorlds` provides these `local-worlds/v2` operations:
+- `discover({contractVersion, requestId, worldRoot})`: neutral world inventory within
+  configured roots; unpaired worlds have a stable source-owned reference. Duplicate
+  world identities refuse discovery with `ADAPTER_UNAVAILABLE`.
+- `createWorld({contractVersion, requestId, templateId: 'flat', displayName})`:
+  creates a flat world with the Adapter payload installed and returns opaque
+  `creationFacts`. Set `localUserPath` and `localWorldRoots` in Adapter config;
+  `localCreationRoot` and `localGameId` resolve multiple-root/game choices explicitly.
+  No WorldEdit install or `load_mod_worldedit` setting is required for creation.
+  Invalid/colliding names return `INVALID_NAME`; unavailable templates/content
+  return `ADAPTER_UNAVAILABLE`. No game or root is guessed when there is a choice.
+- `deleteWorld({contractVersion, requestId, worldRef, confirmationName})`: only
+  exact Adapter-created worlds, with current name confirmation, no active leases
+  or unsettled journal, and a Canvas world-retirement reservation. A missing world
+  returns `WORLD_NOT_FOUND`; other refusals return `TRANSACTION_CONFLICT`. Partial
+  removal is reported as `mutationState: PARTIAL`; uncertain post-removal outcomes
+  use `UNKNOWN`. An error never claims a successful deletion receipt.
+
+Requests and receipts use the published SDK's closed schemas and bind `requestId`.
+Creation facts stay source-owned; consumers carry them unchanged. Native Host
+provision/acquire/pair helpers remain separate from these three v2 operations;
+v2 pair and engine-runtime integration are outside adapter-03.
+The `./local-worlds-v2-mock` package entry exports `createLocalWorldsMock()`;
+its three async operations use [published examples](fixtures/local-worlds-v2.json)
+and the SDK's stateless fixture provider. It has no world/runtime side effects.
 
 Fresh installs use payload 0.10.3 and contracts 2 durable records. Older payloads/records
 are refused; no migration or compatibility path is provided. D-19 authority/grant and

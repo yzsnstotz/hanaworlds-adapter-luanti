@@ -1,0 +1,192 @@
+{
+  "evidence": "SOURCE/FIXTURE only; stateless examples, no world or runtime side effects",
+  "exchanges": [
+    {
+      "wire": "local-worlds/v2",
+      "operation": "discover",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:discover",
+        "worldRoot": "/fixture/worlds"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:discover",
+        "result": {
+          "worlds": [
+            {
+              "worldId": "fixture:world-id",
+              "worldRef": "fixture:world",
+              "displayName": "Example world",
+              "tags": []
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "discover",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:discover",
+        "worldRoot": "/fixture/worlds"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:discover",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "createWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "templateId": "flat",
+        "displayName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "result": {
+          "worldRef": "fixture:world",
+          "templateId": "flat",
+          "displayName": "Example world",
+          "creationFacts": {
+            "profile": "fixture-only",
+            "payloadInstalled": true
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "createWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "templateId": "flat",
+        "displayName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "result": null,
+        "error": {
+          "code": "INVALID_NAME",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "createWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "templateId": "flat",
+        "displayName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:createWorld",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "deleteWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "worldRef": "fixture:world",
+        "confirmationName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "result": {
+          "worldRef": "fixture:world",
+          "confirmationName": "Example world",
+          "deleted": true
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "deleteWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "worldRef": "fixture:world",
+        "confirmationName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "result": null,
+        "error": {
+          "code": "WORLD_NOT_FOUND",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "deleteWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "worldRef": "fixture:world",
+        "confirmationName": "Example world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:deleteWorld",
+        "result": null,
+        "error": {
+          "code": "TRANSACTION_CONFLICT",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    }
+  ]
+}

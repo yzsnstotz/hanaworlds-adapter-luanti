@@ -1,10 +1,10 @@
-import { validateType } from '#contracts';
+import { validateType, validateBoundRequest, validateBoundResponse, ContractError } from '#contracts';
 import { randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
-import { createFlatWorld, describeFlatWorldCreation } from './flat-world.mjs';
+import { createFlatWorld, describeFlatWorldCreation, FLAT_WORLD_TEMPLATE_ID } from './flat-world.mjs';
 import { readCreatedMarker, removeWorldDirectory, worldData } from './local-world-deletion.mjs';
 import { readWorldSelections, withWorldRetirement } from './world-retirement.mjs';
 
@@ -26,7 +26,7 @@ async function freePort() {
 
 /** In-process Host lifecycle port. Never accepts lifecycle facts from request JSON. Native process and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
-export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas, runtime, log = () => {} }) {
+export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameId, resolveControl, resolveCanvas, runtime, log = () => {} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
   const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
   // Latest Host control record per world path this service acquired; kept after the lease ends so a
@@ -39,6 +39,32 @@ export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas
     pending.add(work);
     void work.then(() => pending.delete(work), () => pending.delete(work));
     return work;
+  }
+  // Contract admission snapshots the caller before lifecycle work is queued.
+  async function lifecycleCall(operation, input, run) {
+    const request = validateBoundRequest('local-worlds/v2', operation, input);
+    let result = null, error = null;
+    try { result = await run(request); }
+    catch (failure) {
+      const cause = failure.code ?? failure.message;
+      const code = operation === 'deleteWorld'
+        ? (cause === 'WORLD_NOT_FOUND' ? 'WORLD_NOT_FOUND' : 'TRANSACTION_CONFLICT')
+        : (operation === 'createWorld' && ['INVALID_NAME', 'WORLD_EXISTS'].includes(cause) ? 'INVALID_NAME' : 'ADAPTER_UNAVAILABLE');
+      const mutationState = failure.mutationState ?? (cause === 'DELETE_INCOMPLETE' ? 'PARTIAL'
+        : ['READBACK_MISMATCH', 'LOCAL_CREATE_DISCOVERY_MISMATCH'].includes(cause) ? 'UNKNOWN'
+        : failure.code?.startsWith('E') ? 'UNKNOWN' : 'NONE');
+      error = new ContractError(code, operation === 'deleteWorld' ? 'apply' : 'validate',
+        code === 'INVALID_NAME' ? 'INVALID_SHAPE' : 'REQUIRED_FACT_UNKNOWN', { mutationState }).publicError;
+    }
+    return validateBoundResponse('local-worlds/v2', operation, request,
+      { contractVersion: 'local-worlds/v2', requestId: request.requestId, result, error });
+  }
+  const sourceRef = row => row.worldRef ?? row.connectionRef;
+  async function selectWorld(worldRef) {
+    const rows = (await discover()).filter(row => sourceRef(row) === worldRef);
+    if (!rows.length) deny('WORLD_NOT_FOUND');
+    if (rows.length !== 1) deny('TRANSACTION_CONFLICT');
+    return rows[0];
   }
   async function discover() {
     if (closed) deny('ADAPTER_UNAVAILABLE');
@@ -179,7 +205,24 @@ export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas
         rootPaths = paths; runtime.setLocalRoots(paths);
       });
     },
-    discover: () => track(discover),
+    // No-input discovery is the native Host inventory; v2 returns only neutral world descriptors.
+    discover: input => input === undefined ? track(discover) : lifecycleCall('discover', input, q => track(async () => {
+      if (!isAbsolute(q.worldRoot) || !rootPaths.includes(resolve(q.worldRoot))) deny('ADAPTER_UNAVAILABLE');
+      const rows = await discoverLocalWorlds([resolve(q.worldRoot)]);
+      if (new Set(rows.map(sourceRef)).size !== rows.length) deny('ADAPTER_UNAVAILABLE');
+      return { worlds: rows.map(row => ({ worldId: row.connectionRef, worldRef: sourceRef(row), displayName: basename(row.worldPath), tags: [] })) };
+    })),
+    async createWorld(input) {
+      return lifecycleCall('createWorld', input, async q => {
+        if (q.templateId !== FLAT_WORLD_TEMPLATE_ID || !text(userPath) || !isAbsolute(userPath)) deny('ADAPTER_UNAVAILABLE');
+        // The template owns engine configuration; consumers supply only template and name.
+        const made = await port.createFlatWorld({ requesterRef: 'world-source', userPath,
+          ...(creationRoot === undefined ? {} : { root: creationRoot }),
+          ...(gameId === undefined ? {} : { gameId }), worldName: q.displayName });
+        const { worldRef, worldName, created, nextAction, ...creationFacts } = made;
+        return { worldRef, templateId: q.templateId, displayName: worldName, creationFacts };
+      });
+    },
     async acquire(input) {
       const request = validateType('LocalWorldAcquireInput', input);
       if (!Object.values(request).every(text) || !ACTIONS.has(request.action) || !isAbsolute(request.userPath))
@@ -264,11 +307,11 @@ export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas
         const made = await createFlatWorld({ roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
           gameId: q.gameId, worldName: q.worldName, transportPort: await freePort() });
         const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
-        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('WORLD_NOT_FOUND'); }
+        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('LOCAL_CREATE_DISCOVERY_MISMATCH'); }
         log('info', `LOCAL_FLAT_WORLD_CREATED ${rows[0].connectionRef}`);
         return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
           worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
-          game: made.game, mapgen: made.mapgen, perCellMod: made.perCellMod, nextAction: 'BIND_RUNNING_WORLD' };
+          game: made.game, mapgen: made.mapgen, nextAction: 'BIND_RUNNING_WORLD' };
       });
     },
     /** What deleting one exact world would remove and whether it is allowed now. Changes nothing. */
@@ -290,39 +333,48 @@ export function createLocalWorldPort({ roots = [], resolveControl, resolveCanvas
     /** Deletes one exact Adapter-created world that is not bound, leased or mid-transaction here,
      * then reads back that discovery no longer lists it and its directory is gone. */
     async deleteWorld(input) {
-      let q; try { q = deletionInput(input); } catch (error) { return Promise.reject(error); }
-      return track(() => withWorldRetirement(resolveCanvas, q.worldRef, async () => {
-        const f = await deletionFacts(q);
-        if (f.blockers.length) { log('warn', `LOCAL_DELETE_REJECTED ${f.blockers.map(b => b.reason).join(',')}`); deny(f.blockers[0].code, { blockers: f.blockers }); }
-        const remove = async () => {
-          const again = await world(q.connectionRef);
-          if (again.worldRef !== f.world.worldRef || again.device !== f.world.device || again.inode !== f.world.inode) deny();
-          await removeWorldDirectory(f.world);
-        };
-        if (f.control) {
-          const control = f.control, host = provider(control);
-          let active = true, used = false;
-          try {
-            await host.withStoppedWorld({ ...control.nativeQuery }, async facts => {
-              if (!active || used || !factsMatch(control, facts, 'STOPPED')) deny();
-              used = true; provider(control);
-              await remove();
-            });
-            if (!used) deny();
-          } catch (error) {
-            log('warn', `LOCAL_DELETE_STOP_REJECTED ${error?.message}`);
-            if (error?.message === 'DELETE_INCOMPLETE') throw error;
-            deny();
-          } finally { active = false; }
-        } else await remove();
-        const listed = (await discover()).some(row => row.connectionRef === f.world.connectionRef || row.worldPath === f.world.worldPath);
-        const exists = !!await lstat(f.world.worldPath).catch(() => null);
-        if (listed || exists) deny('READBACK_MISMATCH', { listed, pathExists: exists });
-        managed.delete(f.world.worldPath); controls.delete(f.world.worldPath);
-        log('info', `LOCAL_WORLD_DELETED ${f.world.connectionRef}`);
-        return { deleted: true, connectionRef: f.world.connectionRef, worldRef: f.world.worldRef,
-          worldName: basename(f.world.worldPath), worldPath: f.world.worldPath, removed: f.data,
-          nativeStop: f.nativeStop, readback: { listed: false, pathExists: false } };
+      return lifecycleCall('deleteWorld', input, request => track(async () => {
+        const selected = await selectWorld(request.worldRef);
+        if (basename(selected.worldPath) !== request.confirmationName) deny('TRANSACTION_CONFLICT');
+        const q = { connectionRef: selected.connectionRef, worldRef: selected.worldRef };
+        let removalState = 'NONE';
+        try { return await withWorldRetirement(resolveCanvas, request.worldRef, async () => {
+          const f = await deletionFacts(q);
+          if (f.blockers.length) { log('warn', `LOCAL_DELETE_REJECTED ${f.blockers.map(b => b.reason).join(',')}`); deny(f.blockers[0].code, { blockers: f.blockers }); }
+          const remove = async () => {
+            const again = await world(q.connectionRef);
+            if (again.worldRef !== f.world.worldRef || again.device !== f.world.device || again.inode !== f.world.inode) deny();
+            removalState = 'UNKNOWN';
+            try { await removeWorldDirectory(f.world); }
+            catch (error) { if (error.message === 'DELETE_INCOMPLETE') removalState = 'PARTIAL'; throw error; }
+          };
+          if (f.control) {
+            const control = f.control, host = provider(control);
+            let active = true, used = false;
+            try {
+              await host.withStoppedWorld({ ...control.nativeQuery }, async facts => {
+                if (!active || used || !factsMatch(control, facts, 'STOPPED')) deny();
+                used = true; provider(control);
+                await remove();
+              });
+              if (!used) deny();
+            } catch (error) {
+              log('warn', `LOCAL_DELETE_STOP_REJECTED ${error?.message}`);
+              if (error?.message === 'DELETE_INCOMPLETE') throw error;
+              deny();
+            } finally { active = false; }
+          } else await remove();
+          const listed = (await discover()).some(row => row.connectionRef === f.world.connectionRef || row.worldPath === f.world.worldPath);
+          const exists = !!await lstat(f.world.worldPath).catch(() => null);
+          if (listed || exists) deny('READBACK_MISMATCH', { listed, pathExists: exists });
+          managed.delete(f.world.worldPath); controls.delete(f.world.worldPath);
+          log('info', `LOCAL_WORLD_DELETED ${f.world.connectionRef}`);
+          return { deleted: true, worldRef: request.worldRef, confirmationName: request.confirmationName };
+        }); } catch (error) {
+          // SDK ContractError exposes mutationState through a read-only getter.
+          // Wrap the failure with this provider's filesystem observation instead.
+          throw Object.assign(new Error(error.code ?? error.message), { mutationState: removalState });
+        }
       }));
     },
     /** Stop one exact current world through its original Host callback and retire the binding.
