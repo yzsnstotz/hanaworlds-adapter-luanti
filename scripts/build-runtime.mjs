@@ -7,16 +7,7 @@ const root = new URL('../', import.meta.url);
 const runtime = new URL('dist/runtime/', root);
 await rm(runtime, { recursive: true, force: true });
 await mkdir(runtime, { recursive: true });
-const names = new Set(['wireVersions','operationContracts','digestProfile','placementInvariants','publicError','version']);
-// Retain the original source verification consumers against these same generated values.
-for(const file of (await readdir(new URL('test/', root))).filter(x=>x.endsWith('.mjs'))) {
- const text=await readFile(new URL(`test/${file}`,root),'utf8');
- if(!text.includes('#contracts')) continue;
- for(const m of text.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]#contracts['"]/g))
-  for(const spec of m[1].split(',')) names.add(spec.trim().split(/\s+as\s+/)[0]);
- for(const m of text.matchAll(/\b(?:C|compiled)\.([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
-}
-
+const names = new Set();
 const artifactHashes = {};
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 for (const file of (await readdir(new URL('src/', root))).filter(x => x.endsWith('.mjs')).sort()) {

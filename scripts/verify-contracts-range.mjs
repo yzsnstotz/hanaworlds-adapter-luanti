@@ -23,7 +23,7 @@ try {
   const m = SPEC.exec(spec ?? '');
   if (!m) problems.push(`dependency must be ${SOURCE}#vX.Y.Z[-pre], got ${spec}`);
   else tag = m[1];
-  if (pkg.imports?.['#contracts'] !== './dist/runtime/contracts.mjs') problems.push('#contracts must resolve the local compiled SDK');
+  if (JSON.stringify(pkg.imports?.['#contracts']) !== JSON.stringify({development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'})) problems.push('#contracts must resolve the local compiled SDK');
   if (existsSync(join(root, 'vendor', NAME))) problems.push('contracts vendor copy is forbidden');
   if (lock.packages?.['']?.devDependencies?.[NAME] !== spec) problems.push('lock root dependency differs from package.json');
   if (lock.packages?.['']?.dependencies?.[NAME]) problems.push('lock root contracts must be development-only');

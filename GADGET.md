@@ -58,7 +58,10 @@ artifact imports. A selected SDK value module is compiled from the pinned tag,
 with declaration files and required MIT attribution copied from that same supply.
 The production tar contains no SDK package, repository or development build tools.
 Public export paths, neutral protocols and native payload behavior remain unchanged.
-The #contracts mapping is a local development alias; production artifacts do not load it.
+The #contracts development condition selects the unshipped development value module.
+Its default selects the local production value module. Source verification runs with
+the explicit development condition; fresh production consumers run with default
+conditions and cleared NODE_OPTIONS/NODE_PATH. Production artifacts never load #contracts.
 Source tag/SHA, verified input digests and output digests are in dist/runtime-build.json.
 
 npm run test:package-boundary is included in npm test, build and normal prepack.

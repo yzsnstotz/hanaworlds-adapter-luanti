@@ -38,7 +38,10 @@
     "./fixtures/world-source-facts.json": "./fixtures/world-source-facts.json"
   },
   "imports": {
-    "#contracts": "./dist/runtime/contracts.mjs"
+    "#contracts": {
+      "development": "./dist/contracts.mjs",
+      "default": "./dist/runtime/contracts.mjs"
+    }
   },
   "files": [
     "payload/hanaworlds_adapter/mod.conf",
@@ -76,23 +79,23 @@
   },
   "scripts": {
     "build": "npm run build:artifacts && npm run test:package-boundary",
-    "test": "node scripts/sync-public-fixtures.mjs --check && node --test test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua && npm run test:package-boundary && npm run test:guards",
+    "test": "node scripts/sync-public-fixtures.mjs --check && node --conditions=development --test test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua && npm run test:package-boundary && npm run test:guards",
     "test:lua": "lua test/facts.lua && lua test/engine-native.lua && lua test/stage1-facts.lua && lua test/local-world-region.lua && lua test/engine-guards.lua",
     "verify:contracts": "node scripts/verify-contracts-range.mjs",
-    "test:catalogue": "node --test test/local-catalogue.test.mjs",
-    "test:region": "node --test test/local-region-io.test.mjs && lua test/voxel-geometry.lua",
-    "test:flat": "node --test test/local-flat-world.test.mjs test/local-worlds-v2-examples.test.mjs test/local-world-source.test.mjs",
-    "test:source": "node --test test/local-world-source.test.mjs test/local-worlds-v2-examples.test.mjs",
-    "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs test/world-source-facts.test.mjs",
-    "test:switch": "node --test test/local-world-switch.test.mjs",
-    "test:delete": "node --test test/local-world-delete.test.mjs",
-    "test:readback": "node --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs test/contracts-v2-runtime.test.mjs && lua test/contracts-v2-state.lua",
-    "test:world-manage": "node --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs",
-    "test:contracts": "node --test test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs",
-    "test:public-host": "node --test test/public-host-exports.test.mjs",
-    "test:stage1": "node --test test/stage1-facts.test.mjs && lua test/stage1-facts.lua",
-    "test:config-facts": "node --test test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs && lua test/world-source-facts.lua",
-    "test:guards": "lua test/engine-guards.lua && node --test test/engine-guards-host.test.mjs",
+    "test:catalogue": "node --conditions=development --test test/local-catalogue.test.mjs",
+    "test:region": "node --conditions=development --test test/local-region-io.test.mjs && lua test/voxel-geometry.lua",
+    "test:flat": "node --conditions=development --test test/local-flat-world.test.mjs test/local-worlds-v2-examples.test.mjs test/local-world-source.test.mjs",
+    "test:source": "node --conditions=development --test test/local-world-source.test.mjs test/local-worlds-v2-examples.test.mjs",
+    "test:materials": "node --conditions=development --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs test/world-source-facts.test.mjs",
+    "test:switch": "node --conditions=development --test test/local-world-switch.test.mjs",
+    "test:delete": "node --conditions=development --test test/local-world-delete.test.mjs",
+    "test:readback": "node --conditions=development --test test/local-region-state.test.mjs test/world-readback-surface.test.mjs test/contracts-v2-runtime.test.mjs && lua test/contracts-v2-state.lua",
+    "test:world-manage": "node --conditions=development --test test/world-manage.test.mjs test/world-manage-client.test.mjs test/local-world-switch.test.mjs",
+    "test:contracts": "node --conditions=development --test test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs",
+    "test:public-host": "node --conditions=development --test test/public-host-exports.test.mjs",
+    "test:stage1": "node --conditions=development --test test/stage1-facts.test.mjs && lua test/stage1-facts.lua",
+    "test:config-facts": "node --conditions=development --test test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs && lua test/world-source-facts.lua",
+    "test:guards": "lua test/engine-guards.lua && node --conditions=development --test test/engine-guards-host.test.mjs",
     "sync:fixtures": "node scripts/sync-public-fixtures.mjs",
     "build:contracts": "node scripts/build-contracts.mjs",
     "pretest": "npm run build:contracts && node scripts/build-runtime.mjs",
@@ -100,7 +103,7 @@
     "prepack": "node scripts/prepack.mjs",
     "prepare": "npm run build:contracts && node scripts/build-runtime.mjs",
     "build:artifacts": "npm run build:contracts && node scripts/build-runtime.mjs && node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/world-source-facts.mjs && node --check src/world-source-facts-mock.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/source-startup.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
-    "test:package-boundary": "node --test --test-concurrency=1 test/package-boundary.test.mjs test/production-package.test.mjs"
+    "test:package-boundary": "node --conditions=development --test --test-concurrency=1 test/package-boundary.test.mjs test/production-package.test.mjs"
   },
   "dependencies": {
     "canonicalize": "5.1.0",

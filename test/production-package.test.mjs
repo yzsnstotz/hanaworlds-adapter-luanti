@@ -18,9 +18,13 @@ test('contracts are a pinned development input and production imports resolve to
   assert.equal(pkg.dependencies?.['hanaworlds-contracts'], undefined);
   assert.equal(pkg.devDependencies['hanaworlds-contracts'], 'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0');
   assert.equal(lock.packages['node_modules/hanaworlds-contracts'].dev, true);
-  assert.equal(pkg.imports['#contracts'], './dist/runtime/contracts.mjs');
+  assert.deepEqual(pkg.imports['#contracts'], {development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
   const upstream = await import('hanaworlds-contracts');
   const compiled = await import('#contracts');
+  const runtime = await import('../dist/runtime/contracts.mjs');
+  assert.deepEqual(runtime.contractHandshake, upstream.contractHandshake);
+  assert.equal(runtime.canonicalJSON(runtime.schemaBundle), upstream.canonicalJSON(upstream.schemaBundle));
+  assert.notEqual(runtime.ContractError, upstream.ContractError);
   assert.deepEqual(compiled.contractHandshake, upstream.contractHandshake);
   assert.equal(compiled.canonicalJSON(compiled.schemaBundle), upstream.canonicalJSON(upstream.schemaBundle));
   for (const name of ['wireVersions', 'operationContracts', 'digestProfile', 'placementInvariants'])
@@ -41,13 +45,15 @@ test('packed public runtime and declarations work with no contract package or bu
   assert.equal(run(process.execPath,[pnpm,'--version'],dir,env).trim(),'11.28.5');
   const install=run(process.execPath,[pnpm,'install','--prod','--store-dir',join(homedir(),'.cache/pnpm/store'),join(dir,packed.filename)],dir,env);
   writeFileSync(join(dir,'install.log'),install);
+  assert.doesNotMatch(readFileSync(join(dir,'pnpm-lock.yaml'),'utf8'),/hanaworlds-contracts|esbuild|typescript/);
   writeFileSync(join(dir,'resolution-graph.json'),run(process.execPath,[pnpm,'list','--depth','Infinity','--json'],dir,env));
   assert.equal(existsSync(join(dir, 'node_modules/hanaworlds-contracts')), false);
   assert.equal(existsSync(join(dir, 'node_modules/esbuild')), false);
   const installed = JSON.parse(readFileSync(join(dir, 'node_modules/hanaworlds-adapter-luanti/package.json')));
   assert.deepEqual(Object.keys(installed.exports).sort(), ['.','./host','./inspection-context','./local-worlds-v2-mock','./source-locator','./world-source-facts-mock','./fixtures/local-world-source.json','./fixtures/world-source-facts.json'].sort());
   writeFileSync(join(dir,'package-graph.json'),JSON.stringify(verifyPackage(join(dir,'node_modules/hanaworlds-adapter-luanti')),null,2));
-  assert.equal(installed.imports['#contracts'], './dist/runtime/contracts.mjs');
+  assert.deepEqual(installed.imports['#contracts'], {development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
+  assert.equal(existsSync(join(dir,'node_modules/hanaworlds-adapter-luanti/dist/contracts.mjs')),false,'development value module must not be packed');
   writeFileSync(join(dir, 'deny-contract-import.mjs'), `import { registerHooks } from 'node:module';
 registerHooks({resolve(specifier, context, next) {
   if (specifier === 'hanaworlds-contracts' || specifier.startsWith('hanaworlds-contracts/')) throw Error('EXTERNAL_CONTRACT_IMPORT');
@@ -119,6 +125,9 @@ const missing=child.spawnSync(process.execPath,['--input-type=module','-e',"awai
 assert.notEqual(missing.status,0); assert.match(missing.stderr,/ERR_MODULE_NOT_FOUND/);
 await noBundle.rename(new URL('./contracts.saved.mjs',bundle),bundle);
 console.log('packed runtime without external contracts PASS');\n`);
+  assert.match(run(process.execPath, ['consumer.mjs'], dir, env), /PASS/);
+  assert.match(run(process.execPath, ['--input-type=module','-e',"import assert from 'node:assert/strict'; await assert.rejects(import('hanaworlds-contracts'), e=>e.code==='ERR_MODULE_NOT_FOUND'); console.log('NO_DEVELOPMENT_RESOLUTION');"], dir, env), /NO_DEVELOPMENT_RESOLUTION/);
+  // Retain the former denial gate after ordinary default-condition execution succeeds.
   assert.match(run(process.execPath, ['--import', './deny-contract-import.mjs', 'consumer.mjs'], dir, env), /PASS/);
   writeFileSync(join(dir, 'consumer.ts'), `import { createNativeHost, type NativeHostOptions } from 'hanaworlds-adapter-luanti/host';
 import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';

@@ -1,6 +1,6 @@
 // One upstream source for the provider's packaged fixture projection; no old card roots.
 import { readFile, writeFile } from 'node:fs/promises';
-import { canonicalJSON, version } from '#contracts';
+import { canonicalJSON, version } from 'hanaworlds-contracts';
 const upstream = JSON.parse(await readFile(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/world-source-facts'))));
 const operations = ['ReadCatalogue','ReadMaterialSources','ReadEngineFacts','ReadWriteProfile','ReadWorldSourceCapabilities'];
 const fixture = { evidence: `SOURCE/FIXTURE; published contracts v${version} examples, no real engine or currentness`,

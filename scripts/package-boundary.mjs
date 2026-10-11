@@ -7,6 +7,7 @@ import { builtinModules } from 'node:module';
 import { createHash } from 'node:crypto';
 const SDK='hanaworlds-contracts';
 const fail=(code,detail)=>{throw Error(`${code}: ${detail}`);};
+const productionTargets=value=>typeof value==='string'?[value]:value&&typeof value==='object'?Object.entries(value).filter(([condition])=>condition!=='development').flatMap(([,target])=>productionTargets(target)):[];
 const targets = value => typeof value==='string'?[value]:value && typeof value==='object'?Object.values(value).flatMap(targets):[];
 export function verifyPackage(dir) {
  const root=resolve(dir), pkg=JSON.parse(readFileSync(join(root,'package.json')));
@@ -16,6 +17,7 @@ export function verifyPackage(dir) {
    if(/^(?:file:|link:|workspace:|git|https?:)/.test(spec)) fail('EXOTIC_PRODUCTION_DEPENDENCY',name);
   }
  if(pkg.devDependencies?.[SDK]!=='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0') fail('DEVELOPMENT_SUPPLY_MISMATCH',SDK);
+ if(pkg.imports?.['#contracts']?.development!=='./dist/contracts.mjs'||pkg.imports?.['#contracts']?.default!=='./dist/runtime/contracts.mjs'||existsSync(join(root,'dist/contracts.mjs')))fail('DEVELOPMENT_MODULE_BOUNDARY',SDK);
  const closure=new Set(), external=new Set(), resources=new Set();
  const local = (path, owner, directory=false) => {
   const p=resolve(root,path);
@@ -33,7 +35,7 @@ export function verifyPackage(dir) {
   if(spec.endsWith('.d.ts'))fail('DECLARATION_VALUE_LOAD',spec);
   if(spec.startsWith('.')) return local(relative(root,resolve(dirname(owner),spec)),owner);
   if(spec.startsWith('#')) {
-   const paths=targets(pkg.imports?.[spec]);if(!paths.length)fail('UNRESOLVED_PACKAGE_IMPORT',spec);
+   const paths=productionTargets(pkg.imports?.[spec]);if(!paths.length)fail('UNRESOLVED_PACKAGE_IMPORT',spec);
    return paths.forEach(p=>dependency(p,join(root,'package.json')));
   }
   if(spec==='node:module'||spec==='module')fail('DYNAMIC_MODULE_LOADER',spec);
@@ -105,7 +107,7 @@ export function verifyPackage(dir) {
   }else local(target,'exports');
  }
  // All import targets and every packed executable are checked, including currently dormant helpers.
- for(const target of targets(pkg.imports)) local(target,'package imports');
+ for(const target of productionTargets(pkg.imports)) local(target,'package imports');
  function all(path){for(const n of readdirSync(path)){const p=join(path,n);if(lstatSync(p).isDirectory())all(p);else if(/\.(mjs|cjs|js)$/.test(p))visit(p);}}
  all(root);
  const meta=JSON.parse(readFileSync(join(root,'dist/runtime-build.json')));
