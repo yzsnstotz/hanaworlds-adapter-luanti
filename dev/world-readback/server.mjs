@@ -119,8 +119,9 @@ async function ensureSample() {
 async function readback() {
   const s = await ensureSample();
   const started = Date.now();
+  const catalogue = await native.readCatalogue(s.worldRef);
   const { read, surface, windows } = await readSurface((w, b) => native.readRegionState(w, b), s.worldRef,
-    { cx: 0, cz: 0, radius: RADIUS }, C.expandRegionBlock);
+    { cx: 0, cz: 0, radius: RADIUS, emptyMaterialRef: catalogue.emptyMaterialRef }, C.expandRegionBlock);
   const result = {
     readbackId: `rb-${new Date().toISOString()}`, at: new Date().toISOString(), ms: Date.now() - started,
     world: { kind: 'SAMPLE_FIXTURE', ...s },

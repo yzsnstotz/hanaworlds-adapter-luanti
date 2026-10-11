@@ -157,6 +157,6 @@ reset(); ungenerated['2,0,0'] = true
 result, code = engine:snapshot(cells)
 assert(not result and code == 'TARGET_FACTS_INCOMPLETE', 'ungenerated cell stays unknown')
 ungenerated['2,0,0'] = nil
-assert(module.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-native-cell-write/v1')
-assert(module.WRITE_BACKEND.revision == 'native-cell-write/2')
+assert(module.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-native-cell-write/v2')
+assert(module.WRITE_BACKEND.revision == 'native-cell-write/3')
 print('Native cell writer SOURCE/FIXTURE PASS')

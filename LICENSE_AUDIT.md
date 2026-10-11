@@ -1,3 +1,15 @@
+# adapter-09 StateProfile readback / restore (2026-10-11)
+
+- hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · unchanged published world-adapter/v8 schemas, validators and StateProfile rules. Installed LICENSE/NOTICE retained.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · unchanged D-7 runtime. Native swap_node, NodeMetaRef.from_table, NodeTimerRef.stop and fix_light implement declared clearing and recovery. API checked against doc/lua_api.md at that tag; no engine source copied or bundled.
+- VoxeLibre · existing 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · unchanged D-8 game base; no game source copied or bundled. Real-engine component tests use a labelled fixture game, not VoxeLibre.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged deterministic JSON.
+- Node.js · 24.13.1 · MIT with bundled notices · https://nodejs.org/dist/v24.13.1/ · existing test runner.
+- Lua · 5.5.1 · MIT · https://www.lua.org/ · existing payload fixture/syntax checks; not bundled.
+
+No new dependency. The state-clearing implementation, regression fixtures and
+neutral surface readback update are original MIT Adapter code.
+
 # adapter-08 world source facts (2026-10-11)
 
 - hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · unchanged published world-facts/v1 and world-adapter/v8 minor 1 schemas, validators and fixture examples. Installed LICENSE/NOTICE retained.

@@ -3,15 +3,15 @@
 // whose stateDigests are listed in readDigest. Nothing here reads or writes a world.
 import { createHash } from 'node:crypto';
 
-const AIR = 'air';
 const key = (x, z) => `${x},${z}`;
 
 /** Per (x,z) column: the highest non-air node in the read window, or why it is not known. */
-export function projectSurface(read, expandRegionBlock) {
+export function projectSurface(read, expandRegionBlock, emptyMaterialRef) {
+  if (typeof emptyMaterialRef !== 'string' || !emptyMaterialRef) throw Error('CAPABILITY_UNAVAILABLE');
   const { box } = read;
   const [x0, y0, z0] = box.min, [x1, y1, z1] = box.max;
   const columns = new Map();
-  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) columns.set(key(x, z), { x, z, y: null, nodeName: null, param2: null, status: 'BELOW_WINDOW' });
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) columns.set(key(x, z), { x, z, y: null, materialRef: null, orientation: null, status: 'BELOW_WINDOW' });
   const blocks = read.chunks.map(c => ({ c, b: c.state ? expandRegionBlock(c.state.block) : null }));
   // Scan each chunk's cells; keep the highest non-air per column, and remember unknown chunks.
   const unknown = new Map();
@@ -29,8 +29,8 @@ export function projectSurface(read, expandRegionBlock) {
       for (let y = max[1]; y >= min[1]; y--) {
         if (col.y !== null && y <= col.y) break;
         const p = b.palette[b.indices[(x - o[0]) + (y - o[1]) * sx + (z - o[2]) * sx * sy]];
-        if (p.nodeName === AIR) continue;
-        Object.assign(col, { y, nodeName: p.nodeName, param2: p.param2, status: p.nodeName === 'ignore' ? 'UNKNOWN' : 'KNOWN' });
+        if (p.materialRef === emptyMaterialRef) continue;
+        Object.assign(col, { y, materialRef: p.materialRef, orientation: p.orientation, status: 'KNOWN' });
         break;
       }
     }
@@ -44,7 +44,7 @@ export function projectSurface(read, expandRegionBlock) {
   const list = [...columns.values()];
   const materials = {};
   for (const c of list) if (c.status === 'KNOWN') {
-    const m = materials[c.nodeName] ??= { count: 0, minY: c.y, maxY: c.y };
+    const m = materials[c.materialRef] ??= { count: 0, minY: c.y, maxY: c.y };
     m.count++; m.minY = Math.min(m.minY, c.y); m.maxY = Math.max(m.maxY, c.y);
   }
   const counts = list.reduce((n, c) => (n[c.status] = (n[c.status] ?? 0) + 1, n), {});
@@ -64,12 +64,12 @@ export function readDigest(read) {
  * and something non-air is below), then return the single final read covering it. The
  * world's mapgen limit is the only bound; columns still open there are reported as such.
  */
-export async function readSurface(readRegionState, worldRef, { cx, cz, radius, yMin = -16, yMax = 47, limit = 31000, step = 64 }, expandRegionBlock) {
+export async function readSurface(readRegionState, worldRef, { cx, cz, radius, yMin = -16, yMax = 47, limit = 31000, step = 64, emptyMaterialRef }, expandRegionBlock) {
   const reads = [];
   for (;;) {
     const box = { min: [cx - radius, yMin, cz - radius], max: [cx + radius, yMax, cz + radius] };
     const read = await readRegionState(worldRef, box);
-    const surface = projectSurface(read, expandRegionBlock);
+    const surface = projectSurface(read, expandRegionBlock, emptyMaterialRef);
     reads.push({ box, readDigest: surface.readDigest, counts: surface.counts });
     const up = (surface.counts.ABOVE_WINDOW ?? 0) > 0 && yMax < limit;
     const down = (surface.counts.BELOW_WINDOW ?? 0) > 0 && yMin > -limit;

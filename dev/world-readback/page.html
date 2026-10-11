@@ -112,17 +112,17 @@ function renderReadback(rb) {
     const px = (c.x - x0) * S, pz = (c.z - z0) * S;
     if (c.status !== 'KNOWN') { g.fillStyle = '#d01c8b'; g.fillRect(px, pz, S, S); continue; }
     const f = hi === lo ? 1 : 0.75 + 0.5 * (c.y - lo) / (hi - lo);
-    g.fillStyle = shade(color(c.nodeName), f); g.fillRect(px, pz, S, S);
+    g.fillStyle = shade(color(c.materialRef), f); g.fillRect(px, pz, S, S);
   }
   const cx = (rb.spawn.x - x0) * S + S / 2, cz = (rb.spawn.z - z0) * S + S / 2;
   g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 10, cz); g.lineTo(cx + 10, cz); g.moveTo(cx, cz - 10); g.lineTo(cx, cz + 10); g.stroke();
   cv.onmousemove = e => {
     const r = cv.getBoundingClientRect(), x = x0 + Math.floor((e.clientX - r.left) * cv.width / r.width / S), z = z0 + Math.floor((e.clientY - r.top) * cv.height / r.height / S);
     const c = at.get(`${x},${z}`);
-    $('hover').textContent = c ? `x=${c.x} z=${c.z} · 地表 y=${c.y ?? '?'} · ${c.nodeName ?? ''} ${c.status !== 'KNOWN' ? '· ' + c.status + (c.unknownReason ? ' ' + c.unknownReason : '') : ''}` : '';
+    $('hover').textContent = c ? `x=${c.x} z=${c.z} · 地表 y=${c.y ?? '?'} · ${c.materialRef ?? ''} ${c.status !== 'KNOWN' ? '· ' + c.status + (c.unknownReason ? ' ' + c.unknownReason : '') : ''}` : '';
   };
   const mats = Object.entries(s.materials).sort((a, b) => b[1].count - a[1].count);
-  $('materials').innerHTML = '<tr><th>材质（节点名）</th><th>列数</th><th>高度 y</th></tr>' + mats.map(([n, m]) =>
+  $('materials').innerHTML = '<tr><th>材质引用</th><th>列数</th><th>高度 y</th></tr>' + mats.map(([n, m]) =>
     `<tr><td><span class="sw" style="background:${color(n)}"></span><code>${esc(n)}</code></td><td>${m.count}</td><td>${m.minY === m.maxY ? m.minY : m.minY + '…' + m.maxY}</td></tr>`).join('');
   const total = s.columns.length;
   $('counts').innerHTML = `共 ${total} 列（${w}×${h}）：` + Object.entries(s.counts).map(([k, v]) => `${k} ${v}`).join(' · ') +

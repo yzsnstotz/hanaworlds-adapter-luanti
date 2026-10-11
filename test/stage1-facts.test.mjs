@@ -29,7 +29,7 @@ test('config engine facts: payload-declared backend KNOWN, avatar always UNAVAIL
   assert.equal(f.profileVersion, 'config-engine-facts/v2');
   assert.deepEqual({ ...f.connection }, { worldRef: w.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef });
   assert.deepEqual(JSON.parse(JSON.stringify(f.writeBackend)), { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
-    writeBackend: {profileId:'hanaworlds-luanti-native-cell-write/v1',revision:'native-cell-write/2'} });
+    writeBackend: {profileId:'hanaworlds-luanti-native-cell-write/v2',revision:'native-cell-write/3'} });
   assert.deepEqual({ ...f.avatarEnvelope }, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
   assert.equal(f.catalogueDigest, digestValue('catalogue', await w.facts.readCatalogue(w.worldRef)).sha256);
   const { sourceRevision, ...projection } = f;
@@ -81,7 +81,7 @@ test('WorldEdit not loaded: pairing and native backend facts remain available', 
   assert.deepEqual(diagnostic.version, {status:'UNKNOWN', reason:'NOT_LOADED'});
   const facts = await w.facts.readConfigEngineFacts(w.worldRef);
   assert.equal(facts.writeBackend.availability, 'KNOWN');
-  assert.equal(facts.writeBackend.writeBackend.profileId, 'hanaworlds-luanti-native-cell-write/v1');
+  assert.equal(facts.writeBackend.writeBackend.profileId, 'hanaworlds-luanti-native-cell-write/v2');
 });
 
 test('connection lifecycle: retire withdraws all facts; a new incarnation is a new domain', async t => {
