@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, open } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import { validateType, validateMaterialSources, digestValue } from '#contracts';
+import { validateType, validateMaterialSources, validateMaterialSourceFacts, digestValue } from '#contracts';
 import { PNG } from 'pngjs';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=()=>{throw new Error('CURRENT_WORLD_MISMATCH');};
@@ -32,6 +32,26 @@ export function textureColor({mediaType,bytes}) {
     }
     return weight?'#'+sum.map(n=>Math.round(n/weight).toString(16).padStart(2,'0')).join(''):null;
   }catch{return null;}
+}
+
+/** Named C-world-facts projection: one presentation per opaque material ref,
+ * including UNKNOWN sources. Native asset names and byte blobs stay private.
+ * Missing names/colours remain explicit null; verified PNGs supply sRGB facts. */
+export function materialSourceFacts(sources, declaredPresentation, catalogue, connection) {
+  const verified=validateMaterialSources(sources,catalogue,connection);
+  const textures=new Map(verified.textures.map(t=>[t.bytesDigest,t.bytes]));
+  const presentation={};
+  const {sourceRevision,...projection}=verified.snapshot;
+  const materials=projection.materials.map(row=>{
+    const declared=declaredPresentation[row.materialRef];
+    const color=row.texture?textureColor({mediaType:row.texture.mediaType,bytes:textures.get(row.texture.bytesDigest)}):null;
+    presentation[row.materialRef]={displayName:declared?.displayName??null,color:color??declared?.color??null};
+    return {...row,texture:row.texture?{...row.texture,textureName:`asset:${row.texture.bytesDigest}`,
+      sourceRef:`source:${sha(JSON.stringify(row.texture.sourceRef))}`}:null};
+  });
+  const snapshot={...projection,materials};
+  return validateMaterialSourceFacts({profileVersion:'material-source-facts/v1',
+    snapshot:{...snapshot,sourceRevision:digestValue('material-sources',snapshot).sha256},presentation},catalogue,connection);
 }
 
 // Only the actual native game/mod media roots are read. Symlinked/unreadable

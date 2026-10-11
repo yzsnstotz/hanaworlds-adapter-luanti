@@ -9,10 +9,17 @@ const cwd = process.env.HW_MATERIAL_PACKAGE ?? fileURLToPath(new URL('..', impor
 const script = fileURLToPath(new URL('./support/material-facts.lua', import.meta.url));
 const run = (...a) => JSON.parse(execFileSync('lua', [script, ...a], { cwd, encoding: 'utf8' }));
 const C = await import('#contracts');
+const load=p=>import(pathToFileURL(join(cwd,p)));
+const {WorldVocabulary,NeutralEngine}=await load('src/world-vocabulary.mjs');
+const {checkWritePathFacts}=await load('src/world-source-facts.mjs');
+const staticMaterial=(native,nodeName,param2)=>{
+  const vocabulary=new WorldVocabulary(native);
+  return C.validateStaticMaterials({m:vocabulary.material(nodeName,param2)},vocabulary.catalogue);
+};
 
 test('one native snapshot carries Catalogue, actual paths, load-ordered mods and appearance', () => {
   const m = run();
-  C.validateType('Catalogue', m.catalogue);
+  C.validateType('Catalogue', new WorldVocabulary(m.catalogue).catalogue);
   assert.deepEqual(Object.keys(m).sort(), ['appearance', 'catalogue', 'gamePath', 'mods', 'texturePath', 'userPath']);
   assert.equal(m.gamePath, '/abs/games/fx_game'); assert.equal(m.userPath, '/abs/user'); assert.equal(m.texturePath, '');
   assert.deepEqual(m.mods, [{ name: 'fx_b', path: '/abs/mods/fx_b' }, { name: 'fx_a', path: '/abs/mods/fx_a' },
@@ -32,7 +39,7 @@ test('existing engine-verified none/facedir and unknown modes retain their seman
 });
 test('effective collision facts require actual non-walkability, never a node name/drawtype/default', () => {
   const cat = run().catalogue;
-  C.validateType('Catalogue', cat);
+  C.validateType('Catalogue', new WorldVocabulary(cat).catalogue);
   for (const name of ['air', 'fx:noncolliding']) {
     assert.deepEqual(cat.nodes[name].collisionBoxes, []);
     assert.ok(!cat.nodes[name].unknownFields.includes('collisionBoxes'));
@@ -58,17 +65,17 @@ test('documented glass bitfield domain admits valid glass without relaxing stati
     const node = cat.nodes[nodeName];
     assert.deepEqual(node.allowedParam2, domain);
     assert.ok(!node.unknownFields.includes('allowedParam2'));
-    for (const param2 of domain) assert.doesNotThrow(() => C.validateStaticMaterials({ window: { nodeName, param2 } }, cat));
-    for (const param2 of [-1, 256, 0.5]) assert.throws(() => C.validateStaticMaterials({ window: { nodeName, param2 } }, cat));
+    for (const param2 of domain) assert.doesNotThrow(() => staticMaterial(cat,nodeName,param2));
+    for (const param2 of [-1, 256, 0.5]) assert.throws(() => staticMaterial(cat,nodeName,param2));
     assert.deepEqual(run('glass').appearance[nodeName], { supported: false, textureName: null }, 'appearance support is a separate gate');
   }
   assert.equal(cat.nodes['fx:glass_wrong_drawtype'].allowedParam2, null);
   for (const nodeName of ['fx:glass_wrong_drawtype', 'fx:wall', 'fx:palette', 'fx:glass_state'])
-    assert.throws(() => C.validateStaticMaterials({ window: { nodeName, param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/);
+    assert.throws(() => staticMaterial(cat,nodeName,0), /UNSUPPORTED_MUTATION_SEMANTICS/);
   for (const mode of ['glass-global', 'catalogue'])
-    assert.throws(() => C.validateStaticMaterials({ window: { nodeName: 'fx:glass', param2: 0 } }, run(mode).catalogue ?? run(mode)), /UNSUPPORTED_MUTATION_SEMANTICS/);
+    assert.throws(() => staticMaterial(run(mode).catalogue ?? run(mode),'fx:glass',0), /UNSUPPORTED_MUTATION_SEMANTICS/);
 });
-test('write-path-init/v1: facts from initialization/state callbacks and the write-path global registry', () => {
+test('write-path-init/v1: facts from initialization/state callbacks and the write-path global registry', async () => {
   const n = run('state').nodes, f = k => [n[k].hasCallbacks, n[k].hasPersistentState];
   assert.deepEqual(f('air'), [false, false]); assert.deepEqual(f('fx:stone'), [false, false]); // player hooks/ABM out of scope
   assert.deepEqual(f('fx:chest'), [true, null]); assert.deepEqual(f('fx:timer'), [true, null]);
@@ -81,21 +88,24 @@ test('write-path-init/v1: facts from initialization/state callbacks and the writ
   assert.equal(run('state').nodes['fx:stone'].definitionRevision, n['fx:stone'].definitionRevision, 'revision is deterministic');
   // The exported inventory satisfies the public derivation; the Catalogue is never looser.
   const wp = run('state', 'write_path'), nodes = [...wp.evidence.nodes].sort((a, b) => a.nodeName < b.nodeName ? -1 : 1);
-  const evidence = { ...wp.evidence, nodes, catalogueDigest: C.digestValue('catalogue', wp.catalogue).sha256 };
   assert.deepEqual(wp.catalogue, run('state'));
-  assert.deepEqual(evidence.globalWriteCallbacks, []);
+  assert.deepEqual(wp.evidence.globalWriteCallbacks, []);
   assert.deepEqual(nodes.find(x => x.nodeName === 'fx:stone').definedCallbacks, ['after_dig_node', 'on_blast', 'on_dig', 'on_punch']);
-  const check = C.validateCatalogueWritePathFacts(wp.catalogue, evidence);
-  assert.deepEqual([...check.verified].sort(), ['air', 'fx:stone']); assert.deepEqual(check.stricter, ['ignore']);
+  const neutral = await new NeutralEngine({writePath:async()=>wp}).writePath();
+  const check = checkWritePathFacts(neutral.catalogue,{...neutral.evidence,
+    catalogueDigest:C.digestValue('catalogue',neutral.catalogue).sha256});
+  const vocabulary = new WorldVocabulary(wp.catalogue);
+  assert.deepEqual([...check.verified].sort(), ['air', 'fx:stone'].map(n=>vocabulary.material(n,0).materialRef).sort());
+  assert.deepEqual(check.stricter, [vocabulary.material('ignore',0).materialRef]);
   const gw = run('state-global', 'write_path');
   assert.deepEqual(gw.evidence.globalWriteCallbacks, ['register_on_mapblocks_changed']);
   assert.equal(run('state-unknown', 'write_path').evidence.globalWriteCallbacks, null);
   // Public admission on these facts: air+stone admitted; init/state nodes and unknown rejected.
   const cat = run('state');
-  assert.doesNotThrow(() => C.validateStaticMaterials({ a: { nodeName: 'air', param2: 0 }, s: { nodeName: 'fx:stone', param2: 0 } }, cat));
+  for (const name of ['air','fx:stone']) assert.doesNotThrow(() => staticMaterial(cat,name,0));
   for (const k of ['fx:chest', 'fx:timer', 'fx:form', 'ignore'])
-    assert.throws(() => C.validateStaticMaterials({ m: { nodeName: k, param2: 0 } }, cat), /UNSUPPORTED_MUTATION_SEMANTICS/, k);
-  assert.throws(() => C.validateStaticMaterials({ m: { nodeName: 'fx:stone', param2: 0 } }, run('state-global')), /UNSUPPORTED_MUTATION_SEMANTICS/);
+    assert.throws(() => staticMaterial(cat,k,0), /UNSUPPORTED_MUTATION_SEMANTICS/, k);
+  assert.throws(() => staticMaterial(run('state-global'),'fx:stone',0), /UNSUPPORTED_MUTATION_SEMANTICS/);
 });
 test('only identical unmodified opaque normal tiles are a supported appearance', () => {
   const a = run().appearance;
@@ -106,4 +116,13 @@ test('only identical unmodified opaque normal tiles are a supported appearance',
 });
 test('missing native path source fails closed instead of guessing', () => {
   assert.deepEqual(run('nopath'), { error: 'CAPABILITY_UNAVAILABLE' });
+});
+test('native presentation uses clean human labels without engine names or escape markup', () => {
+  const n = run('presentation').catalogue.nodes;
+  assert.equal(n['fx:facedir'].displayName, 'Stone');
+  assert.equal(n['fx:facedir'].color, '#abcdef');
+  assert.equal(n['fx:placed'].displayName, 'Placed stone');
+  for (const name of ['fx:plain', 'fx:six', 'fx:faces', 'fx:notiles'])
+    assert.equal(n[name].displayName, null, name);
+  assert.equal(run('presentation-no-strip').catalogue.nodes['fx:facedir'].displayName, null);
 });

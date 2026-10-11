@@ -100,6 +100,25 @@ end
 
 -- Catalogue revisions fingerprint the currently loaded engine registry. They
 -- are deliberately not advertised as source-code/git revisions of game mods.
+-- Luanti descriptions can contain translation domains and colour escapes.
+-- External consumers receive the human text only (Luanti 5.17 strip_escapes),
+-- never a registry identifier used as a label. Missing text stays unknown.
+local function display_name(core, description)
+  if type(description) ~= 'string' then return nil end
+  if description:find('\27', 1, true) then
+    if not available(core, 'strip_escapes') then return nil end
+    description = core.strip_escapes(description)
+    if type(description) ~= 'string' then return nil end
+  end
+  description = description:match('^%s*(.-)%s*$')
+  if description == '' or description:find('[%z\1-\8\11\12\14-\31]')
+    or core.registered_nodes[description] ~= nil then return nil end
+  for token in description:gmatch('[%w_]+:[%w_]+') do
+    if core.registered_nodes[token] ~= nil then return nil end
+  end
+  return description
+end
+
 local function catalogue(core)
   if not available(core, 'get_game_info') or not available(core, 'get_modnames')
     or not available(core, 'sha256') or not available(core, 'write_json')
@@ -147,7 +166,7 @@ local function catalogue(core)
       if not has_init and not has_state then persistent = false end
     end
     local known = {
-      displayName = type(def.description) == 'string' and def.description ~= '' and def.description or nil,
+      displayName = display_name(core, def.description),
       color = type(def.color) == 'string' and def.color:match('^#%x%x%x%x%x%x$') and def.color:lower() or nil,
       walkable = def.walkable,
       liquidType = ({none = 'none', source = 'source', flowing = 'flowing'})[def.liquidtype],
