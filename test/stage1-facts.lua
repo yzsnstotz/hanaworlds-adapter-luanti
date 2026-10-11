@@ -20,14 +20,5 @@ assert(F.write_backend({}, E.WRITE_BACKEND, bound).ready == false)
 assert(select(2, F.write_backend(core, nil, bound)) == 'NOT_DECLARED_BY_PAYLOAD')
 assert(select(2, F.write_backend(core, {backendProfileId = ''}, bound)) == 'NOT_DECLARED_BY_PAYLOAD')
 
-_G.worldedit = nil
-local r = assert(F.worldedit_runtime(core))
-assert(r.modListed == true and r.apiTable == false and r.versionString == nil)
-_G.worldedit = {version_string = '1.3', version = {major = 1, minor = 3}}
-r = assert(F.worldedit_runtime(core))
-assert(r.apiTable and r.versionString == '1.3' and r.versionMajor == 1 and r.versionMinor == 3)
-_G.worldedit = {}
-r = assert(F.worldedit_runtime(core))
-assert(r.apiTable and r.versionString == nil and r.versionMajor == nil)
-assert(select(2, F.worldedit_runtime({})) == 'CAPABILITY_UNAVAILABLE')
+assert(F.worldedit_runtime == nil, 'D-15 removes obsolete runtime diagnostics')
 print('Stage 1 facts payload SOURCE/FIXTURE PASS')

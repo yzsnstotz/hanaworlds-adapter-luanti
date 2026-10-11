@@ -75,7 +75,6 @@ local engine_module = dofile(dir .. '/engine.lua')
 local declaration = engine_module.WRITE_BACKEND
 if S.writeBackendDeclared == false then declaration = nil end
 if operation == 'fact_write_backend' then result, code = facts.write_backend(core, declaration, engine_module.native_writer)
-elseif operation == 'fact_worldedit_runtime' then result, code = facts.worldedit_runtime(core)
 elseif operation == 'fact_catalogue' then result, code = facts.catalogue(core)
 elseif operation == 'fact_profile' then result, code = facts.state_profile(core, engine_module.native_writer)
 elseif operation == 'region_limits' then result = {mapblockSize = 16, mapgenLimit = 31000, maxBodyBytes = 4194304, registeredNodes = 2, longestNodeName = 13}

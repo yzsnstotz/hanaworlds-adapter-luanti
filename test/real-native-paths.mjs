@@ -14,6 +14,7 @@ const source=resolve(process.env.HW_NATIVE_PACKAGE ?? '.');
 const selectedPath=process.env.HW_NATIVE_PATH ?? 'ALL';assert.ok(['ALL','region','J3','J5'].includes(selectedPath),'unknown native test path');
 const load=path=>import(pathToFileURL(join(source,path)));
 const C=await load('node_modules/hanaworlds-contracts/dist/local/index.mjs');
+const {Context}=await import('@deepseek-ai/cordis');
 const {createFlatWorld}=await load('src/flat-world.mjs');
 const {createLocalRuntime}=await load('src/local-runtime.mjs');
 const {STATE_PROFILE,WORLD_GEOMETRY,WorldVocabulary}=await load('src/world-vocabulary.mjs');
@@ -96,7 +97,7 @@ const owned={records,host:{
   const listener=createServer();await new Promise(y=>listener.listen(0,'127.0.0.1',y));const port=listener.address().port;await new Promise(y=>listener.close(y));
   const logfile=join(root,'logs','server-'+seq+'.log'),config=join(root,'logs','server-'+seq+'.conf');
   await writeFile(config,`port = ${port}\nbind_address = 127.0.0.1\nsecure.http_mods = hanaworlds_adapter\nserver_announce = false\nenable_damage = false\n`,{mode:0o600});
-  const argv=['--world',input.worldPath,'--config',config,'--logfile',logfile];
+  const argv=[...(process.env.HW_LUANTI_MODE==='client'?['--server']:[]),'--world',input.worldPath,'--config',config,'--logfile',logfile];
   const child=spawn(process.env.HW_LUANTI,argv,{env:{...process.env,HOME:profile,LUANTI_USER_PATH:profile,XDG_CACHE_HOME:join(profile,'cache'),TMPDIR:join(root,'tmp')},stdio:['ignore','pipe','pipe']});
   const controlRef='native-test:'+seq,record={child,input,exit:null};records.set(controlRef,record);
   for(const stream of [child.stdout,child.stderr])stream.on('data',data=>appendFileSync(join(root,'native-output.log'),data));
@@ -113,20 +114,25 @@ const owned={records,host:{
 },async shutdown(){for(const r of records.values()){if(!r.exit){const done=once(r.child,'exit');r.child.kill('SIGINT');await done;}assert.equal(r.exit.code,0,JSON.stringify(r.exit));}}};
 
 let runtime,query,localContext;let seq=0;
-const rootCtx={};const ctx={root:rootCtx,fiber:{state:2,entry:{options:{name:'hanaworlds-canvas'}},ctx:{root:rootCtx}}};
+const ctx=new Context();let canvasContext;
+const canvasFiber=ctx.plugin({name:'renamed-native-contract-peer',apply(c){canvasContext=c;}});await canvasFiber.await();
 const canvas={async call(name,q){return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'test-peer',connections:[]},selection:{status:'BOUND',connectionRef:localContext.connectionRef,context:{currentSession:'test-session',activeWorldRef:localContext.worldRef,orderedSelectedObjectRefs:[],sessionRevision:'session-1',selectionRevision:'selection-1',localContext}}},error:null});}};
+canvasContext.provide('hanaworldsCanvasV5',canvas);
+canvasContext.provide('hanaworldsCanvasRegionV1',{call:()=>{}});
 const history={read:async r=>({...r,current:true,durable:true,historyRevision:r.expectedHistoryRevision,worldRevision:r.expectedWorldRevision,objectRevisions:r.expectedObjectRevisions})};
 const world={...made.identity,worldPath:made.worldPath,connectionRef:'native-test-connection',gameId};
 async function start(){
  const input={requesterRef:'adapter-test',operationRef:'native-start-'+(++seq),worldPath:made.worldPath,userPath:profile};
  const lease=await owned.host.acquire(input);query={controlRef:lease.controlRef,requesterRef:input.requesterRef,operationRef:input.operationRef,worldPath:input.worldPath};
  runtime=createLocalRuntime({ctx,homePath:(...p)=>join(root,'home',...p),resolveCanvas:()=>canvas,resolveRegistry:()=>({}),resolveHistory:()=>history,resolveOracle:()=>({read:async()=> 'world-head-1'}),resolveInspection:()=>({}),inspectConnection:()=>owned.host.inspect(query)});
+ if(ctx.get('hanaworldsWorldAdapterV6')) {ctx.set('hanaworldsWorldAdapterV6',runtime.port);ctx.set('hanaworldsWorldAdapterRegionV1',runtime.regionIO);}
+ else {ctx.provide('hanaworldsWorldAdapterV6',runtime.port);ctx.provide('hanaworldsWorldAdapterRegionV1',runtime.regionIO);}
  const paired=await runtime.pairLocal(world);localContext={worldRef:world.worldRef,connectionRef:world.connectionRef,connectionIncarnationRef:paired.connectionIncarnationRef,selectionRevision:'selection-1'};
 }
 async function stop(){try{if(runtime)await runtime.close();}finally{runtime=null;await owned.shutdown();}}
-const call=(name,extra={})=>runtime.port.call(name,{contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'call-'+(++seq),...(name==='ReadLocalConnection'?{}:{worldRef:world.worldRef,localContext}),...extra});
+const call=(name,extra={})=>canvasContext.get('hanaworldsWorldAdapterV6').call(name,{contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'call-'+(++seq),...(name==='ReadLocalConnection'?{}:{worldRef:world.worldRef,localContext}),...extra});
 const ok=async(name,extra)=>{const r=await call(name,extra);if(r.error)evidence.steps.push({name:'FAILED_'+name,response:r,counters:await counts()});assert.equal(r.error,null,JSON.stringify(r));return r.result;};
-const region=async(name,extra)=>{const r=await runtime.regionIO.call(name,{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'region-'+(++seq),worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,...extra});assert.equal(r.error,null,JSON.stringify(r.error));return r;};
+const region=async(name,extra)=>{const r=await canvasContext.get('hanaworldsWorldAdapterRegionV1').call(name,{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'region-'+(++seq),worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,...extra});assert.equal(r.error,null,JSON.stringify(r.error));return r;};
 const read=async box=>{const r=await region('ReadRegion',{box,purpose:'BEFORE_IMAGE'});C.requireKnownRegion(r.result);return r.result;};
 let probeSeq=0;
 async function observe(input){const id=++probeSeq;const pending=join(made.worldPath,'native-query.pending');await writeFile(pending,JSON.stringify({id,...input}));await rename(pending,join(made.worldPath,'native-query.json'));
@@ -142,7 +148,7 @@ async function write(purpose,writes,id){const r=await region('WriteRegion',{tran
 try {
  await start();
  const f=await runtime.readConfigEngineFacts(world.worldRef);assert.equal(f.writeBackend.availability,'KNOWN');assert.equal(f.writeBackend.writeBackend.profileId,'hanaworlds-luanti-native-cell-write/v2');
- assert.equal((await runtime.readWorldEditFacts(world.worldRef)).loadState,'NOT_LOADED');
+ await assert.rejects(runtime.readWorldEditFacts(world.worldRef),/CAPABILITY_UNAVAILABLE/);
  const connection=await ok('ReadLocalConnection',{connectionRef:world.connectionRef});assert.deepEqual(JSON.parse(JSON.stringify(connection.capabilities.stateProfile)),JSON.parse(JSON.stringify(STATE_PROFILE)));
  step('NATIVE_PAIR_AND_FACTS',{writeBackend:f.writeBackend,capabilities:connection.capabilities});
  const catalogue=await runtime.readCatalogue(world.worldRef);
@@ -160,10 +166,10 @@ try {
  const c0=await counts(),applied=await write('APPLY',ops,'region-sparse'),after=await read(regionBox),c1=await counts();
  for(let i=0;i<before.chunks.length;i++){const w=ops.find(w=>w.chunkPos.join()===before.chunks[i].chunkPos.join());assert.equal(after.chunks[i].stateDigest,w?D('region-state',C.expectedRegionState(before.chunks[i].state,w.ops)):before.chunks[i].stateDigest);}
  assert.equal(c1.swap_node,c0.swap_node);assert.equal(c1.vm_write-c0.vm_write,applied.facts.batches.length);assert.ok(applied.response.result.lighting.status==='COMPLETE');
- const stale=await runtime.regionIO.call('WriteRegion',{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'stale',worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,transactionId:'stale',purpose:'APPLY',writes:ops});assert.equal(stale.error?.code,'TRANSACTION_CONFLICT');assert.deepEqual(await counts(),c1);
+ const stale=await canvasContext.get('hanaworldsWorldAdapterRegionV1').call('WriteRegion',{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'stale',worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,transactionId:'stale',purpose:'APPLY',writes:ops});assert.equal(stale.error?.code,'TRANSACTION_CONFLICT');assert.deepEqual(await counts(),c1);
  await write('RESTORE',restoreWrites(after,before),'region-restore');assert.deepEqual(digests(await read(regionBox)),digests(before));
  await writeFile(join(made.worldPath,'native-protected'),'test protection fixture');
- const protectedResponse=await runtime.regionIO.call('WriteRegion',{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'protected',worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,transactionId:'protected',purpose:'APPLY',writes:ops});
+ const protectedResponse=await canvasContext.get('hanaworldsWorldAdapterRegionV1').call('WriteRegion',{contractVersion:'world-adapter-region/v3',sessionRef:'test-session',requestId:'protected',worldRef:world.worldRef,localContext,partition:WORLD_GEOMETRY.partition,transactionId:'protected',purpose:'APPLY',writes:ops});
  assert.equal(protectedResponse.guardRefusal?.guard,'CELL_PROTECTION');assert.equal(protectedResponse.error.mutationState,'NONE');
  await unlink(join(made.worldPath,'native-protected'));assert.deepEqual(digests(await read(regionBox)),digests(before));
  const callbackBox={min:[0,72,0],max:[0,72,0]},cb=await read(callbackBox),unsafe=ref(process.env.HW_GAME?'mcl_core:water_source':'base:callback');
@@ -194,7 +200,7 @@ try {
  await observe({seed:process.env.HW_GAME?'mcl_core:stone':'base:stone',seedPositions:[{x:20,y:80,z:20}]});
  const pendingTx=await statePrepare('state-recovery'),stateBefore=await readState('state-recovery');
  await writeFile(join(made.worldPath,'state-fail'),'test-only injection');
- const failed=await runtime.port.call('ApplyCompiledTransaction',{contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'state-failed',worldRef:world.worldRef,localContext,...pendingTx.common,preparedTransaction:C.projectScopedPreparedTransaction(pendingTx.prepared)});
+ const failed=await canvasContext.get('hanaworldsWorldAdapterV6').call('ApplyCompiledTransaction',{contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'state-failed',worldRef:world.worldRef,localContext,...pendingTx.common,preparedTransaction:C.projectScopedPreparedTransaction(pendingTx.prepared)});
  assert.equal(failed.error?.code,'RESTORE_FAILED');assert.equal(failed.guardRefusal?.stage,'RESTORE');
  const pending=await readState('state-recovery');assert.equal(pending.projection.records[0].state.metadata.unexpected,'injected-readback-mismatch');
  await unlink(join(made.worldPath,'native-protected'));
@@ -223,7 +229,7 @@ try {
  const written=localContext;await stop();await start();await read(houseBox);
  // Real stop + reconnect: new incarnation; the durable receipt comes back as written beside the current context.
  const queryRequest={contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'call-'+(++seq),worldRef:world.worldRef,localContext,transactionId:'house',transactionPayloadDigest:prepared.transactionPayloadDigest};
- const queried=await runtime.port.call('QueryTransaction',queryRequest);if(queried.error)evidence.steps.push({name:'FAILED_QueryTransaction',response:queried});
+ const queried=await canvasContext.get('hanaworldsWorldAdapterV6').call('QueryTransaction',queryRequest);if(queried.error)evidence.steps.push({name:'FAILED_QueryTransaction',response:queried});
  const historical=C.readHistoricalReceipt(queryRequest,queried);
  assert.equal(historical.historical,true);assert.equal(historical.sameIncarnation,false);const plain=v=>JSON.parse(JSON.stringify(v));assert.deepEqual(plain(historical.writtenContext),plain(written));
  assert.deepEqual(plain(historical.receipt),plain(receipt));assert.equal(historical.receiptDigest,D('receipt',receipt));
@@ -255,4 +261,4 @@ try {
  assert.ok(required.every(name=>evidence.steps.some(s=>s.name===name)),'required path evidence missing');evidence.requiredSteps=required;
  evidence.pass=true;
 } catch(error){evidence.pass=false;evidence.failure={message:error.message,stack:error.stack};throw error;
-} finally {LocalCourier.prototype.catalogue=nativeCatalogue;try{await stop();}catch(error){evidence.cleanupError={message:error.message};evidence.pass=false;process.exitCode=1;}evidence.processes=[...owned.records.values()].map(r=>({pid:r.child.pid,exit:r.exit}));await writeFile(join(root,'results.json'),JSON.stringify(evidence,null,2)+'\n');}
+} finally {LocalCourier.prototype.catalogue=nativeCatalogue;try{await stop();await canvasFiber.dispose();}catch(error){evidence.cleanupError={message:error.message};evidence.pass=false;process.exitCode=1;}evidence.processes=[...owned.records.values()].map(r=>({pid:r.child.pid,exit:r.exit}));await writeFile(join(root,'results.json'),JSON.stringify(evidence,null,2)+'\n');}

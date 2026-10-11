@@ -253,3 +253,13 @@ test('unsupported APPLY or RESTORE block profile refuses before engine access', 
     assert.deepEqual(e.log,[]); assert.equal(e.writes,0);
   }
 });
+
+test('a first native dispatch followed by lost capability or invalid reply retains UNKNOWN chunks',async()=>{
+ for(const mode of ['CAPABILITY_UNAVAILABLE','CURRENT_WORLD_MISMATCH','INVALID_REPLY']) {
+  const e=engine(),before=await read(e),real=e.regionWrite;
+  e.regionWrite=async q=>{const reply=await real(q);if(q.checkOnly)return reply;if(mode==='INVALID_REPLY')return {};throw Error(mode);};
+  const out=await write(e,'APPLY',applyWrites(before),mode);
+  assert.equal(e.writes,1);assert.equal(out.allWritten,false);
+  assert.ok(out.response.result.chunks.some(c=>c.status==='UNKNOWN'));
+ }
+});

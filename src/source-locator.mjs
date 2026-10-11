@@ -2,3 +2,4 @@
  * describeSourceWorld. Only the paired Adapter/local-runtime world source interprets it;
  * its shape is documented in docs/source-locator.md and typed in source-locator.d.ts. */
 export const SOURCE_LOCATOR_VERSION = 'hanaworlds-luanti-source-locator/v1';
+export { SOURCE_STARTUP_VERSION } from './source-startup.mjs';

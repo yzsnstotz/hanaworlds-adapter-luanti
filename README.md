@@ -1,12 +1,34 @@
-# HanaWorlds Luanti Adapter 0.18.3 · contracts 2.8.0
+# HanaWorlds Luanti Adapter 0.19.0 · contracts 2.13.0
 
 The world source uses the exact published dependency
-`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.8.0`.
+`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0`.
 The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/v8`),
 `hanaworldsWorldAdapterRegionV1` (wire `world-adapter-region/v3`), and
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
 `ReadLocalConnection.capabilities.worldGeometry` declares `voxel-grid/v1`,
 `partition.edge=[16,16,16]`, and `postWriteLighting=REQUIRED`.
+
+Cell mutators authorize the active fiber providing `hanaworldsCanvasV5` in the
+same Cordis root; region operations authorize the active provider of
+`hanaworldsCanvasRegionV1`. Package names and request JSON roles confer no authority.
+Registration identity and current paired world/selection are checked again before
+native writes, including after asynchronous journal and engine prechecks. This is
+an in-process Cordis ownership boundary, not a sandbox for arbitrary code already
+holding the root's reflection APIs and another fiber's context.
+
+Production InspectWorld requires the formal
+`hanaworldsWorldInspectionContext.ReadInspectionContext` service. Absence refuses
+CAPABILITY_UNAVAILABLE with a WORLD_INSPECTION_CONTEXT_UNAVAILABLE diagnostic;
+legacy service names/read methods are not production fallbacks. The formal
+`hanaworldsWorldFacts` service provides the named world-facts reads; existing aliases
+and package export paths remain available. The legacy readWorldEditFacts operation
+now refuses WORLDEDIT_FACTS_RETIRED_D15 and performs no WorldEdit runtime reads.
+
+`hanaworldsLocalWorlds.describeSourceWorld` supplies optional opaque
+`sourceStartupFacts` from the exact installed world-bound payload files.
+Only this source's paired runtime interprets the HTTP-mod permissions; an incomplete
+or altered payload supplies no startup authority. See [source description](docs/source-locator.md).
+Consumers need SDK v2.13.0 before receiving the new optional field.
 
 Region batching and chunk positions use that declared partition, including negative
 coordinates. The published region/v3 request carries `partition`; each operation
@@ -214,7 +236,7 @@ Those values must come from Canvas's durable current history/head, not be
 copied out of caller JSON. The Adapter additionally verifies its own saved
 origin receipt, before image, after image and their exact digests. For
 inspection, the existing public `hanaworldsWorldRevisionOracle.read(worldRef)`
-and `hanaworldsLuantiInspectionContext.read(request)` supply Canvas's current
+and `hanaworldsWorldInspectionContext.ReadInspectionContext(request)` supply Canvas's current
 revision/selected-object context. These are logical Canvas revisions, not
 claims of a Luanti whole-world revision. Native catalogue, region, body and
 cell state come from the paired engine. Missing public peer facts fail closed.
@@ -601,7 +623,7 @@ import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-co
 const owned = createNativeHost({ C, state: OWN_STATE, profile: OWN_PROFILE,
   worlds: OWN_CANONICAL_WORLD_ROOT, luanti: OWN_LUANTI_BINARY, event: appendOwnEvent });
 root.provide('hanaworldsNativeEngineControl', owned.host);
-root.provide('hanaworldsLuantiInspectionContext', createInspectionContext({
+root.provide('hanaworldsWorldInspectionContext', createInspectionContext({
   resolveCanvas: () => root.get('hanaworldsCanvasV5'),
   resolveOracle: () => root.get('hanaworldsWorldRevisionOracle'),
 }));

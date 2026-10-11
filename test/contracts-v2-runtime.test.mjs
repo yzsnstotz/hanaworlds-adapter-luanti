@@ -1,11 +1,13 @@
 // Actual adapter handlers and durable records; native engine and Canvas are explicit fixtures.
 import test from 'node:test';
+import {Context,symbols} from '@deepseek-ai/cordis';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
 import * as C from '#contracts';
+import {LocalRecords} from '../src/local-records.mjs';
 import {LocalCourier} from '../src/local-courier.mjs';
 import {createLocalRuntime} from '../src/local-runtime.mjs';
 import {ENGINE_GUARDS} from '../src/safety-capabilities.mjs';
@@ -23,7 +25,10 @@ async function fixture(t,{mismatch=false,initialState={},root:reuse=null,incarna
  const image=()=>({worldRef:'fixture-world',coveredPositions:[[0,0,0]],records:[plain(record)]});
  const native={closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:incarnation,
   handshake:async()=>{},close:async()=>{native.closed=true;},catalogue:async()=>plain(catalogue),profile:async()=>({profileVersion:'state-profile/v2'}),
-  regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000}),capacity:async()=>({allowed:true}),
+  regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000,maxBodyBytes:4194304,registeredNodes:10,longestNodeName:20}),
+  regionEmerge:async()=>({blocks:[{blockPos:[0,0,0],action:'FROM_MEMORY',loadedBefore:true}]}),
+  regionRead:async ({min,max,boxes})=>({min,max,palette:['air'],contentRuns:[0,max.reduce((n,v,i)=>n*(v-min[i]+1),1)],param2Runs:[0,max.reduce((n,v,i)=>n*(v-min[i]+1),1)],extras:[],boxes:boxes.map(b=>({...b,guard:'g',ignoreCells:0}))}),
+  regionWrite:async q=>{calls.push({kind:q.checkOnly?'region-check':'region-write'});return q.checkOnly?{checked:true,written:false}:{written:true,lightComplete:true,changedCells:1};},capacity:async()=>({allowed:true}),
   snapshot:async()=>image(),prepareCheck:async(positions,effects)=>{calls.push({kind:'check',effects:plain(effects)});},
   apply:async(effects,before,scope)=>{calls.push({kind:'apply',effects:plain(effects),before:plain(before),scope:plain(scope)});
     record={...record,...effects[0],param1:15,param2:mismatch?0:effects[0].param2,metadata:{},inventory:{},timer:null};return {status:'APPLIED_PENDING_READBACK'};},
@@ -34,17 +39,23 @@ async function fixture(t,{mismatch=false,initialState={},root:reuse=null,incarna
  t.mock.method(LocalCourier,'open',async()=>native);
  const localContext={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:incarnation,selectionRevision:'selection-1'};
  const context={currentSession:'fixture-session',activeWorldRef:localContext.worldRef,orderedSelectedObjectRefs:[],sessionRevision:'session-1',selectionRevision:'selection-1',localContext};
- const rootCtx={}; const ctx={root:rootCtx,fiber:{state:2,entry:{options:{name:'hanaworlds-canvas'}},ctx:{root:rootCtx}}};
- const canvas={async call(name,q){return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'fixture',connections:[]},selection:{status:'BOUND',connectionRef:localContext.connectionRef,context}},error:null});}};
+ const ctx=new Context(); let canvasContext;
+ const canvasFiber=ctx.plugin({name:'renamed-transaction-owner',apply(c){canvasContext=c;}});
+ await canvasFiber.await();
+ const canvas={async call(name,q){return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result:name==='ListObjects'?{worldRef:q.worldRef,registryRevision:'registry',objects:[{worldRef:q.worldRef,objectRef:'fixture-object',objectRevision:'object-1',displayName:null,nameRevision:null,creationSequence:0,status:'READY'}]}:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'fixture',connections:[]},selection:{status:'BOUND',connectionRef:localContext.connectionRef,context}},error:null});}};
+ canvasContext.provide('hanaworldsCanvasV5',canvas);
+ const releaseRegion=canvasContext.provide('hanaworldsCanvasRegionV1',{call:()=>{}});
  const oracle={read:async()=> 'revision-1'};
- const inspection={read:async()=>({current:true,worldRef:localContext.worldRef,worldRevision:'revision-1',objectRef:'fixture-object',objectRevision:'object-1'})};
+ const inspection={async ReadInspectionContext(q){return C.validateBoundResponse('world-inspection/v1','ReadInspectionContext',q,{contractVersion:'world-inspection/v1',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,localContext,orderedSelectedObjectRefs:['fixture-object']},error:null});}};
  const history={read:async r=>({...r,current:true,durable:true,historyRevision:r.expectedHistoryRevision,worldRevision:r.expectedWorldRevision,objectRevisions:r.expectedObjectRevisions})};
- const runtime=createLocalRuntime({ctx,homePath:(...p)=>join(root,...p),resolveCanvas:()=>canvas,resolveRegistry:()=>({}),resolveHistory:()=>history,resolveOracle:()=>oracle,resolveInspection:()=>inspection,inspectConnection:async()=>({state:'CURRENT'})});
- t.after(()=>runtime.close());
+ const diagnostics=[];
+ const runtime=createLocalRuntime({ctx,homePath:(...p)=>join(root,...p),resolveCanvas:()=>canvas,resolveRegistry:()=>({}),resolveHistory:()=>history,resolveOracle:()=>oracle,resolveInspection:()=>inspection,inspectConnection:async()=>({state:'CURRENT'}),log:m=>diagnostics.push(m)});
+ ctx.provide('hanaworldsWorldAdapterV6',runtime.port);
+ t.after(async()=>{await runtime.close();await canvasFiber.dispose();});
  await runtime.pairLocal({worldRef:localContext.worldRef,connectionRef:localContext.connectionRef,worldPath:root,payloadVersion:'fixture-payload',payloadDigest:'0'.repeat(64),gameId:'fixture'});
  let seq=0;
- const call=(name,extra={})=>runtime.port.call(name,{contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:`request-${++seq}`,worldRef:localContext.worldRef,localContext,...extra});
- return {root,runtime,call,localContext,calls,recomputeLight:()=>{record.param1=10;},
+ const call=(name,extra={})=>canvasContext.get('hanaworldsWorldAdapterV6').call(name,{contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:`request-${++seq}`,worldRef:localContext.worldRef,localContext,...extra});
+ return {root,runtime,call,localContext,calls,ctx,canvas,canvasContext,canvasFiber,inspection,native,releaseRegion,diagnostics,recomputeLight:()=>{record.param1=10;},
   editMetadata:value=>{record.metadata=plain(value);},blockRestore:value=>{restoreBlocked=value;},corruptRestore:value=>{restoreCorrupt=value;}};
 }
 test('existing catalogue supplier and ReadLocalConnection expose complete v2 material/geometry facts',async t=>{
@@ -56,7 +67,7 @@ test('existing catalogue supplier and ReadLocalConnection expose complete v2 mat
  assert.deepEqual(plain(capabilities.engineBounds),{min:[-31000,-31000,-31000],max:[31000,31000,31000]});
  assert.ok(C.regionCapabilities.filter(c=>c.id.startsWith('world-adapter')).every(c=>c.owner==='world-source'));
 });
-async function transaction(f,id='tx'){
+async function transaction(f,id='tx',beforeApply=()=>{}){
  const catalogue=await f.runtime.readCatalogue(f.localContext.worldRef);
  const materialRef=Object.keys(catalogue.materials).find(ref=>catalogue.materials[ref].extension.native.allowedParam2?.[0]===7);
  const effects=[{geometryProfile:'voxel-grid/v1',position:[0,0,0],materialRef,orientation:0}];
@@ -67,6 +78,7 @@ async function transaction(f,id='tx'){
  const common={transactionId:id,operations,operationDigest,scope,scopeDigest:digest('scoped-world',scope),guarantee:'RECOVERABLE_VERIFIED'};
  const prepared=await f.call('PrepareRecoverableTransaction',common);assert.equal(prepared.error,null);
  const preparedTransaction=C.projectScopedPreparedTransaction(prepared.result);
+ await beforeApply();
  const apply=await f.call('ApplyCompiledTransaction',{...common,preparedTransaction});
  return {apply,common,prepared};
 }
@@ -166,4 +178,86 @@ test('QueryTransaction after reconnect returns the durable receipt as written, b
  // The receipt was not re-bound, and another transaction payload is still refused.
  const other=await g.runtime.port.call('QueryTransaction',{...request,requestId:'query-other-payload',transactionPayloadDigest:'f'.repeat(64)});
  assert.equal(other.result,null);assert.equal(other.error.code,'REPLAY_MISMATCH');
+});
+
+// Real Cordis registration and tracker proxies; the engine remains an explicit fixture.
+test('registered C-canvas owner works after rename; an equal package name grants nothing',async t=>{
+ const f=await fixture(t); const prepared=await transaction(f,'renamed');assert.equal(prepared.apply.error,null);
+ const impostor=f.ctx.plugin({name:'hanaworlds-canvas',apply(ctx){ctx.provide('impostor',{call:(...args)=>ctx.get('hanaworldsWorldAdapterV6').call(...args)});}});await impostor.await();t.after(()=>impostor.dispose());
+ const request={contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:'impostor',worldRef:f.localContext.worldRef,localContext:f.localContext,transactionId:'renamed',operationDigest:prepared.common.operationDigest};
+ const r=await f.ctx.get('impostor').call('AbortPreparedTransaction',request);assert.equal(r.error.code,'CAPABILITY_UNAVAILABLE');
+});
+test('unregistered direct caller, foreign root and disposed provider cannot dispatch a region read',async t=>{
+ const f=await fixture(t);
+ const q={contractVersion:'world-adapter-region/v3',sessionRef:'fixture-session',requestId:'region',worldRef:f.localContext.worldRef,localContext:f.localContext,box:{min:[0,0,0],max:[0,0,0]},partition:WORLD_GEOMETRY.partition,purpose:'BEFORE_IMAGE'};
+ f.ctx.provide('region',f.runtime.regionIO);
+ assert.equal((await f.runtime.regionIO.call('ReadRegion',q)).error.code,'CAPABILITY_UNAVAILABLE');
+ const foreign=new Context();foreign.provide('region',f.runtime.regionIO);
+ assert.equal((await foreign.get('region').call('ReadRegion',q)).error.code,'CAPABILITY_UNAVAILABLE');
+ const cached=f.canvasContext.get('region');await f.canvasFiber.dispose();
+ assert.equal((await cached.call('ReadRegion',q)).error.code,'CAPABILITY_UNAVAILABLE');
+});
+test('provider replacement during selection read refuses before native mutation',async t=>{
+ const f=await fixture(t),real=f.canvas.call;
+ f.canvas.call=async(...args)=>{const r=await real(...args);f.canvasContext.set('hanaworldsCanvasV5',{call:real});return r;};
+ // A valid request reaches authorization and current-context checking; no engine write follows.
+ const r=await f.call('AbortPreparedTransaction',{transactionId:'never',operationDigest:'0'.repeat(64)});
+ assert.equal(r.error.code,'CAPABILITY_UNAVAILABLE');assert.equal(f.calls.length,0);
+});
+
+test('Inspection refuses missing formal ReadInspectionContext even when a legacy read exists',async t=>{
+ const f=await fixture(t); delete f.inspection.ReadInspectionContext;
+ f.inspection.read=async()=>({current:true,worldRef:f.localContext.worldRef,worldRevision:'revision-1',objectRef:'fixture-object',objectRevision:'object-1'});
+ const r=await f.call('InspectWorld',{expectedWorldRevision:'revision-1',sampledBounds:{min:[0,0,0],max:[0,0,0]}});
+ assert.equal(r.error.code,'CAPABILITY_UNAVAILABLE');
+ assert.deepEqual(f.diagnostics,['WORLD_INSPECTION_CONTEXT_UNAVAILABLE: hanaworldsWorldInspectionContext.ReadInspectionContext']);
+});
+
+test('rebinding call with forged provider context cannot impersonate a registered fiber',async t=>{
+ const f=await fixture(t);f.ctx.provide('region',f.runtime.regionIO);
+ const raw=f.ctx.get('region')[symbols.original];
+ const key=f.ctx[symbols.isolate].hanaworldsCanvasRegionV1;
+ const forged=f.ctx.reflect.store[key].fiber.ctx.extend({[symbols.shadow]:raw.ctx});
+ const q={contractVersion:'world-adapter-region/v3',sessionRef:'fixture-session',requestId:'forged',worldRef:f.localContext.worldRef,localContext:f.localContext,box:{min:[0,0,0],max:[0,0,0]},partition:WORLD_GEOMETRY.partition,purpose:'BEFORE_IMAGE'};
+ assert.equal((await f.ctx.get('region').call.call({ctx:forged},'ReadRegion',q)).error.code,'CAPABILITY_UNAVAILABLE');
+ const get=Object.getOwnPropertyDescriptor(raw,'call').get;
+ const pretend={ctx:forged,[symbols.original]:raw};
+ assert.equal((await get.call(pretend)('ReadRegion',q)).error.code,'CAPABILITY_UNAVAILABLE');
+});
+
+test('request JSON cannot claim the world-source or Canvas role',async t=>{
+ const f=await fixture(t);
+ const q={contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:'claimed-role',worldRef:f.localContext.worldRef,localContext:f.localContext,transactionId:'unknown',operationDigest:'0'.repeat(64),role:'canvas'};
+ assert.throws(()=>f.runtime.port.call('AbortPreparedTransaction',q),e=>e.publicError?.code==='UNKNOWN_REQUIRED_FIELD');
+ assert.equal(f.calls.length,0);
+});
+
+test('each actual cell dispatch rechecks ownership after durable journal awaits',async t=>{
+ const f=await fixture(t),put=LocalRecords.prototype.put;
+ t.mock.method(LocalRecords.prototype,'put',async function(saved){await put.call(this,saved);if(saved.status==='APPLYING')f.canvasContext.set('hanaworldsCanvasV5',{call:f.canvas.call});});
+ const r=await transaction(f,'journal-drift');
+ assert.ok(r.apply.error);assert.equal(r.apply.result,null);
+ assert.equal(f.calls.some(c=>['apply','restore','history'].includes(c.kind)),false);
+});
+test('separate renamed region owner reads normally and cannot use the cell mutator entry',async t=>{
+ const f=await fixture(t);f.ctx.provide('region',f.runtime.regionIO);
+ // The main provider releases only its region service, keeping C-canvas selection reads.
+ await f.releaseRegion();
+ let regionCtx;const fiber=f.ctx.plugin({name:'heterogeneous-region-owner',apply(c){regionCtx=c;c.provide('hanaworldsCanvasRegionV1',{call:()=>{}});}});await fiber.await();t.after(()=>fiber.dispose());
+ const q={contractVersion:'world-adapter-region/v3',sessionRef:'fixture-session',requestId:'independent-region',worldRef:f.localContext.worldRef,localContext:f.localContext,box:{min:[0,0,0],max:[0,0,0]},partition:WORLD_GEOMETRY.partition,purpose:'BEFORE_IMAGE'};
+ const read=await regionCtx.get('region').call('ReadRegion',q);assert.equal(read.error,null);
+ const r=await regionCtx.get('hanaworldsWorldAdapterV6').call('AbortPreparedTransaction',{contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:'wrong-entry',worldRef:f.localContext.worldRef,localContext:f.localContext,transactionId:'unknown',operationDigest:'0'.repeat(64)});
+ assert.equal(r.error.code,'CAPABILITY_UNAVAILABLE');
+});
+test('region check-only await cannot carry stale provider authority into the actual write',async t=>{
+ const f=await fixture(t);f.ctx.provide('region',f.runtime.regionIO);
+ const q={contractVersion:'world-adapter-region/v3',sessionRef:'fixture-session',requestId:'region-before',worldRef:f.localContext.worldRef,localContext:f.localContext,box:{min:[0,0,0],max:[0,0,0]},partition:WORLD_GEOMETRY.partition,purpose:'BEFORE_IMAGE'};
+ const region=f.canvasContext.get('region');const before=await region.call('ReadRegion',q);assert.equal(before.error,null);
+ const block=before.result.chunks[0].state.block;
+ // Replace ownership at the last native precheck's resolved continuation.
+ const nativeWrite=f.native.regionWrite;
+ f.native.regionWrite=async q=>{const r=await nativeWrite(q);if(q.checkOnly)f.canvasContext.set('hanaworldsCanvasRegionV1',{call:()=>{}});return r;};
+ const {box,...base}=q;
+ const r=await region.call('WriteRegion',{...base,requestId:'region-after',transactionId:'region-drift',purpose:'APPLY',writes:[{chunkPos:[0,0,0],expectedCurrentDigest:before.result.chunks[0].stateDigest,ops:block,state:null}]});
+ assert.equal(r.error.code,'CAPABILITY_UNAVAILABLE');assert.equal(f.calls.some(c=>c.kind==='region-write'),false);
 });

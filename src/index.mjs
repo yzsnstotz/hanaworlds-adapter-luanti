@@ -27,7 +27,7 @@ export function apply(ctx, config = {}) {
   const runtime = createLocalRuntime({ ctx, homePath: get('dshHomePath'),
     resolveCanvas: () => get('hanaworldsCanvasV5'), resolveRegistry: () => get('hanaworldsCanvasFootprintRegistry'),
     resolveHistory: () => get('hanaworldsCanvasHistoryFacts'), resolveOracle: () => get('hanaworldsWorldRevisionOracle'),
-    resolveInspection: () => get('hanaworldsInspectionContext') ?? get('hanaworldsLuantiInspectionContext'),
+    resolveInspection: () => get('hanaworldsWorldInspectionContext'),
     inspectConnection: ref => local.inspectConnection(ref) });
   local = createLocalWorldPort({ roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
     creationRoot: config.localCreationRoot, gameId: config.localGameId,
@@ -52,6 +52,7 @@ export function apply(ctx, config = {}) {
     'readMaterialSources', 'readConfigEngineFacts', 'readWorldEditFacts', 'readStage1FactLedger']
     .map(name => [name, publicFailures(runtime[name])]));
   Object.assign(facts,runtime.worldFacts);
+  ctx.provide('hanaworldsWorldFacts', runtime.worldFacts);
   ctx.provide('hanaworldsWorldSourceFacts', facts);
   ctx.provide('hanaworldsLuantiNativeFacts', facts);
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {

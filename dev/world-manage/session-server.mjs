@@ -9,7 +9,7 @@ const {Context}=await import(pathToFileURL(join(sdk,'node_modules/@deepseek-ai/c
 const ctx=new Context();ctx.provide('webServer',{register(){return()=>{};}});ctx.provide('dshHomePath',(...parts)=>join(home,...parts));ctx.provide('hanaworldsNativeEngineControl',owned.host);
 const fixture=createSessionWorldFixture({resolveAdapter:()=>ctx.get('hanaworldsWorldAdapterV6')});
 ctx.provide('hanaworldsCanvasV5',fixture.canvas);ctx.provide('hanaworldsWorkshopSessionV3',fixture.workshop);ctx.provide('hanaworldsWorldRevisionOracle',fixture.oracle);
-ctx.provide('hanaworldsLuantiInspectionContext',createInspectionContext({resolveCanvas:()=>ctx.get('hanaworldsCanvasV5'),resolveOracle:()=>ctx.get('hanaworldsWorldRevisionOracle')}));
+ctx.provide('hanaworldsWorldInspectionContext',createInspectionContext({resolveCanvas:()=>ctx.get('hanaworldsCanvasV5'),resolveOracle:()=>ctx.get('hanaworldsWorldRevisionOracle')}));
 await ctx.plugin(Loader,{baseUrl:import.meta.url});const moduleURL=process.env.HW_BIND_ADAPTER_MODULE?pathToFileURL(process.env.HW_BIND_ADAPTER_MODULE).href:new URL('../../src/index.mjs',import.meta.url).href;
 const entryId=await ctx.loader.create({id:'hanaworlds-luanti-adapter',name:moduleURL,config:{localWorldRoots:[worlds]}});await ctx.loader.await();if(ctx.loader.resolve(entryId).fiber.state!==2)throw Error('LOADER_ENTRY_NOT_ACTIVE');
 const manager=createSessionManager({local:ctx.get('hanaworldsLuantiLocalWorlds'),adapter:ctx.get('hanaworldsWorldAdapterV6'),fixture,requesterRef:'dev-session-manager',userPath:profile,foreignActivity:owned.foreignActivity,game:owned.game});

@@ -12,7 +12,6 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
  */
 export const LIGHT_METHOD = 'luanti:VoxelManip.write_to_map(light=true)+core.fix_light';
 const KNOWN_ACTIONS = new Set(['FROM_MEMORY', 'FROM_DISK', 'GENERATED', 'CANCELLED']);
-const LOST = new Set(['RECOVERY_PENDING', 'ENGINE_RESPONSE_UNKNOWN', 'ADAPTER_UNAVAILABLE']);
 const key = p => p.join(',');
 const sha = (kind, v) => digestValue(kind, v).sha256;
 const blockOf = (box, partition) => chunkOf(box.min, partition);
@@ -190,7 +189,11 @@ export async function writeRegion(engine, request) {
   let lightComplete = true, failure = null;
   for (const [index, group] of groups.entries()) {
     if (failure) { group.items.forEach(i => status.set(key(i.box.min), 'NOT_WRITTEN')); continue; }
+    let admitted = false;
     try {
+      // Host admission failures before the first dispatch are proven zero-write.
+      await engine.beforeWrite?.();
+      admitted = true;
       const reply = await engine.regionWrite(command(group, false));
       if (reply?.written !== true) throw new Error('CAPABILITY_UNAVAILABLE');
       lightComplete &&= reply.lightComplete === true;
@@ -199,13 +202,15 @@ export async function writeRegion(engine, request) {
       group.items.forEach(i => status.set(key(i.box.min), 'WRITTEN'));
     } catch (error) {
       const refusal = refusalDetail(apply ? 'REGION_APPLY' : 'REGION_RESTORE', error?.detail, { transactionRef: request.transactionId });
+      const beforeDispatch = !admitted || error.beforeNativeDispatch === true;
+      if (index === 0 && beforeDispatch) throw error;
       // A first-batch refusal is proven zero-write. Later refusals retain partial chunk status
       // for Canvas to restore; never label a partial request NONE.
       if (index === 0 && refusal) throw new RegionFault(error.message, 'APPLY_ERROR', refusal);
       const code = error?.message ?? 'CAPABILITY_UNAVAILABLE';
       failure = { batch: index, code, ...(refusal ? { guardRefusal: refusal.guardRefusal } : {}) };
       facts.push({ batch: index, chunks: group.items.length, error: code });
-      group.items.forEach(i => status.set(key(i.box.min), LOST.has(code) ? 'UNKNOWN' : 'NOT_WRITTEN'));
+      group.items.forEach(i => status.set(key(i.box.min), beforeDispatch || refusal || code === 'TRANSACTION_CONFLICT' ? 'NOT_WRITTEN' : 'UNKNOWN'));
     }
   }
   // Readback of every written chunk from the map.

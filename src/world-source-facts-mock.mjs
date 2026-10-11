@@ -1,5 +1,5 @@
 import { validateBoundRequest, validateBoundResponse, ContractError } from '#contracts';
-import examples from '../fixtures/world-source-facts.json' with {type:'json'};
+import examples from 'hanaworlds-contracts/fixtures/world-source-facts' with {type:'json'};
 const errors={ReadCatalogue:['ADAPTER_UNAVAILABLE','WORLD_NOT_BOUND'],ReadMaterialSources:['CAPABILITY_UNAVAILABLE'],
   ReadEngineFacts:['ADAPTER_UNAVAILABLE'],ReadWriteProfile:['ADAPTER_UNAVAILABLE','CAPABILITY_UNAVAILABLE'],
   ReadWorldSourceCapabilities:['ADAPTER_UNAVAILABLE']};
@@ -10,7 +10,7 @@ export function createWorldSourceFactsMock(refusals={}) {
     if(!errors[operation]?.includes(code))throw new TypeError('Undeclared world source fixture refusal');
   return Object.freeze({async call(operation,input) {
     const example=examples.exchanges.find(x=>x.operation===operation);
-    if(!example)throw new TypeError('Unsupported world source fixture operation');
+    if(!errors[operation] || !example)throw new TypeError('Unsupported world source fixture operation');
     const request=validateBoundRequest(example.wire,operation,input);
     const code=refusals[operation]??(request.worldRef===example.request.worldRef?null:
       operation==='ReadCatalogue'?'WORLD_NOT_BOUND':errors[operation][0]);

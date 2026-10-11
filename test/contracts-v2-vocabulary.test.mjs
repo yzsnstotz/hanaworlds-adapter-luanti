@@ -4,6 +4,16 @@ import { execFileSync } from 'node:child_process';
 import { validateType } from '#contracts';
 import { WorldVocabulary, NeutralEngine, STATE_PROFILE, WORLD_GEOMETRY } from '../src/world-vocabulary.mjs';
 const native = () => JSON.parse(execFileSync('lua',['test/support/material-facts.lua','glass'],{encoding:'utf8'})).catalogue;
+test('authority is synchronously rechecked after the final asynchronous admission and before native dispatch',async()=>{
+ for(const method of ['apply','applyState','restore','regionWrite']) {
+  let live=true,calls=0;
+  const e=new NeutralEngine({catalogue:async()=>native(),[method]:()=>{calls++;}});
+  e.beforeWrite=async()=>{queueMicrotask(()=>{live=false;});};
+  e.writeAuthorityCheck=()=>{if(!live)throw Error('CAPABILITY_UNAVAILABLE');};
+  await assert.rejects(e[method](),/CAPABILITY_UNAVAILABLE/);
+  assert.equal(calls,0);
+ }
+});
 test('native catalogue becomes SDK catalogue/v3 with opaque materials and neutral tags', () => {
   const v = new WorldVocabulary(native());
   const c = validateType('Catalogue',v.catalogue);

@@ -1,3 +1,15 @@
+# adapter-source-boundary-01 (2026-10-11)
+
+- hanaworlds-contracts · 2.13.0 · MIT · exact Git tag v2.13.0, peeled f8baf189099b517cacfe8a0b385d140932923b17 · additive opaque startup description and published SDK/fixtures; included LICENSE/NOTICE retained.
+- @deepseek-ai/cordis · 4.0.4 · MIT · npm registry package, repository https://github.com/deepseek-ai/deepseek-harness/tree/main/vendor/cordis · dev-only real Context/fiber/tracker tests; exact version and integrity in lockfile. Its @deepseek-ai/cosmokit 1.8.5 (MIT) and @standard-schema/spec 1.1.0 (MIT) installed notices retained.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · installed App's headless runtime, read-only input; own isolated processes/profile only.
+- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · installed App's archive, extracted only under this card's run directory with included notices; no game/engine bundled in Adapter.
+- canonicalize 5.1.0 (Apache-2.0), pngjs 7.0.0 (MIT), Node 24.13.1 (MIT and bundled notices), Lua 5.5.1 (MIT): unchanged runners/dependencies.
+
+Boundary, startup-fact validation and regressions are original MIT Adapter code.
+The real native gate loads no WorldEdit. Historical attribution below remains evidence
+of prior inputs and does not declare a current runtime requirement.
+
 # adapter-10 material presentation (2026-10-11)
 
 - Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · unchanged D-7 runtime; native strip_escapes cleans externally supplied labels. API checked against doc/lua_api.md at this tag; no engine code copied or bundled.

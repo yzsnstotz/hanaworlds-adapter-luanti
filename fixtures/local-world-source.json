@@ -1,5 +1,5 @@
 {
-  "evidence": "SOURCE/FIXTURE only; Luanti-shaped locators for two same-name worlds and every declared refusal; no real world, runtime or UI",
+  "evidence": "SOURCE/FIXTURE only; source-owned locators and startup facts for two same-name worlds; no actual payload authority, runtime or UI",
   "worlds": [
     {
       "worldRef": "luanti:fixture-a",
@@ -42,6 +42,26 @@
               "payloadVersion": "fixture-payload",
               "payloadDigest": "0000000000000000000000000000000000000000000000000000000000000000"
             }
+          },
+          "sourceStartupFacts": {
+            "profileVersion": "hanaworlds-luanti-source-startup/v1",
+            "availability": "KNOWN",
+            "connection": {
+              "worldRef": "luanti:fixture-a",
+              "connectionRef": "local:fixture-a",
+              "payloadVersion": "fixture-payload",
+              "payloadDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+              "directory": {
+                "device": "16777234",
+                "inode": "1001"
+              }
+            },
+            "runtimeSettings": {
+              "httpMods": [
+                "hanaworlds_adapter"
+              ],
+              "trustedMods": []
+            }
           }
         }
       }
@@ -77,6 +97,11 @@
               "payloadVersion": "fixture-payload",
               "payloadDigest": "0000000000000000000000000000000000000000000000000000000000000000"
             }
+          },
+          "sourceStartupFacts": {
+            "profileVersion": "hanaworlds-luanti-source-startup/v1",
+            "availability": "UNAVAILABLE",
+            "reason": "PAYLOAD_NOT_VERIFIED"
           }
         }
       }

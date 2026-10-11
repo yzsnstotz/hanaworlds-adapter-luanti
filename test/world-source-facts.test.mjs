@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import * as C from '#contracts';
 import { LocalCourier } from '../src/local-courier.mjs';
 import { createLocalRuntime } from '../src/local-runtime.mjs';
@@ -17,7 +18,7 @@ import { createWorldSourceFactsMock } from '../src/world-source-facts-mock.mjs';
 import examples from '../fixtures/world-source-facts.json' with {type:'json'};
 const plain = v => JSON.parse(JSON.stringify(v));
 async function fixture(t) {
-  const base = process.env.HW_ADAPTER_TEST_ROOT ?? '/Users/yzliu/.cache/hana-world-runs/adapter-08/fixtures';
+  const base = process.env.HW_ADAPTER_TEST_ROOT ?? join(tmpdir(),'hanaworlds-adapter-facts-tests');
   await mkdir(base, { recursive:true });
   const root = await mkdtemp(join(base, 'facts-'));
   await mkdir(join(root,'textures'));
@@ -115,6 +116,8 @@ test('neutral services retain the exact old aliases for the transition minor',as
   try {
     assert.equal(services.get('hanaworldsWorldSourceFacts'),services.get('hanaworldsLuantiNativeFacts'));
     assert.equal(typeof services.get('hanaworldsWorldSourceFacts')?.call,'function');
+    assert.equal(services.get('hanaworldsWorldFacts'),instance.worldFacts);
+    assert.equal(typeof services.get('hanaworldsWorldFacts')?.call,'function');
     assert.equal(services.get('hanaworldsLocalWorlds'),services.get('hanaworldsLuantiLocalWorlds'));
   } finally {await instance.close();}
 });

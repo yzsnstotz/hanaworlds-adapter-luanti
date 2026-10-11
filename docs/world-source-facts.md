@@ -1,7 +1,7 @@
-# World source facts (adapter 0.18.2)
+# World source facts (adapter 0.19.0)
 
 The Luanti adapter provides `world-facts/v1` through
-`hanaworldsWorldSourceFacts.call(operation, request)` and the returned
+`hanaworldsWorldFacts.call(operation, request)` (retaining the prior aliases) and the returned
 `service.worldFacts` port. `ReadWorldSourceCapabilities` uses
 `hanaworldsWorldAdapterV6.call` on `world-adapter/v8` minor 1. The handshake
 advertises that minor and the world-facts port advertises its own protocol.
@@ -15,7 +15,7 @@ Capability owner is the role `world-source`.
 | ReadWriteProfile | Backend and complete compilation configuration, supported methods and declared avatar envelope | ADAPTER_UNAVAILABLE, CAPABILITY_UNAVAILABLE |
 | ReadWorldSourceCapabilities | All write declarations, StateProfile, guard coverage and source-owned write path conclusions | ADAPTER_UNAVAILABLE |
 
-All reads validate requests and bound responses using published contracts v2.8.0.
+All reads validate requests and bound responses using published contracts v2.13.0.
 The connection is checked before and after reading. The complete loaded Catalogue
 is checked before and after the read; asset reads also recheck metadata and bytes,
 and write/engine/capability reads recheck the payload declaration and engine limits.
@@ -69,7 +69,7 @@ config-engine-facts/v2 record remains UNAVAILABLE because its published schema o
 permits that form; new consumers use WriteProfile/WorldSourceCapabilities.
 
 Neutral service names are `hanaworldsWorldSourceFacts`, `hanaworldsLocalWorlds`
-and `hanaworldsInspectionContext`. The old Luanti facts/local-worlds names remain
+and `hanaworldsWorldInspectionContext`. The old Luanti facts/local-worlds names remain
 exact aliases for this transition minor; inspection resolves the neutral name first.
 Payload version 0.12.1 includes clean external material labels. Older loaded payloads must be
 re-provisioned through the existing lifecycle path, not silently upgraded here.
@@ -92,3 +92,10 @@ Sources: [Luanti 5.17 API](https://github.com/luanti-org/luanti/blob/5.17.0/doc/
 [pngjs](https://github.com/pngjs/pngjs). No engine/game source is copied or bundled.
 This card's verification is SOURCE/FIXTURE. Native world execution, UI composition
 and owner acceptance are not established by these tests.
+
+`frameId` and `providerRef` are opaque identities. Catalogue material extensions,
+including `param2Type` and `collisionBoxes`, retain their baseline opaque semantics;
+wording does not make them consumer input. Visible Frame grid units and usable
+volume units are `cell`. The mock reads the public contracts fixture directly;
+`npm run sync:fixtures` regenerates the five-read exported projection and `npm test`
+checks for drift without changing existing export paths.

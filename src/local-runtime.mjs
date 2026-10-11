@@ -5,9 +5,11 @@ const shaped = (name, v) => GUARDED_OPERATIONS.has(name) ? { guardRefusal: null,
 const STAGE = { PrepareRecoverableTransaction: 'PREPARE_RECOVERABLE', ApplyCompiledTransaction: 'APPLY_COMPILED', ApplyHistoryTransaction: 'APPLY_HISTORY' };
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { types } from 'node:util';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, ContractError } from '#contracts';
 import { readWorldSourceFact, checkWritePathFacts } from './world-source-facts.mjs';
+import { createInspectionContext } from './inspection-context.mjs';
 import { LocalCourier } from './local-courier.mjs';
 import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
 import { LocalRecords } from './local-records.mjs';
@@ -24,10 +26,17 @@ const fail = code => { throw new Error(code); };
 const D = (kind, value) => digestValue(kind, value).sha256;
 const sameContext = (a,b) => canonicalJSON(a) === canonicalJSON(b);
 const original = value => value?.[Symbol.for('cordis.original')] ?? value;
+// Cordis overlays ctx on a Proxy of this service; it does not add an original
+// own property or change the service's ctx descriptor. A JSON/plain receiver
+// carrying a public original symbol is not a tracked service reference.
+const trackedCaller = (receiver, port, ctx) => types.isProxy(receiver) &&
+  !Object.hasOwn(receiver, Symbol.for('cordis.original')) && original(receiver) === port &&
+  Object.getOwnPropertyDescriptor(receiver, 'ctx')?.value === ctx ? receiver.ctx : null;
 
 /** All dependencies below are in-process ports, never caller JSON facts. */
-export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection }) {
+export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, log = message => console.warn(message) }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
+  let activeCanvasCheck = () => {}, activeWriteRequest = null;
   let inventorySignature = null, inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`;
   const stage1 = createStage1Facts();
   const runtime = {
@@ -63,6 +72,14 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const engineBounds = Number.isSafeInteger(bound) && bound > 0 ? {min:[-bound,-bound,-bound],max:[bound,bound,bound]} : null;
         const store = await LocalRecords.open(await nativeJournalDirectory(homePath, world.worldRef), world.worldRef);
         const row = { ...world, engine:neutral, profile, store, engineBounds, incarnation: engine.connectionIncarnationRef };
+        neutral.beforeWrite = async () => {
+          if (!activeWriteRequest) fail('CAPABILITY_UNAVAILABLE');
+          await current(activeWriteRequest, row); activeCanvasCheck();
+        };
+        neutral.writeAuthorityCheck = () => {
+          activeCanvasCheck();
+          if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
+        };
         const revision = `${ADAPTER_ID}@${ADAPTER_VERSION}+${world.payloadDigest}`;
         row.backend = new LocalTransactions({ store, engine:neutral, stateProfile: profile,
           current: request => current(request, row), registry: resolveRegistry, historyFacts: resolveHistory, revision });
@@ -113,7 +130,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     },
     /** Stage 1 facts of the exact currently paired world, checked current before and after. */
     readConfigEngineFacts(worldRef) { return stage1Read(worldRef, row => stage1.configEngineFacts(row, row.engine)); },
-    readWorldEditFacts(worldRef) { return stage1Read(worldRef, row => stage1.worldEditFacts(row, row.engine)); },
+    async readWorldEditFacts(worldRef) {
+      if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
+      return Promise.reject(Object.assign(new ContractError('CAPABILITY_UNAVAILABLE','validate','REQUIRED_FACT_UNKNOWN'), {detail:'WORLDEDIT_FACTS_RETIRED_D15'}));
+    },
     readStage1FactLedger(worldRef) {
       if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
       return stage1.ledger(worldRef);
@@ -201,12 +221,16 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     serial=work.catch(()=>{});return work;
   }
   async function current(request, row) {
+    if (closed) fail('ADAPTER_UNAVAILABLE');
+    activeCanvasCheck();
     await inspectConnection(row.connectionRef);
     if (row.engine.closed || request.worldRef !== row.worldRef || request.localContext.connectionRef !== row.connectionRef ||
       request.localContext.connectionIncarnationRef !== row.incarnation || request.localContext.worldRef !== row.worldRef) fail('CURRENT_WORLD_MISMATCH');
     const canvas = resolveCanvas(); if (typeof canvas?.call !== 'function') fail('CAPABILITY_UNAVAILABLE');
     const input={contractVersion:'canvas/v7',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
     const reply=validateBoundResponse('canvas/v7','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
+    if (closed) fail('ADAPTER_UNAVAILABLE');
+    activeCanvasCheck();
     const selection=reply.result?.selection;
     if ((resolveCanvas()?.[Symbol.for('cordis.original')] ?? resolveCanvas()) !== (canvas[Symbol.for('cordis.original')] ?? canvas) ||
       reply.error || selection?.status !== 'BOUND' || selection.connectionRef !== row.connectionRef ||
@@ -214,11 +238,22 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       fail('CURRENT_WORLD_MISMATCH');
     return selection.context.localContext;
   }
-  function canvasCaller(caller) {
-    // Fixed Cordis tracker carries the actual active caller fiber, never a JSON role.
-    const fiber = caller?.fiber;
-    if (!fiber || fiber.state !== 2 || fiber.entry?.options.name !== 'hanaworlds-canvas' ||
-      fiber.ctx?.root !== ctx.root) fail('CAPABILITY_UNAVAILABLE');
+  function canvasCaller(caller, serviceName = 'hanaworldsCanvasV5') {
+    // Cordis's shadow records this callee context; its fiber records the actual caller.
+    // Registration ownership, never a plugin/package name or JSON role, grants authority.
+    const key = ctx?.[Symbol.for('cordis.isolate')]?.[serviceName];
+    const registered = key && ctx.reflect?.store?.[key];
+    const value = registered?.value;
+    const check = () => {
+      const fiber = caller?.fiber;
+      if (!registered || !value || typeof value.call !== 'function' ||
+        caller?.[Symbol.for('cordis.shadow')] !== ctx || caller.root !== ctx.root ||
+        !fiber || fiber.state !== 2 || fiber.ctx?.root !== ctx.root || fiber !== registered.fiber ||
+        ctx.reflect.store[key] !== registered || registered.value !== value ||
+        original(ctx.get?.(serviceName)) !== original(value) ||
+        (serviceName === 'hanaworldsCanvasV5' && original(resolveCanvas()) !== original(value))) fail('CAPABILITY_UNAVAILABLE');
+    };
+    check(); return check;
   }
   function capabilities(row) {
     return { providerRef: ADAPTER_ID, capabilityRevision: `adapter:${ADAPTER_VERSION}:${row.payloadDigest}`,
@@ -321,10 +356,14 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       raw={...raw,occupiedCells:raw.cells.filter(c=>c.state==='OCCUPIED').map(c=>({position:c.position,...row.engine.material(c.nodeName,c.param2)})),
         knownEmptyCells:raw.cells.filter(c=>c.state==='AIR').map(c=>c.position),unknownCells:[]};
     } else {
-      const provider=resolveInspection(); if(typeof provider?.read!=='function') fail('CAPABILITY_UNAVAILABLE');
+      const provider=resolveInspection?.();
+      if(typeof provider?.ReadInspectionContext!=='function') {
+        log('WORLD_INSPECTION_CONTEXT_UNAVAILABLE: hanaworldsWorldInspectionContext.ReadInspectionContext');
+        fail('CAPABILITY_UNAVAILABLE');
+      }
       const identity = original(provider);
       checkInspection = () => { if (original(resolveInspection()) !== identity) fail('CURRENT_WORLD_MISMATCH'); };
-      selection=await provider.read(r); checkInspection(); checkOracle();
+      selection=await createInspectionContext({resolveInspection,resolveCanvas,resolveOracle}).read(r); checkInspection(); checkOracle();
       if(selection?.current!==true || selection.worldRef!==r.worldRef || selection.worldRevision!==observed ||
         typeof selection.objectRef!=='string' || typeof selection.objectRevision!=='string') fail('TARGET_FACTS_INCOMPLETE');
       bounds=r.sampledBounds;
@@ -359,8 +398,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     protocolHandshake,
     /** Engine facts of the last region call (batches, emerge actions); evidence only. */
     lastFacts: () => regionFacts,
-    call(name, raw) {
-      const caller = this.ctx;
+    get call() {
+      // Capture Cordis's real getter receiver before returning a non-rebindable call.
+      const caller = trackedCaller(this, regionIO, ctx);
+      return (name, raw) => {
       // A different wire (e.g. world-adapter-region/v3) is UNSUPPORTED_VERSION
       // before any engine dispatch.
       const wire = typeof raw?.contractVersion === 'string' ? raw.contractVersion : REGION_WIRE;
@@ -370,7 +411,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const respond = result => validateResponse(REGION_WIRE, name, shaped(name, { contractVersion: REGION_WIRE, requestId: r.requestId, result, error: null }));
         try {
           if (closed) fail('ADAPTER_UNAVAILABLE');
-          canvasCaller(caller);
+          activeCanvasCheck = canvasCaller(caller, 'hanaworldsCanvasRegionV1');
+          activeWriteRequest = r;
           const row = rows.get(r.localContext.connectionRef);
           if (!row) fail('WORLD_NOT_BOUND');
           await current(r, row);
@@ -391,7 +433,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
               reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN' } }));
         }
       });
-      serial = work.catch(() => {}); return work;
+      serial = work.finally(() => { activeCanvasCheck = () => {}; activeWriteRequest = null; }).catch(() => {}); return work;
+      };
     },
   };
   const port = {
@@ -400,8 +443,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     contractHandshake,
     protocolHandshake: worldAdapterProtocolHandshake,
     contractVersion: WIRE,
-    call(name, raw) {
-      const caller = this.ctx;
+    get call() {
+      // Capture Cordis's real getter receiver before returning a non-rebindable call.
+      const caller = trackedCaller(this, port, ctx);
+      return (name, raw) => {
       const r = typeof raw === 'string' || raw instanceof Uint8Array ? admitRequest(WIRE, name, raw) : validateBoundRequest(WIRE, name, raw);
       // Inventory is a read-only native projection. Canvas/Inspection may read it
       // during this Adapter call; queuing it behind that caller deadlocks.
@@ -409,7 +454,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       const execute = async () => {
         try {
           if (closed) fail('ADAPTER_UNAVAILABLE');
-          if (mutators.has(name)) canvasCaller(caller);
+          if (mutators.has(name)) { activeCanvasCheck = canvasCaller(caller); activeWriteRequest = r; }
           const row = r.connectionRef ? rows.get(r.connectionRef) : r.localContext ? rows.get(r.localContext.connectionRef) : null;
           if (r.connectionRef && !row) fail('CONNECTION_NOT_FOUND');
           if (r.localContext) {
@@ -448,8 +493,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         }
       };
       const work = inventoryRead ? execute() : serial.then(execute);
-      if (!inventoryRead) serial = work.catch(() => {});
+      if (!inventoryRead) serial = work.finally(() => { activeCanvasCheck = () => {}; activeWriteRequest = null; }).catch(() => {});
       return work;
+      };
     },
   };
   const worldFacts={contractVersion:'world-facts/v1',contractHandshake,

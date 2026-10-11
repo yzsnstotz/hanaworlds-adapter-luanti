@@ -24,3 +24,10 @@ export interface LuantiSourceLocator {
     | { status: 'INSTALLED_UNVERIFIED'; payloadVersion: string; payloadDigest: string }
     | { status: 'MISSING'; payloadVersion: null; payloadDigest: null };
 }
+/** Only the paired Luanti world-source runtime interprets these optional opaque facts. */
+export declare const SOURCE_STARTUP_VERSION: 'hanaworlds-luanti-source-startup/v1';
+export type LuantiSourceStartupFacts =
+ | { profileVersion: typeof SOURCE_STARTUP_VERSION; availability: 'UNAVAILABLE'; reason: 'PAYLOAD_NOT_VERIFIED' }
+ | { profileVersion: typeof SOURCE_STARTUP_VERSION; availability: 'KNOWN';
+     connection: { worldRef: string; connectionRef: string; payloadVersion: string; payloadDigest: string; directory: {device:string;inode:string} };
+     runtimeSettings: {httpMods: readonly string[]; trustedMods: readonly []} };

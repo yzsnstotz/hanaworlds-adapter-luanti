@@ -380,31 +380,6 @@ function M.source_declaration(core, declaration, native_writer)
   return out
 end
 
--- What the running engine actually loaded for WorldEdit: the mod name in the
--- loaded mod list, its runtime API table and the version the loaded mod itself
--- exposes. Package/Git versions are never substituted for a missing value.
-function M.worldedit_runtime(core)
-  if not available(core, 'get_modnames') then return nil, 'CAPABILITY_UNAVAILABLE' end
-  local mods = core.get_modnames()
-  if type(mods) ~= 'table' then return nil, 'CAPABILITY_UNAVAILABLE' end
-  local listed = false
-  for _, name in ipairs(mods) do if name == 'worldedit' then listed = true end end
-  local api = rawget(_G, 'worldedit')
-  local version, major, minor = nil, nil, nil
-  if type(api) == 'table' then
-    if type(api.version_string) == 'string' and api.version_string ~= '' then version = api.version_string end
-    local v = api.version
-    if type(v) == 'table' and math.type and math.type(v.major) == 'integer' and math.type(v.minor) == 'integer' then
-      major, minor = v.major, v.minor
-    elseif type(v) == 'table' and type(v.major) == 'number' and type(v.minor) == 'number'
-      and v.major == math.floor(v.major) and v.minor == math.floor(v.minor) then
-      major, minor = v.major, v.minor
-    end
-  end
-  return {modListed = listed, apiTable = type(api) == 'table', versionString = version,
-    versionMajor = major, versionMinor = minor}
-end
-
 function M.world_revision() return nil, 'CAPABILITY_UNAVAILABLE' end
 function M.object_revisions() return nil, 'CAPABILITY_UNAVAILABLE' end
 

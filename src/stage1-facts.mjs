@@ -1,16 +1,12 @@
-import { createHash } from 'node:crypto';
 import { validateType, canonicalJSON, digestValue, ContractError } from '#contracts';
-import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /** Loaded-world config-engine-facts/v2, checked against one neutral Catalogue snapshot.
  * Backend identity is read from the payload declaration. Player geometry stays engine-only;
  * the released AvatarEnvelopeFact permits UNAVAILABLE/NO_PUBLIC_SOURCE only.
- * WorldEdit diagnostics are optional observations; native backend readiness is independent. */
+ * Native backend readiness is independent of historical WorldEdit diagnostics. */
 export const CONFIG_ENGINE_FACTS_VERSION = 'config-engine-facts/v2';
-export const WORLDEDIT_FACTS_VERSION = 'adapter-worldedit-runtime/v1';
 // The exact candidate permits only this avatar form; no public geometry source.
 export const AVATAR_UNAVAILABLE_REASON = 'NO_PUBLIC_SOURCE';
-const sha = value => createHash('sha256').update(canonicalJSON(value)).digest('hex');
 
 /** Exact candidate SDK digest rule; no local alternate digest implementation. */
 export function configEngineFactsRevision(projection) {
@@ -99,43 +95,10 @@ export function createStage1Facts() {
         return out;
       }).record;
     },
-    async worldEditFacts(row, engine) {
-      const list = ledger(row.worldRef).worldedit, domain = domainOf(row);
-      const { catalogue: after, value: runtime } = await stableCatalogue(engine, () => engine.worldEditRuntime());
-      if (typeof runtime?.modListed !== 'boolean' || typeof runtime?.apiTable !== 'boolean')
-        throw refusal('CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'WORLDEDIT_RUNTIME_UNREADABLE');
-      const modRevision = after.engineRevisions[`source:${createHash('sha256').update('worldedit').digest('hex')}`] ?? null;
-      const listed = runtime.modListed && modRevision !== null;
-      // The loaded-mod list, the Catalogue and the runtime API must agree; otherwise UNKNOWN.
-      const loadState = listed && runtime.apiTable ? 'LOADED'
-        : !runtime.modListed && modRevision === null && !runtime.apiTable ? 'NOT_LOADED' : 'UNKNOWN';
-      const hasVersion = typeof runtime.versionString === 'string' && runtime.versionString !== '';
-      const version = loadState !== 'LOADED' ? { status: 'UNKNOWN', reason: loadState === 'NOT_LOADED' ? 'NOT_LOADED' : 'LOAD_STATE_UNKNOWN' }
-        : hasVersion ? { status: 'KNOWN', value: runtime.versionString,
-          major: Number.isInteger(runtime.versionMajor) ? runtime.versionMajor : null,
-          minor: Number.isInteger(runtime.versionMinor) ? runtime.versionMinor : null,
-          source: 'loaded mod runtime: worldedit.version_string / worldedit.version' }
-        : { status: 'UNKNOWN', reason: 'VERSION_NOT_EXPOSED_BY_LOADED_MOD' };
-      const body = { profileVersion: WORLDEDIT_FACTS_VERSION, loadState, version,
-        catalogue: { gameId:null, gameRevision:after.engineRevisions.registry, worldeditModRevision: modRevision,
-          meaning: 'loaded-registry fingerprint (sha256(mod|gameRevision)), not a Git/package revision' },
-        domain };
-      const record = { ...body, revision: `worldedit-runtime-${sha(body)}`,
-        source: { kind: 'ENGINE_FACT', producer: `${ADAPTER_ID}@${ADAPTER_VERSION}`,
-          engineRead: 'core.get_modnames(); rawget(_G, "worldedit"); Catalogue read before and after' },
-        lifetime: { validWhile: ['same connection incarnation', 'same Catalogue gameRevision'] } };
-      const out = publish(list, record.revision, { domain, engineRevisions:after.engineRevisions, loadState, version }, record, (a, b) => {
-        const r = domainChanges(a, b);
-        if (canonicalJSON(a.engineRevisions) !== canonicalJSON(b.engineRevisions)) r.push('CATALOGUE_CHANGED');
-        if (a.loadState !== b.loadState || canonicalJSON(a.version) !== canonicalJSON(b.version)) r.push('WORLDEDIT_CHANGED');
-        return r;
-      });
-      return { ...out.record, supersedes: out.supersedes };
-    },
     /** World left this Adapter (retire/close): nothing stays current for it. */
     withdrawWorld(worldRef, reason) {
       const l = ledgers.get(worldRef); if (!l) return;
-      withdraw(l.config, [reason]); withdraw(l.worldedit, [reason]);
+      withdraw(l.config, [reason]);
     },
     withdrawAll(reason) { for (const worldRef of ledgers.keys()) this.withdrawWorld(worldRef, reason); },
     /** Current and retired entries for a World (revisions and reasons only). */

@@ -3,10 +3,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { constants, promises as fs } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describeSourceWorld, validateBoundResponse } from '#contracts';
+import { createLocalWorldSourceMock, describeSourceWorld, validateBoundResponse } from '#contracts';
+import startupExamples from 'hanaworlds-contracts/fixtures/source-startup' with {type:'json'};
+import sourceExamples from '../fixtures/local-world-source.json' with {type:'json'};
 import { createLocalWorldPort } from '../src/local-world-port.mjs';
 import { SOURCE_LOCATOR_VERSION } from '../src/source-locator.mjs';
 import { payloadDigest } from '../src/local-worlds.mjs';
@@ -15,6 +19,16 @@ import { PAYLOAD_VERSION } from '../src/version.mjs';
 const WIRE = 'local-worlds/v2', OP = 'describeSourceWorld';
 let n = 0;
 const ask = worldRef => ({ contractVersion: WIRE, requestId: `source:${++n}`, worldRef });
+
+test('published neutral consumer forwards renamed and heterogeneous source startup descriptions without decoding them',async()=>{
+ const port={describeSourceWorld:createLocalWorldSourceMock({...startupExamples,
+  exchanges:[...startupExamples.exchanges,...sourceExamples.exchanges.filter(x=>x.response.error)]})};
+ for(const exchange of startupExamples.exchanges) {
+  const out=await describeSourceWorld(port,exchange.request);
+  assert.equal(out.error,null);
+  assert.deepEqual(JSON.parse(JSON.stringify(out.result)),exchange.response.result);
+ }
+});
 
 async function world(root, name, worldRef) {
   const path = join(root, name);
@@ -152,4 +166,37 @@ test('missing roots or user path and a closed service refuse ADAPTER_UNAVAILABLE
   assert.equal((await call(g.port, ask(other.worldRef))).error.code, 'ADAPTER_UNAVAILABLE');
   await assert.rejects(g.port.describeSourceWorld({ contractVersion: WIRE, requestId: 'x', worldRef: other.worldRef, displayName: 'Same' }));
   await assert.rejects(g.port.describeSourceWorld({ contractVersion: WIRE, requestId: 'x' }));
+});
+
+test('source startup authorization comes only from exact installed payload bytes, never manifest or caller mod claims',async()=>{
+ const f=await fixture(),[left]=await same(f.port,f.a),path=join(f.a,'Same');
+ const read=()=>call(f.port,ask(left.worldRef));
+ assert.equal((await read()).result.sourceStartupFacts.availability,'UNAVAILABLE');
+ const payload=new URL('../payload/hanaworlds_adapter/',import.meta.url);
+ await cp(payload,join(path,'worldmods/hanaworlds_adapter'),{recursive:true});
+ const authorized=(await read()).result.sourceStartupFacts;
+ assert.equal(authorized.availability,'KNOWN');
+ assert.deepEqual(authorized.runtimeSettings,{httpMods:['hanaworlds_adapter'],trustedMods:[]});
+ assert.equal(authorized.connection.worldRef,left.worldRef);
+ assert.equal(authorized.connection.payloadDigest,await payloadDigest());
+ await writeFile(join(path,'worldmods/hanaworlds_adapter/facts.lua'),'forged payload');
+ assert.equal((await read()).result.sourceStartupFacts.availability,'UNAVAILABLE');
+ await assert.rejects(f.port.describeSourceWorld({...ask(left.worldRef),httpMods:['attacker']}));
+});
+
+test('a payload file replaced by a symlink before open is never read for startup facts',async t=>{
+ const f=await fixture(),[left]=await same(f.port,f.a),path=join(f.a,'Same','worldmods','hanaworlds_adapter');
+ await cp(new URL('../payload/hanaworlds_adapter/',import.meta.url),path,{recursive:true});
+ const target=join(f.base,'unrelated-file');await writeFile(target,'unrelated bytes that must never be read');
+ const original=fs.open;let replaced=false;
+ t.mock.method(fs,'open',async (file,flags,...args)=>{
+  if(String(file)===join(path,'facts.lua')&&!replaced){
+   replaced=true;await rename(file,file+'.saved');await symlink(target,file);
+   assert.ok(flags & constants.O_NOFOLLOW,'startup read must not follow a final-component symlink');
+  }
+  return original(file,flags,...args);
+ });syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+ const r=await call(f.port,ask(left.worldRef));
+ assert.equal(replaced,true);
+ assert.equal(r.result.sourceStartupFacts.availability,'UNAVAILABLE');
 });

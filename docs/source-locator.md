@@ -65,3 +65,29 @@ Fixture/mock: `fixtures/local-world-source.json` (package export
 Luanti-shaped locators and each declared refusal; `createLocalWorldsMock().describeSourceWorld`
 (`./local-worlds-v2-mock`) serves it through the SDK's `createLocalWorldSourceMock`. Evidence:
 SOURCE/FIXTURE only.
+
+## Native startup facts (contracts v2.13.0)
+
+The description additionally returns `sourceStartupFacts` as opaque world-source JSON.
+The existing `sourceLocator` and its v1 shape stay unchanged. Only the paired runtime
+interprets `LuantiSourceStartupFacts` from the existing `./source-locator` export.
+A missing/incomplete/different payload returns `{profileVersion:
+'hanaworlds-luanti-source-startup/v1', availability:'UNAVAILABLE',
+reason:'PAYLOAD_NOT_VERIFIED'}`; this supplies no startup permission.
+
+KNOWN facts bind `connection={worldRef,connectionRef,payloadVersion,payloadDigest,
+directory:{device,inode}}` and carry `runtimeSettings={httpMods:[actualPayloadMod],
+trustedMods:[]}`. The Adapter reads the payload manifest, verifies every installed
+file against its release digest twice, refuses symlinked paths/files, and reads the
+actual mod name from that verified mod.conf. It does not read transport.json or
+credentials. A self-reported manifest/digest or caller-supplied mod cannot establish
+these facts. No other mod receives HTTP permission; no mod receives trusted status.
+
+The paired runtime must require KNOWN, re-read describeSourceWorld and recheck
+canonical world/directory/payload identity and exact file bytes immediately before
+native startup. It then writes the supplied HTTP permissions with security enabled
+and an empty trusted-mod list. Permission is not engine readiness: pair still
+requires a live matching payload handshake and connection incarnation. Clients and
+non-world-source plugins never interpret these fields, and they must not flow into
+C-world-lifecycle. Optional facts require SDK v2.13.0; consumers pinned to an earlier
+closed schema must upgrade before reading responses containing the field.

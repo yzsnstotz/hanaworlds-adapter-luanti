@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import { digestValue, validateConfigEngineFacts, requireKnownWriteBackend, publicError } from 'hanaworlds-contracts';
@@ -9,7 +9,7 @@ import { configEngineFactsRevision } from '../src/stage1-facts.mjs';
 
 // SOURCE/FIXTURE: real Adapter public path and real payload facts.lua/engine.lua; the
 // native Host and the engine `core` are fixtures. Not a real Luanti, player or WorldEdit.
-const runRoot = process.env.HW_STAGE1_RUN ?? join(homedir(), '.cache/hanaworlds-runs/hanaworlds-adapter-luanti-SUPPLY-01/test-fixture');
+const runRoot = process.env.HW_STAGE1_RUN ?? join(tmpdir(), 'hanaworlds-adapter-stage1-tests');
 const STAND = [-0.312, 0, -0.312, 0.312, 1.8, 0.312], SNEAK = [-0.312, 0, -0.312, 0.312, 1.5, 0.312];
 const base = (players, worldedit = { version_string: '1.3', version: { major: 1, minor: 3 } }, writeBackendDeclared = true) => ({
   gameId: 'fixture_game', nodes: ['air', 'fixture:stone'], modnames: worldedit ? ['fixture_core', 'worldedit'] : ['fixture_core'],
@@ -60,45 +60,30 @@ test('config engine facts: a payload without a declaration is UNAVAILABLE, never
   assert.deepEqual(ledger.map(x => [x.state, x.reasons]), [['RETIRED', ['WRITE_BACKEND_CHANGED']], ['CURRENT', null]]);
 });
 
-test('WorldEdit: loaded runtime version, or UNKNOWN when the loaded mod exposes none', async t => {
-  const w = await world(t, base([]));
-  await w.connect();
-  const known = await w.facts.readWorldEditFacts(w.worldRef);
-  assert.equal(known.loadState, 'LOADED');
-  assert.deepEqual([known.version.status, known.version.value, known.version.major, known.version.minor], ['KNOWN', '1.3', 1, 3]);
-  assert.match(known.catalogue.worldeditModRevision, /^[0-9a-f]{64}$/);
-  await w.setScenario(base([], { version_string: null }));
-  const unknown = await w.facts.readWorldEditFacts(w.worldRef);
-  assert.deepEqual(unknown.version, { status: 'UNKNOWN', reason: 'VERSION_NOT_EXPOSED_BY_LOADED_MOD' });
-  assert.deepEqual(unknown.supersedes.reasons, ['WORLDEDIT_CHANGED']);
-});
-
-test('WorldEdit not loaded: pairing and native backend facts remain available', async t => {
-  const w = await world(t, base([], null));
-  await w.connect();
-  const diagnostic = await w.facts.readWorldEditFacts(w.worldRef);
-  assert.equal(diagnostic.loadState, 'NOT_LOADED');
-  assert.deepEqual(diagnostic.version, {status:'UNKNOWN', reason:'NOT_LOADED'});
-  const facts = await w.facts.readConfigEngineFacts(w.worldRef);
-  assert.equal(facts.writeBackend.availability, 'KNOWN');
-  assert.equal(facts.writeBackend.writeBackend.profileId, 'hanaworlds-luanti-native-cell-write/v2');
+test('retired WorldEdit diagnostics always refuse while native facts work with and without the mod', async t => {
+  for(const loaded of [null,{version_string:'1.3'}]) {
+    const w=await world(t,base([],loaded));await w.connect();
+    await assert.rejects(w.facts.readWorldEditFacts(w.worldRef),e=>e.code==='CAPABILITY_UNAVAILABLE' && e.detail==='WORLDEDIT_FACTS_RETIRED_D15');
+    assert.equal((await w.facts.readConfigEngineFacts(w.worldRef)).writeBackend.availability,'KNOWN');
+    assert.deepEqual(w.facts.readStage1FactLedger(w.worldRef).worldEdit,[]);
+  }
 });
 
 test('connection lifecycle: retire withdraws all facts; a new incarnation is a new domain', async t => {
   const w = await world(t, base([]));
   await w.connect();
   const a = await w.facts.readConfigEngineFacts(w.worldRef);
-  const we = await w.facts.readWorldEditFacts(w.worldRef);
+  await assert.rejects(w.facts.readWorldEditFacts(w.worldRef), /CAPABILITY_UNAVAILABLE/);
   await w.disconnect();
   await assert.rejects(w.facts.readConfigEngineFacts(w.worldRef), /WORLD_NOT_BOUND/);
   const retired = w.facts.readStage1FactLedger(w.worldRef);
   assert.deepEqual(retired.configEngineFacts.map(x => [x.state, x.reasons]), [['RETIRED', ['CONNECTION_RETIRED']]]);
-  assert.deepEqual(retired.worldEdit.map(x => [x.state, x.reasons]), [['RETIRED', ['CONNECTION_RETIRED']]]);
+  assert.deepEqual(retired.worldEdit, []);
   await w.connect();
   const b = await w.facts.readConfigEngineFacts(w.worldRef);
   assert.notEqual(b.connection.connectionIncarnationRef, a.connection.connectionIncarnationRef);
   assert.notEqual(b.sourceRevision, a.sourceRevision);
-  assert.notEqual((await w.facts.readWorldEditFacts(w.worldRef)).revision, we.revision);
+  await assert.rejects(w.facts.readWorldEditFacts(w.worldRef), /CAPABILITY_UNAVAILABLE/);
 });
 
 test('input: unbound or invalid World is refused without reading', async t => {

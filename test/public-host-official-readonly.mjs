@@ -32,9 +32,9 @@ try{
  await load('@deepseek-ai/dsh-storage');await load('@deepseek-ai/dsh-storage-json',{root:domain});await load('@deepseek-ai/dsh-storage-domain',{backend:'json'});await load('@deepseek-ai/dsh-session-persistence-jsonl',{root:sessions,compression:'none'});
  const stored=await root.get('sessionPersistence').list();assert.deepEqual(stored,[]);assert.equal(typeof root.get('storageDomain').get,'function');
  owned=createNativeHost({C,state,profile,worlds,luanti:'/usr/bin/false',event:(kind,facts)=>events.push({kind,...facts})});
- root.provide('hanaworldsNativeEngineControl',owned.host);const bridge=createInspectionContext({resolveCanvas:()=>root.get('hanaworldsCanvasV5'),resolveOracle:()=>root.get('hanaworldsWorldRevisionOracle')});root.provide('hanaworldsLuantiInspectionContext',bridge);
+ root.provide('hanaworldsNativeEngineControl',owned.host);const bridge=createInspectionContext({resolveCanvas:()=>root.get('hanaworldsCanvasV5'),resolveOracle:()=>root.get('hanaworldsWorldRevisionOracle')});root.provide('hanaworldsWorldInspectionContext',bridge);
  await load('hanaworlds-adapter-luanti',{localWorldRoots:[worlds]});
- assert.equal(original(root.get('hanaworldsNativeEngineControl')),original(owned.host));assert.equal(original(root.get('hanaworldsLuantiInspectionContext')),original(bridge));
+ assert.equal(original(root.get('hanaworldsNativeEngineControl')),original(owned.host));assert.equal(original(root.get('hanaworldsWorldInspectionContext')),original(bridge));
  const adapter=root.get('hanaworldsWorldAdapterV6');assert.equal(C.canonicalJSON(adapter.contractHandshake),C.canonicalJSON(C.contractHandshake));
  const request={contractVersion:'world-adapter/v7',sessionRef:'own:readonly-request-shape',requestId:'own:discover-empty',adapterId:'hanaworlds-adapter-luanti'};
  const connections=await adapter.call('DiscoverConnections',request);assert.equal(connections.error,null);assert.deepEqual(connections.result.connections,[]);

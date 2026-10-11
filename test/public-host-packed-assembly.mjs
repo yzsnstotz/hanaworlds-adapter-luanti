@@ -17,11 +17,11 @@ const ctx=new Context();let registerCount=0,unregisterCount=0;
 ctx.provide('webServer',{register(){registerCount++;return()=>{unregisterCount++;};}});
 ctx.provide('dshHomePath',(...parts)=>join(state,'home',...parts));ctx.provide('hanaworldsNativeEngineControl',owned.host);
 const bridge=createInspectionContext({resolveCanvas:()=>ctx.get('hanaworldsCanvasV5'),resolveOracle:()=>ctx.get('hanaworldsWorldRevisionOracle')});
-ctx.provide('hanaworldsLuantiInspectionContext',bridge);
+ctx.provide('hanaworldsWorldInspectionContext',bridge);
 let facts;try{
  await ctx.plugin(Loader,{baseUrl:pathToFileURL(join(sdk,'package.json')).href});
  const id=await ctx.loader.create({id:'hanaworlds-luanti-adapter',name:'hanaworlds-adapter-luanti',config:{localWorldRoots:[worlds]}});await ctx.loader.await();
- assert.equal(ctx.loader.resolve(id).fiber.state,2);assert.equal(ctx.get('hanaworldsNativeEngineControl'),owned.host);assert.equal(ctx.get('hanaworldsLuantiInspectionContext'),bridge);
+ assert.equal(ctx.loader.resolve(id).fiber.state,2);assert.equal(ctx.get('hanaworldsNativeEngineControl'),owned.host);assert.equal(ctx.get('hanaworldsWorldInspectionContext'),bridge);
  const adapter=ctx.get('hanaworldsWorldAdapterV6');assert.equal(adapter.contractHandshake.contracts,`hanaworlds-contracts@${C.version}`);C.checkContractsVersion(adapter.contractHandshake.contracts);
  const request={contractVersion:'world-adapter/v7',sessionRef:'own:readonly-request-shape',requestId:'own:read-connections',adapterId:'hanaworlds-adapter-luanti'};
  const connections=await adapter.call('DiscoverConnections',request);const worldInventory=await ctx.get('hanaworldsLuantiLocalWorlds').discover();

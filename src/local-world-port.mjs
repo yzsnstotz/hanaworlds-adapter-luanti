@@ -7,6 +7,7 @@ import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
 import { createFlatWorld, describeFlatWorldCreation, FLAT_WORLD_TEMPLATE_ID } from './flat-world.mjs';
 import { readCreatedMarker, removeWorldDirectory, worldData } from './local-world-deletion.mjs';
 import { readWorldSelections, withWorldRetirement } from './world-retirement.mjs';
+import { readSourceStartupFacts } from './source-startup.mjs';
 import { SOURCE_LOCATOR_VERSION } from './source-locator.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
@@ -97,12 +98,18 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
         reject('ADAPTER_UNAVAILABLE', 'USER_PATH_NOT_CANONICAL');
       user = resolve(userPath);
     }
-    const first = await observe(), again = await observe();
+    const first = await observe();
+    const startupFirst = await readSourceStartupFacts(first.row, {device:first.device,inode:first.inode});
+    const again = await observe();
+    const sourceStartupFacts = await readSourceStartupFacts(again.row, {device:again.device,inode:again.inode});
+    if (JSON.stringify(startupFirst) !== JSON.stringify(sourceStartupFacts)) reject('CURRENT_WORLD_MISMATCH', 'PAYLOAD_CHANGED_DURING_READ');
     if (!['connectionRef', 'worldPath', 'worldRef', 'gameId', 'payloadStatus', 'payloadVersion', 'payloadDigest']
       .every(k => first.row[k] === again.row[k]) || first.device !== again.device || first.inode !== again.inode)
       reject('CURRENT_WORLD_MISMATCH', 'WORLD_IDENTITY_CHANGED');
+    const last = await observe();
+    if (JSON.stringify(last) !== JSON.stringify(again)) reject('CURRENT_WORLD_MISMATCH', 'WORLD_CHANGED_AFTER_PAYLOAD_READ');
     const { row } = again;
-    return { worldRef, sourceLocator: { locatorVersion: SOURCE_LOCATOR_VERSION, worldRef,
+    return { worldRef, sourceStartupFacts, sourceLocator: { locatorVersion: SOURCE_LOCATOR_VERSION, worldRef,
       connectionRef: row.connectionRef, worldPath: row.worldPath, worldRoot: again.root, userPath: user,
       directory: { device: again.device, inode: again.inode }, gameId: row.gameId,
       payload: { status: row.payloadStatus, payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest } } };

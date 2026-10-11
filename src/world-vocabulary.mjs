@@ -93,9 +93,9 @@ export class NeutralEngine {
   nativeImage(image) {return {...image,records:image.records.map(r=>this.vocabulary.nativeRecord(r))};}
   effects(effects,restore=false) {return effects.map(e=>({position:e.position,...this.nativeMaterial(e,restore)}));}
   prepareCheck(positions,effects,restore=false) {return this.native.prepareCheck(positions,effects ? this.effects(effects,restore) : undefined);}
-  async apply(effects,before,scope,digest) {await this.catalogue(); return this.native.apply(this.effects(effects),this.nativeImage(before),this.nativeImage(scope),digest);}
-  async applyState(target,before,digest) {await this.catalogue(); return this.native.applyState(this.nativeImage(target),this.nativeImage(before),digest);}
-  async restore(before,id) {await this.catalogue(); return this.native.restore(this.nativeImage(before),id);}
+  async apply(effects,before,scope,digest) {await this.catalogue(); await this.beforeWrite?.(); this.writeAuthorityCheck?.(); return this.native.apply(this.effects(effects),this.nativeImage(before),this.nativeImage(scope),digest);}
+  async applyState(target,before,digest) {await this.catalogue(); await this.beforeWrite?.(); this.writeAuthorityCheck?.(); return this.native.applyState(this.nativeImage(target),this.nativeImage(before),digest);}
+  async restore(before,id) {await this.catalogue(); await this.beforeWrite?.(); this.writeAuthorityCheck?.(); return this.native.restore(this.nativeImage(before),id);}
   async inspect(positions) {
     await this.catalogue(); const raw=await this.native.inspect(positions);
     return {...raw,occupiedCells:raw.occupiedCells.map(c=>({position:c.position,...this.material(c.nodeName,c.param2)}))};
@@ -116,11 +116,14 @@ export class NeutralEngine {
   }
   writeBackend() {return this.native.writeBackend();}
   sourceDeclaration() {return this.native.sourceDeclaration();}
-  worldEditRuntime() {return this.native.worldEditRuntime();}
   capacity(n) {return this.native.capacity(n);}
   regionLimits() {return this.native.regionLimits();}
   regionEmerge(...args) {return this.native.regionEmerge(...args);}
   regionRead(value) {return this.native.regionRead(value);}
-  regionWrite(value) {return this.native.regionWrite(value);}
+  async regionWrite(value) {
+    try { await this.beforeWrite?.(); this.writeAuthorityCheck?.(); }
+    catch (error) { error.beforeNativeDispatch = true; throw error; }
+    return this.native.regionWrite(value);
+  }
   close() {return this.native.close();}
 }
