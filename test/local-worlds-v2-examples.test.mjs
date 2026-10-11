@@ -51,3 +51,35 @@ test('public registration exposes createWorld and returns a declared missing-pro
     assert.equal(r.error.code, 'ADAPTER_UNAVAILABLE');
   } finally { await service.close(); }
 });
+test('source examples: same-name worlds by exact ref, every declared refusal, async mock with new request IDs', async () => {
+  const source = JSON.parse(await readFile(new URL('../fixtures/local-world-source.json', import.meta.url)));
+  for (const x of source.exchanges) validateBoundResponse(x.wire, x.operation, x.request, x.response);
+  assert.deepEqual(source.exchanges.filter(x => x.response.error).map(x => x.response.error.code).sort(),
+    ['ADAPTER_UNAVAILABLE', 'CURRENT_WORLD_MISMATCH', 'WORLD_NOT_FOUND']);
+  const mock = createLocalWorldsMock();
+  const read = async ref => { const q = { contractVersion: 'local-worlds/v2', requestId: `new:${ref}`, worldRef: ref };
+    const pending = mock.describeSourceWorld(q); assert.equal(typeof pending.then, 'function');
+    return validateBoundResponse('local-worlds/v2', 'describeSourceWorld', q, await pending); };
+  const [a, b] = source.worlds; assert.equal(a.displayName, b.displayName);
+  const ra = await read(a.worldRef), rb = await read(b.worldRef);
+  assert.equal(ra.result.sourceLocator.locatorVersion, 'hanaworlds-luanti-source-locator/v1');
+  assert.notEqual(ra.result.sourceLocator.worldPath, rb.result.sourceLocator.worldPath);
+  assert.equal((await read('luanti:fixture-missing')).error.code, 'WORLD_NOT_FOUND');
+  assert.equal((await read(a.displayName)).error.code, 'WORLD_NOT_FOUND');
+  for (const code of ['ADAPTER_UNAVAILABLE', 'CURRENT_WORLD_MISMATCH']) {
+    const q = { contractVersion: 'local-worlds/v2', requestId: 'forced', worldRef: a.worldRef };
+    assert.equal((await createLocalWorldsMock({ 'local-worlds/v2:describeSourceWorld': code }).describeSourceWorld(q)).error.code, code);
+  }
+  assert.throws(() => createLocalWorldsMock({ 'local-worlds/v2:describeSourceWorld': 'INVALID_NAME' }), /Undeclared/);
+});
+test('public registration exposes describeSourceWorld; an unconfigured source answers a declared refusal', async () => {
+  const providers = new Map();
+  const service = apply({ get() {}, effect(run) { run(); }, provide: (name, port) => providers.set(name, port), webServer: { register() { return () => {}; } } });
+  try {
+    const port = providers.get('hanaworldsLuantiLocalWorlds');
+    assert.equal(typeof port.describeSourceWorld, 'function');
+    const q = { contractVersion: 'local-worlds/v2', requestId: 'public:source', worldRef: 'luanti:absent' };
+    const r = validateBoundResponse('local-worlds/v2', 'describeSourceWorld', q, await port.describeSourceWorld(q));
+    assert.equal(r.error.code, 'WORLD_NOT_FOUND'); assert.equal(r.error.mutationState, 'NONE');
+  } finally { await service.close(); }
+});

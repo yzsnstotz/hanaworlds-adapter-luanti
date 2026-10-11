@@ -1,3 +1,10 @@
+# adapter-local-source-01 describeSourceWorld record (2026-10-11)
+
+- hanaworlds-contracts · 2.5.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.5.0 · published local-worlds/v2 describeSourceWorld schema/SDK, consumer helper and createLocalWorldSourceMock; peeled source f0c6751e984bb15081ea70c351ccbb484c91226c. Installed LICENSE/NOTICE retained.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged.
+- Node.js · 24.x · MIT · https://nodejs.org/ · fs realpath/lstat (bigint) and test runner; no new dependency.
+- Luanti / VoxeLibre · unchanged D-7/D-8 bases; this card reads world directories only and runs no engine.
+
 # adapter-06 native cell writer record (2026-10-11)
 
 - Luanti · existing 5.17.0 API base · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external runtime; use the documented native swap_node API for cell writes, preserving the existing fix_light/readback path. No engine source copied or bundled. Return-value handling checked against src/script/lua_api/l_env.cpp at that tag.

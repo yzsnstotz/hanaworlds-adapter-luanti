@@ -7,6 +7,7 @@ import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
 import { createFlatWorld, describeFlatWorldCreation, FLAT_WORLD_TEMPLATE_ID } from './flat-world.mjs';
 import { readCreatedMarker, removeWorldDirectory, worldData } from './local-world-deletion.mjs';
 import { readWorldSelections, withWorldRetirement } from './world-retirement.mjs';
+import { SOURCE_LOCATOR_VERSION } from './source-locator.mjs';
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
 function deny(code = 'CURRENT_WORLD_MISMATCH', details) { const error = new Error(code); if (details) error.details = details; throw error; }
@@ -52,8 +53,10 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
         ? (cause === 'WORLD_NOT_FOUND' ? 'WORLD_NOT_FOUND' : 'TRANSACTION_CONFLICT')
         : operation === 'pair'
         ? (cause === 'PAYLOAD_VERSION_MISMATCH' ? cause : 'CONNECTION_NOT_FOUND')
+        : operation === 'describeSourceWorld'
+        ? (['WORLD_NOT_FOUND', 'CURRENT_WORLD_MISMATCH'].includes(cause) ? cause : 'ADAPTER_UNAVAILABLE')
         : (operation === 'createWorld' && ['INVALID_NAME', 'WORLD_EXISTS'].includes(cause) ? 'INVALID_NAME' : 'ADAPTER_UNAVAILABLE');
-      const mutationState = failure.mutationState ?? (cause === 'DELETE_INCOMPLETE' ? 'PARTIAL'
+      const mutationState = operation === 'describeSourceWorld' ? 'NONE' : failure.mutationState ?? (cause === 'DELETE_INCOMPLETE' ? 'PARTIAL'
         : ['READBACK_MISMATCH', 'LOCAL_CREATE_DISCOVERY_MISMATCH'].includes(cause) ? 'UNKNOWN'
         : failure.code?.startsWith('E') ? 'UNKNOWN' : 'NONE');
       error = new ContractError(code, operation === 'deleteWorld' ? 'apply' : 'validate',
@@ -69,6 +72,40 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     if (!rows.length) deny('WORLD_NOT_FOUND');
     if (rows.length !== 1) deny('TRANSACTION_CONFLICT');
     return rows[0];
+  }
+  // Read-only source description: one exact discovered world by worldRef, its canonical directory
+  // and identity observed twice; any change in between, a duplicate reference or a non-canonical
+  // path refuses. Display names never select. Shape: docs/source-locator.md.
+  async function describeSource(worldRef) {
+    const reject = (code, reason) => { log('warn', `LOCAL_SOURCE_DESCRIBE_REJECTED ${reason}`); deny(code); };
+    const observe = async () => {
+      const rows = (await discover()).filter(row => sourceRef(row) === worldRef);
+      if (!rows.length) reject('WORLD_NOT_FOUND', 'WORLD_NOT_DISCOVERED');
+      if (rows.length !== 1) reject('CURRENT_WORLD_MISMATCH', 'WORLD_REF_NOT_UNIQUE');
+      const row = rows[0], root = dirname(row.worldPath);
+      if (!rootPaths.includes(root)) reject('CURRENT_WORLD_MISMATCH', 'WORLD_OUTSIDE_ROOTS');
+      const info = await lstat(row.worldPath, { bigint: true }).catch(() => null);
+      if (!info) reject('WORLD_NOT_FOUND', 'WORLD_DIRECTORY_GONE');
+      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(row.worldPath).catch(() => null) !== row.worldPath)
+        reject('CURRENT_WORLD_MISMATCH', 'WORLD_PATH_NOT_CANONICAL');
+      return { row, root, device: String(info.dev), inode: String(info.ino) };
+    };
+    let user = null;
+    if (userPath !== undefined) {
+      const info = text(userPath) && isAbsolute(userPath) ? await lstat(userPath).catch(() => null) : null;
+      if (!info?.isDirectory() || info.isSymbolicLink() || await realpath(userPath) !== resolve(userPath))
+        reject('ADAPTER_UNAVAILABLE', 'USER_PATH_NOT_CANONICAL');
+      user = resolve(userPath);
+    }
+    const first = await observe(), again = await observe();
+    if (!['connectionRef', 'worldPath', 'worldRef', 'gameId', 'payloadStatus', 'payloadVersion', 'payloadDigest']
+      .every(k => first.row[k] === again.row[k]) || first.device !== again.device || first.inode !== again.inode)
+      reject('CURRENT_WORLD_MISMATCH', 'WORLD_IDENTITY_CHANGED');
+    const { row } = again;
+    return { worldRef, sourceLocator: { locatorVersion: SOURCE_LOCATOR_VERSION, worldRef,
+      connectionRef: row.connectionRef, worldPath: row.worldPath, worldRoot: again.root, userPath: user,
+      directory: { device: again.device, inode: again.inode }, gameId: row.gameId,
+      payload: { status: row.payloadStatus, payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest } } };
   }
   async function discover() {
     if (closed) deny('ADAPTER_UNAVAILABLE');
@@ -216,6 +253,9 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
       if (new Set(rows.map(sourceRef)).size !== rows.length) deny('ADAPTER_UNAVAILABLE');
       return { worlds: rows.map(row => ({ worldId: row.connectionRef, worldRef: sourceRef(row), displayName: basename(row.worldPath), tags: [] })) };
     })),
+    /** Read-only: where one exact world of this source is now. Never provisions, pairs, starts,
+     * writes or binds; the locator is interpreted only inside this world source (docs/source-locator.md). */
+    describeSourceWorld: input => lifecycleCall('describeSourceWorld', input, q => track(() => describeSource(q.worldRef))),
     async createWorld(input) {
       return lifecycleCall('createWorld', input, async q => {
         if (q.templateId !== FLAT_WORLD_TEMPLATE_ID || !text(userPath) || !isAbsolute(userPath)) deny('ADAPTER_UNAVAILABLE');
