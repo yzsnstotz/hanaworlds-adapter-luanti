@@ -1,3 +1,11 @@
+# adapter-07 native readiness + historical receipt record (2026-10-11)
+
+- hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · published world-adapter/v8 QueryTransaction historical receipt pair (historicalReceiptResponse / readHistoricalReceipt); peeled source 5af62be25dcab110fcbb8502183922010f078f04. Installed LICENSE/NOTICE retained.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external headless runtime for the real gate; not bundled.
+- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content for the real gate; not bundled.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged.
+- No new dependency. WorldEdit is no longer referenced by mod.conf or readiness.
+
 # adapter-local-source-01 describeSourceWorld record (2026-10-11)
 
 - hanaworlds-contracts · 2.5.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.5.0 · published local-worlds/v2 describeSourceWorld schema/SDK, consumer helper and createLocalWorldSourceMock; peeled source f0c6751e984bb15081ea70c351ccbb484c91226c. Installed LICENSE/NOTICE retained.

@@ -174,13 +174,19 @@ try {
  assert.equal(receipt.status,'VERIFIED');assert.equal(h1.swap_node-h0.swap_node,effects.length);
  await read(houseBox); // Headless world: load through the declared region port before a later scoped read.
  const readback=await ok('Readback',{transactionId:'house',coveredPositions:positions,stateProfile:STATE_PROFILE});assert.ok(readback.projection.records.every(r=>r.materialRef===stone.materialRef));
- await stop();await start();await read(houseBox);assert.deepEqual(await ok('QueryTransaction',{transactionId:'house',transactionPayloadDigest:prepared.transactionPayloadDigest}),receipt);
+ const written=localContext;await stop();await start();await read(houseBox);
+ // Real stop + reconnect: new incarnation; the durable receipt comes back as written beside the current context.
+ const queryRequest={contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'call-'+(++seq),worldRef:world.worldRef,localContext,transactionId:'house',transactionPayloadDigest:prepared.transactionPayloadDigest};
+ const queried=await runtime.port.call('QueryTransaction',queryRequest);if(queried.error)evidence.steps.push({name:'FAILED_QueryTransaction',response:queried});
+ const historical=C.readHistoricalReceipt(queryRequest,queried);
+ assert.equal(historical.historical,true);assert.equal(historical.sameIncarnation,false);const plain=v=>JSON.parse(JSON.stringify(v));assert.deepEqual(plain(historical.writtenContext),plain(written));
+ assert.deepEqual(plain(historical.receipt),plain(receipt));assert.equal(historical.receiptDigest,D('receipt',receipt));
  const historyOperation={contractVersion:'world-adapter/v8',worldRef:world.worldRef,originTransactionId:'house',transactionId:'house-undo',direction:'UNDO',affectedObjectRefs:[],originVerifiedReceiptDigest:D('receipt',receipt),originBeforeImageDigest:prepared.beforeImageDigest,originBeforeStateReadbackDigest:prepared.beforeStateReadbackDigest,originAfterReadbackDigest:receipt.readbackDigest,expectedCurrentStateDigest:receipt.readbackDigest,targetStateDigest:prepared.beforeStateReadbackDigest,expectedHistoryRevision:'history-1',expectedWorldRevision:receipt.observedWorldRevision,expectedObjectRevisions:{},guarantee:'RECOVERABLE_VERIFIED',localContext};
  const hist={...historyOperation,historyOperationDigest:D('history-operation',historyOperation)};delete hist.contractVersion;delete hist.worldRef;delete hist.localContext;
  const ph=await ok('PrepareHistoryTransaction',hist),undo=await ok('ApplyHistoryTransaction',{originTransactionId:'house',transactionId:'house-undo',direction:'UNDO',historyOperationDigest:hist.historyOperationDigest,preparedHistoryTransaction:ph,expectedWorldRevision:historyOperation.expectedWorldRevision,expectedObjectRevisions:{}});assert.equal(undo.status,'VERIFIED');
  await read(houseBox);
  const back=await ok('Readback',{transactionId:'house-undo',coveredPositions:positions,stateProfile:STATE_PROFILE});assert.ok(back.projection.records.every(r=>r.materialRef===air.materialRef));
- step('J3_NATIVE_HOUSE_RESTART_UNDO',{cells:effects.length,receipt,undo,countersBefore:h0,countersAfter:h1});
+ step('J3_NATIVE_HOUSE_RESTART_UNDO',{cells:effects.length,receipt,query:{response:queried,writtenContext:historical.writtenContext,currentContext:historical.currentContext,sameIncarnation:historical.sameIncarnation},undo,countersBefore:h0,countersAfter:h1});
  }
  if(!process.env.HW_NATIVE_PATH || process.env.HW_NATIVE_PATH==='ALL' || process.env.HW_NATIVE_PATH==='J5'){
  // J5 adapter path: cross-partition 48x4x48 fill/excavation + exact restore.

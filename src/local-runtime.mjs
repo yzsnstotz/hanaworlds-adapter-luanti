@@ -6,7 +6,7 @@ const STAGE = { PrepareRecoverableTransaction: 'PREPARE_RECOVERABLE', ApplyCompi
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
-  validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
+  validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
 import { LocalCourier } from './local-courier.mjs';
 import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
 import { LocalRecords } from './local-records.mjs';
@@ -265,12 +265,12 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     }
     const saved = b?.store.get(r.transactionId ?? r.originTransactionId);
     if (!saved) fail('STALE_TRANSACTION');
-    if (name === 'QueryTransaction') { if (saved.transactionPayloadDigest !== r.transactionPayloadDigest) fail('REPLAY_MISMATCH'); return b.receipt(saved); }
+    if (name === 'QueryTransaction') { if (saved.transactionPayloadDigest !== r.transactionPayloadDigest) fail('REPLAY_MISMATCH'); return b.stored(saved); }
     if (name === 'QueryPreparedTransaction') { if (saved.request.scopeDigest !== r.scopeDigest || saved.operationDigest !== r.operationDigest) fail('REPLAY_MISMATCH'); return b.prepared(saved); }
     if (name === 'QueryPreparedHistoryTransaction') { if (saved.operationDigest !== r.historyOperationDigest || saved.request.originTransactionId !== r.originTransactionId) fail('REPLAY_MISMATCH'); return saved.prepared; }
     if (name === 'RestoreTransaction') {
       if (saved.operationDigest !== r.operationDigest || saved.beforeImageDigest !== r.beforeImageDigest) fail('REPLAY_MISMATCH');
-      if (saved.status === 'ROLLED_BACK') return b.receipt(saved);
+      if (saved.status === 'ROLLED_BACK') return b.stored(saved).receipt;
       if (!['RECOVERY_PENDING','RESTORE_FAILED'].includes(saved.status)) fail('STALE_TRANSACTION');
       return b.rollback(saved);
     }
@@ -410,7 +410,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
               replay: prior ? 'EXACT_REPLAY' : 'NEW', priorRequestDigest: prior?.digest ?? null });
             if (admission.disposition === 'RETURN_STORED') return prior.response;
             const result = await perform(name, r, row);
-            const response = validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result, error: null }));
+            // QueryTransaction answers with the durable receipt as written beside the current context.
+            const response = name === 'QueryTransaction' ? historicalReceiptResponse(r, result.receipt, result.receiptDigest)
+              : validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result, error: null }));
             await current(r, row); await row.store.finish(key, admission.requestDigest, response); return response;
           }
           if (row) await inspectConnection(row.connectionRef);

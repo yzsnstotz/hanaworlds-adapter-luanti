@@ -12,14 +12,14 @@ import {ENGINE_GUARDS} from '../src/safety-capabilities.mjs';
 import {WORLD_GEOMETRY,STATE_PROFILE} from '../src/world-vocabulary.mjs';
 const plain=v=>JSON.parse(JSON.stringify(v));
 const digest=(k,v)=>C.digestValue(k,v).sha256;
-async function fixture(t,{mismatch=false}={}) {
+async function fixture(t,{mismatch=false,root:reuse=null,incarnation='fixture-incarnation'}={}) {
  const base=process.env.HW_ADAPTER_TEST_ROOT ?? join(tmpdir(),'hanaworlds-adapter-tests');
- await mkdir(base,{recursive:true});const root=await mkdtemp(join(base,'v2-runtime-'));
+ await mkdir(base,{recursive:true});const root=reuse ?? await mkdtemp(join(base,'v2-runtime-'));
  const catalogue=JSON.parse(execFileSync('lua',['test/support/material-facts.lua','glass'],{encoding:'utf8'})).catalogue;
  let record={position:[0,0,0],nodeName:'air',param1:0,param2:0,metadata:{},inventory:{},timer:null};
  const calls=[];
  const image=()=>({worldRef:'fixture-world',coveredPositions:[[0,0,0]],records:[plain(record)]});
- const native={closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:'fixture-incarnation',
+ const native={closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:incarnation,
   handshake:async()=>{},close:async()=>{native.closed=true;},catalogue:async()=>plain(catalogue),profile:async()=>({profileVersion:'state-profile/v2'}),
   regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000}),capacity:async()=>({allowed:true}),
   snapshot:async()=>image(),prepareCheck:async(positions,effects)=>{calls.push({kind:'check',effects:plain(effects)});},
@@ -29,7 +29,7 @@ async function fixture(t,{mismatch=false}={}) {
   restore:async(before)=>{calls.push({kind:'restore',before:plain(before)});record={...plain(before.records[0]),param1:14};return {status:'ROLLED_BACK'};},
   inspect:async positions=>({occupiedCells:record.nodeName==='air'?[]:[{position:record.position,nodeName:record.nodeName,param2:record.param2}],knownEmptyCells:record.nodeName==='air'?positions:[],unknownCells:[]})};
  t.mock.method(LocalCourier,'open',async()=>native);
- const localContext={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:'fixture-incarnation',selectionRevision:'selection-1'};
+ const localContext={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:incarnation,selectionRevision:'selection-1'};
  const context={currentSession:'fixture-session',activeWorldRef:localContext.worldRef,orderedSelectedObjectRefs:[],sessionRevision:'session-1',selectionRevision:'selection-1',localContext};
  const rootCtx={}; const ctx={root:rootCtx,fiber:{state:2,entry:{options:{name:'hanaworlds-canvas'}},ctx:{root:rootCtx}}};
  const canvas={async call(name,q){return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'fixture',connections:[]},selection:{status:'BOUND',connectionRef:localContext.connectionRef,context}},error:null});}};
@@ -41,7 +41,7 @@ async function fixture(t,{mismatch=false}={}) {
  await runtime.pairLocal({worldRef:localContext.worldRef,connectionRef:localContext.connectionRef,worldPath:root,payloadVersion:'fixture-payload',payloadDigest:'0'.repeat(64),gameId:'fixture'});
  let seq=0;
  const call=(name,extra={})=>runtime.port.call(name,{contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:`request-${++seq}`,worldRef:localContext.worldRef,localContext,...extra});
- return {runtime,call,localContext,calls,recomputeLight:()=>{record.param1=10;}};
+ return {root,runtime,call,localContext,calls,recomputeLight:()=>{record.param1=10;}};
 }
 test('existing catalogue supplier and ReadLocalConnection expose complete v2 material/geometry facts',async t=>{
  const f=await fixture(t),catalogue=await f.runtime.readCatalogue(f.localContext.worldRef);
@@ -109,4 +109,21 @@ test('v8 history transport restores the original material without exposing nativ
  expectedWorldRevision:operation.expectedWorldRevision,expectedObjectRevisions:{}});
  assert.equal(done.error,null);assert.equal(done.result.status,'VERIFIED');
  assert.equal(f.calls.find(c=>c.kind==='history').target.records[0].nodeName,'air');
+});
+test('QueryTransaction after reconnect returns the durable receipt as written, beside the current context',async t=>{
+ const f=await fixture(t),{apply,prepared}=await transaction(f);
+ assert.equal(apply.error,null);assert.equal(apply.result.status,'VERIFIED');await f.runtime.close();
+ // Same world, same durable journal, new connection incarnation (server stop + reconnect).
+ const g=await fixture(t,{root:f.root,incarnation:'fixture-incarnation-2'});
+ const request={contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:'query-after-reconnect',worldRef:g.localContext.worldRef,localContext:g.localContext,
+  transactionId:'tx',transactionPayloadDigest:prepared.result.transactionPayloadDigest};
+ const response=await g.runtime.port.call('QueryTransaction',request);
+ assert.equal(response.error,null,JSON.stringify(response.error));
+ const read=C.readHistoricalReceipt(request,response);
+ assert.equal(read.historical,true);assert.equal(read.sameIncarnation,false);
+ assert.deepEqual(plain(read.receipt),plain(apply.result));assert.equal(read.receiptDigest,digest('receipt',apply.result));
+ assert.deepEqual(plain(read.writtenContext),plain(f.localContext));assert.deepEqual(plain(read.currentContext),plain(g.localContext));
+ // The receipt was not re-bound, and another transaction payload is still refused.
+ const other=await g.runtime.port.call('QueryTransaction',{...request,requestId:'query-other-payload',transactionPayloadDigest:'f'.repeat(64)});
+ assert.equal(other.result,null);assert.equal(other.error.code,'REPLAY_MISMATCH');
 });
