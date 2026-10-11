@@ -46,15 +46,19 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     let result = null, error = null;
     try { result = await run(request); }
     catch (failure) {
-      const cause = failure.code ?? failure.message;
+      const origin = operation === 'pair' ? (failure.cause ?? failure) : failure;
+      const cause = origin.code ?? origin.message;
       const code = operation === 'deleteWorld'
         ? (cause === 'WORLD_NOT_FOUND' ? 'WORLD_NOT_FOUND' : 'TRANSACTION_CONFLICT')
+        : operation === 'pair'
+        ? (cause === 'PAYLOAD_VERSION_MISMATCH' ? cause : 'CONNECTION_NOT_FOUND')
         : (operation === 'createWorld' && ['INVALID_NAME', 'WORLD_EXISTS'].includes(cause) ? 'INVALID_NAME' : 'ADAPTER_UNAVAILABLE');
       const mutationState = failure.mutationState ?? (cause === 'DELETE_INCOMPLETE' ? 'PARTIAL'
         : ['READBACK_MISMATCH', 'LOCAL_CREATE_DISCOVERY_MISMATCH'].includes(cause) ? 'UNKNOWN'
         : failure.code?.startsWith('E') ? 'UNKNOWN' : 'NONE');
       error = new ContractError(code, operation === 'deleteWorld' ? 'apply' : 'validate',
-        code === 'INVALID_NAME' ? 'INVALID_SHAPE' : 'REQUIRED_FACT_UNKNOWN', { mutationState }).publicError;
+        code === 'INVALID_NAME' ? 'INVALID_SHAPE' : code === 'PAYLOAD_VERSION_MISMATCH' ? 'VERSION_UNSUPPORTED'
+          : 'REQUIRED_FACT_UNKNOWN', { mutationState }).publicError;
     }
     return validateBoundResponse('local-worlds/v2', operation, request,
       { contractVersion: 'local-worlds/v2', requestId: request.requestId, result, error });
@@ -392,6 +396,29 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
       });
     },
     async pair(input) {
+      if (input && Object.hasOwn(input, 'contractVersion')) return lifecycleCall('pair', input, async q => {
+        // Start/stop remains with the native lifecycle owner. Consume its exact
+        // running-world lease, or read an already paired connection; never pick
+        // a different world or implicitly stop another session's connection.
+        const selected = await track(async () => {
+          const selectedWorld = await world((await selectWorld(q.worldRef)).connectionRef);
+          if (bindings.has(selectedWorld.connectionRef)) return { world: selectedWorld };
+          const candidates = [...leases.values()].filter(row => row.action === 'BIND_RUNNING_WORLD' &&
+            !row.paired && sameWorld(row.world, selectedWorld));
+          if (candidates.length !== 1) deny('CONNECTION_NOT_FOUND');
+          return { world: selectedWorld, lease: candidates[0] };
+        });
+        if (selected.lease) await port.pair({ leaseRef: selected.lease.leaseRef,
+          requesterRef: selected.lease.requesterRef, connectionRef: selected.world.connectionRef });
+        const request = { contractVersion: 'world-adapter/v8', requestId: `${q.requestId}:readback`,
+          sessionRef: 'world-source:local-pair', connectionRef: selected.world.connectionRef };
+        const response = validateBoundResponse('world-adapter/v8', 'ReadLocalConnection', request,
+          await runtime.port.call('ReadLocalConnection', request));
+        if (response.error) deny(response.error.code);
+        if (response.result.worldRef !== q.worldRef || response.result.capabilities.worldRef !== q.worldRef)
+          deny('CONNECTION_NOT_FOUND');
+        return response.result;
+      });
       const { row } = query(input);
       if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
       row.paired = true;
@@ -409,12 +436,12 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
           bindings.set(row.world.connectionRef, row);
           const facts = await inspectRow(row);
           return { ...observations(row, facts), ...loaded, paired: true };
-        } catch {
+        } catch (error) {
           // A late inspection failure owns only this new row, never another world's runtime.
           try {
             if (runtimePaired) { bindings.delete(row.world.connectionRef); await runtime.retireLocal(row.world.connectionRef); }
           } finally { await stopUnused(row); }
-          deny();
+          throw new Error('CURRENT_WORLD_MISMATCH', { cause: error });
         }
       });
     },

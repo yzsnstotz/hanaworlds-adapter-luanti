@@ -187,6 +187,280 @@
           "reason": "REQUIRED_FACT_UNKNOWN"
         }
       }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "pair",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "worldRef": "fixture:world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "result": {
+          "connectionRef": "fixture:connection",
+          "connectionIncarnationRef": "fixture:incarnation",
+          "worldRef": "fixture:world",
+          "payloadVersion": "fixture/v1",
+          "payloadDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "capabilities": {
+            "providerRef": "fixture-world-source",
+            "capabilityRevision": "fixture-cap-1",
+            "worldRef": "fixture:world",
+            "engineBounds": {
+              "min": [
+                0,
+                0,
+                3
+              ],
+              "max": [
+                0,
+                1,
+                3
+              ]
+            },
+            "worldGeometry": {
+              "profileVersion": "world-geometry/v1",
+              "geometryProfiles": [
+                "voxel-grid/v1"
+              ],
+              "partition": {
+                "edge": [
+                  16,
+                  16,
+                  16
+                ]
+              },
+              "postWriteLighting": "REQUIRED"
+            },
+            "limits": [],
+            "recoveryGuarantee": "RECOVERABLE_VERIFIED",
+            "stateProfile": {
+              "profileVersion": "state-profile/v3",
+              "derivedFields": [
+                "param1"
+              ],
+              "preservedFields": [],
+              "clearedFields": [
+                "inventory",
+                "metadata",
+                "timer"
+              ]
+            },
+            "sessionDeleteSupported": true,
+            "imageMediaTypes": [],
+            "model": null,
+            "engineGuards": {
+              "profileVersion": "engine-guards/v1",
+              "coverage": [
+                {
+                  "guard": "BODY_CLEARANCE",
+                  "stages": [],
+                  "protectionPrincipal": null
+                },
+                {
+                  "guard": "CELL_PROTECTION",
+                  "stages": [],
+                  "protectionPrincipal": null
+                },
+                {
+                  "guard": "PLAYER_ENCLOSURE",
+                  "stages": [],
+                  "protectionPrincipal": null
+                }
+              ]
+            }
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "pair",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "worldRef": "fixture:world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "result": null,
+        "error": {
+          "code": "CONNECTION_NOT_FOUND",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "pair",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "worldRef": "fixture:world"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:pair",
+        "result": null,
+        "error": {
+          "code": "PAYLOAD_VERSION_MISMATCH",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "VERSION_UNSUPPORTED"
+        }
+      }
+    },
+    {
+      "wire": "world-adapter/v8",
+      "operation": "ReadLocalConnection",
+      "request": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "sessionRef": "fixture:session",
+        "connectionRef": "fixture:connection"
+      },
+      "response": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "result": {
+          "connectionRef": "fixture:connection",
+          "connectionIncarnationRef": "fixture:incarnation",
+          "worldRef": "fixture:world",
+          "payloadVersion": "fixture/v1",
+          "payloadDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "capabilities": {
+            "providerRef": "fixture-world-source",
+            "capabilityRevision": "fixture-cap-1",
+            "worldRef": "fixture:world",
+            "engineBounds": {
+              "min": [
+                0,
+                0,
+                3
+              ],
+              "max": [
+                0,
+                1,
+                3
+              ]
+            },
+            "worldGeometry": {
+              "profileVersion": "world-geometry/v1",
+              "geometryProfiles": [
+                "voxel-grid/v1"
+              ],
+              "partition": {
+                "edge": [
+                  16,
+                  16,
+                  16
+                ]
+              },
+              "postWriteLighting": "REQUIRED"
+            },
+            "limits": [],
+            "recoveryGuarantee": "RECOVERABLE_VERIFIED",
+            "stateProfile": {
+              "profileVersion": "state-profile/v3",
+              "derivedFields": [
+                "param1"
+              ],
+              "preservedFields": [],
+              "clearedFields": [
+                "inventory",
+                "metadata",
+                "timer"
+              ]
+            },
+            "sessionDeleteSupported": true,
+            "imageMediaTypes": [],
+            "model": null,
+            "engineGuards": {
+              "profileVersion": "engine-guards/v1",
+              "coverage": [
+                {
+                  "guard": "BODY_CLEARANCE",
+                  "stages": [],
+                  "protectionPrincipal": null
+                },
+                {
+                  "guard": "CELL_PROTECTION",
+                  "stages": [],
+                  "protectionPrincipal": null
+                },
+                {
+                  "guard": "PLAYER_ENCLOSURE",
+                  "stages": [],
+                  "protectionPrincipal": null
+                }
+              ]
+            }
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "world-adapter/v8",
+      "operation": "ReadLocalConnection",
+      "request": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "sessionRef": "fixture:session",
+        "connectionRef": "fixture:connection"
+      },
+      "response": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "result": null,
+        "error": {
+          "code": "CONNECTION_NOT_FOUND",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "world-adapter/v8",
+      "operation": "ReadLocalConnection",
+      "request": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "sessionRef": "fixture:session",
+        "connectionRef": "fixture:connection"
+      },
+      "response": {
+        "contractVersion": "world-adapter/v8",
+        "requestId": "fixture:readback",
+        "result": null,
+        "error": {
+          "code": "PAYLOAD_VERSION_MISMATCH",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "VERSION_UNSUPPORTED"
+        }
+      }
     }
-  ]
+  ],
+  "source": "Pair/readback examples adapted from hanaworlds-contracts 2.3.0 MIT fixtures/local/world-lifecycle.json; SOURCE/FIXTURE only."
 }

@@ -228,9 +228,14 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   }
   async function perform(name, r, row) {
     const b = row?.backend;
-    if (name === 'ReadLocalConnection') return validateType('LocalConnectionReadback', {
-      connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
-      payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
+    if (name === 'ReadLocalConnection') {
+      const result = validateType('LocalConnectionReadback', {
+        connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
+        payloadVersion: row.payloadVersion, payloadDigest: row.payloadDigest, capabilities: capabilities(row) });
+      await inspectConnection(row.connectionRef);
+      if (closed || row.engine.closed || rows.get(row.connectionRef) !== row) fail('CONNECTION_NOT_FOUND');
+      return result;
+    }
     if (name === 'DiscoverConnections' || name === 'ListWorlds') {
       const ready = [];
       for (const row of [...rows.values()]) {
@@ -420,7 +425,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
             : STAGE[name] ? refusalDetail(STAGE[name], error.detail, { transactionRef: r.transactionId ?? null }) : null;
           if (named) return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null, ...named }));
           const mutationState = saved && !['PREPARED','ABORTED_PREPARED'].includes(saved.status) ? 'UNKNOWN' : 'NONE';
-          const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
+          const code = name === 'ReadLocalConnection'
+            ? ((error.code ?? error.message) === 'PAYLOAD_VERSION_MISMATCH' ? 'PAYLOAD_VERSION_MISMATCH' : 'CONNECTION_NOT_FOUND')
+            : schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null,
             error: { code, phase: mutationState==='UNKNOWN'?'apply':'validate', retryability: 'NEVER', mutationState,
               transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } }));
