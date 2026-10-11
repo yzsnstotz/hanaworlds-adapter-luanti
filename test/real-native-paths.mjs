@@ -48,7 +48,17 @@ core.is_protected=function(pos,name) local f=io.open(path..'/native-protected','
 local swap=core.swap_node
 core.swap_node=function(...) c.swap_node=c.swap_node+1;local r=swap(...);if r~=true then c.nativeSwapFailures=(c.nativeSwapFailures or 0)+1;c.lastSwapReturn=type(r)..':'..tostring(r) end;return r end
 local light=core.fix_light
-core.fix_light=function(...) c.fix_light=c.fix_light+1;local r=light(...);if r~=true then c.nativeLightFailures=(c.nativeLightFailures or 0)+1;c.lastLightReturn=type(r)..':'..tostring(r) end;return r end
+core.fix_light=function(pos,...)
+ c.fix_light=c.fix_light+1;local r=light(pos,...)
+ if r~=true then c.nativeLightFailures=(c.nativeLightFailures or 0)+1;c.lastLightReturn=type(r)..':'..tostring(r) end
+ local f=io.open(path..'/state-fail','r')
+ if f then
+  f:close();os.remove(path..'/state-fail')
+  core.get_meta(pos):set_string('unexpected','injected-readback-mismatch')
+  core.safe_file_write(path..'/native-protected','restore must remain pending')
+ end
+ return r
+end
 local node_light=core.get_node_light
 core.get_node_light=function(pos,...) local r=node_light(pos,...);if type(r)~='number' then c.nativeLightReadFailures=(c.nativeLightReadFailures or 0)+1;c.lastLightNode=core.get_node(pos).name end;return r end
 core.register_on_mods_loaded(function()
@@ -65,7 +75,7 @@ core.after(0,function()
   local f=io.open(path..'/native-query.json','r')
   if f then
    local q=core.parse_json(f:read('*a'));f:close();os.remove(path..'/native-query.json')
-   if q.seed then for _,p in ipairs({{x=0,y=65,z=0},{x=1,y=65,z=0}}) do
+   if q.seed then for _,p in ipairs(q.seedPositions or {{x=0,y=65,z=0},{x=1,y=65,z=0}}) do
     core.get_meta(p):from_table({fields={owner='native-state-fixture'},inventory={main={q.seed..' 2',''}}})
    end end
    core.safe_file_write(path..'/native-answer.json',core.write_json({id=q.id,done=true,counts=c}))
@@ -131,7 +141,7 @@ const restoreWrites=(current,target)=>target.chunks.map((c,i)=>({chunkPos:c.chun
 async function write(purpose,writes,id){const r=await region('WriteRegion',{transactionId:id,purpose,writes});assert.ok(r.result.chunks.every(c=>c.status==='WRITTEN'),JSON.stringify(runtime.regionIO.lastFacts()));return {response:r,facts:runtime.regionIO.lastFacts()};}
 try {
  await start();
- const f=await runtime.readConfigEngineFacts(world.worldRef);assert.equal(f.writeBackend.availability,'KNOWN');assert.equal(f.writeBackend.writeBackend.profileId,'hanaworlds-luanti-native-cell-write/v1');
+ const f=await runtime.readConfigEngineFacts(world.worldRef);assert.equal(f.writeBackend.availability,'KNOWN');assert.equal(f.writeBackend.writeBackend.profileId,'hanaworlds-luanti-native-cell-write/v2');
  assert.equal((await runtime.readWorldEditFacts(world.worldRef)).loadState,'NOT_LOADED');
  const connection=await ok('ReadLocalConnection',{connectionRef:world.connectionRef});assert.deepEqual(JSON.parse(JSON.stringify(connection.capabilities.stateProfile)),JSON.parse(JSON.stringify(STATE_PROFILE)));
  step('NATIVE_PAIR_AND_FACTS',{writeBackend:f.writeBackend,capabilities:connection.capabilities});
@@ -162,6 +172,39 @@ try {
  step('CALLBACK_AND_PROTECTION_ZERO_WRITE',{protectedError:protectedResponse.error,callbackError:rejected.message});
  step('REGION_IO_NATIVE',{chunks:before.chunks.length,batches:applied.facts.batches.length,light:applied.response.result.lighting,countersBefore:c0,countersAfter:c1,staleError:stale.error});
  if(!process.env.HW_NATIVE_PATH || process.env.HW_NATIVE_PATH==='ALL' || process.env.HW_NATIVE_PATH==='J3'){
+ // StateProfile regression on actual Luanti: callback-free nodes can still
+ // carry metadata/inventory. Ordinary writes clear them; recovery restores them.
+ const statePosition=[20,80,20],stateBox={min:statePosition,max:statePosition};await read(stateBox);
+ await observe({seed:process.env.HW_GAME?'mcl_core:stone':'base:stone',seedPositions:[{x:20,y:80,z:20}]});
+ const statePrepare=async id=>{
+  const effects=[{geometryProfile:'voxel-grid/v1',position:statePosition,...stone}];
+  const facts=await runtime.readScopedState(world.connectionRef,[statePosition]);
+  const operations=C.validateType('OperationsProjection',{contractVersion:'operations/v4',buildDigest:'0'.repeat(64),compilerRevision:'test-peer',compilationConfigDigest:'1'.repeat(64),worldRef:world.worldRef,frameDigest:'2'.repeat(64),catalogueDigest:D('catalogue',catalogue),targetFactsDigest:'3'.repeat(64),effects});
+  const operationDigest=D('operations',operations),scope=C.validateType('ScopedWorldBinding',{transactionId:id,worldRef:world.worldRef,operationDigest,stateProfile:facts.stateProfile,checkedPositions:[statePosition],objects:[],cells:facts.cells,localContext});
+  const common={transactionId:id,operations,operationDigest,scope,scopeDigest:D('scoped-world',scope),guarantee:'RECOVERABLE_VERIFIED'};
+  const prepared=await ok('PrepareRecoverableTransaction',common);
+  return {common,prepared};
+ };
+ const readState=id=>ok('Readback',{transactionId:id,coveredPositions:[statePosition],stateProfile:STATE_PROFILE});
+ const clearedTx=await statePrepare('state-cleared');
+ const clearedReceipt=await ok('ApplyCompiledTransaction',{...clearedTx.common,preparedTransaction:C.projectScopedPreparedTransaction(clearedTx.prepared)});
+ assert.equal(clearedReceipt.status,'VERIFIED');const clearedState=await readState('state-cleared');
+ assert.deepEqual(Object.keys(clearedState.projection.records[0].state),['lighting']);
+ assert.equal(clearedReceipt.readbackDigest,clearedState.readbackDigest);
+ await observe({seed:process.env.HW_GAME?'mcl_core:stone':'base:stone',seedPositions:[{x:20,y:80,z:20}]});
+ const pendingTx=await statePrepare('state-recovery'),stateBefore=await readState('state-recovery');
+ await writeFile(join(made.worldPath,'state-fail'),'test-only injection');
+ const failed=await runtime.port.call('ApplyCompiledTransaction',{contractVersion:'world-adapter/v8',sessionRef:'test-session',requestId:'state-failed',worldRef:world.worldRef,localContext,...pendingTx.common,preparedTransaction:C.projectScopedPreparedTransaction(pendingTx.prepared)});
+ assert.equal(failed.error?.code,'RESTORE_FAILED');assert.equal(failed.guardRefusal?.stage,'RESTORE');
+ const pending=await readState('state-recovery');assert.equal(pending.projection.records[0].state.metadata.unexpected,'injected-readback-mismatch');
+ await unlink(join(made.worldPath,'native-protected'));
+ const restored=await ok('RestoreTransaction',{originTransactionId:'state-recovery',operationDigest:pendingTx.common.operationDigest,beforeImageDigest:pendingTx.prepared.beforeImageDigest,restoreAttemptIdentity:'state-restore-1',guarantee:'RECOVERABLE_VERIFIED'});
+ assert.equal(restored.status,'ROLLED_BACK');assert.equal(restored.restoreStatus,'VERIFIED_RESTORED');
+ const stateAfter=await readState('state-recovery');
+ const withoutLight=r=>({...r,state:Object.fromEntries(Object.entries(r.state).filter(([k])=>!STATE_PROFILE.derivedFields.includes(k)))});
+ assert.deepEqual(withoutLight(stateAfter.projection.records[0]),withoutLight(stateBefore.projection.records[0]));
+ assert.equal(restored.readbackDigest,stateAfter.readbackDigest);assert.equal(stateAfter.readbackDigest,D('readback',stateAfter.projection));
+ step('STATE_PROFILE_NATIVE_CLEAR_READBACK_RESTORE',{before:stateBefore,cleared:clearedState,failed,restored,after:stateAfter});
  // J3 adapter path: actual prepared/durable per-cell house transaction, readback,
  // process/runtime restart, then public history undo via native apply_state.
  const houseBox={min:[0,80,0],max:[11,87,11]};await read(houseBox);
@@ -202,7 +245,7 @@ try {
  step('J5_NATIVE_BATCH_RESTART_RESTORE',{cells:48*4*48,chunks:lakeBefore.chunks.length,apply:lake.response.result,restore:restored.response.result,countersBefore:l0,countersAfter:l1});
  }
  assert.equal((await counts()).worldeditAbsent,true);assert.ok(!(await readdir(join(profile,'games',gameId,'mods'))).includes('worldedit'));
- const required=['NATIVE_PAIR_AND_FACTS','CALLBACK_AND_PROTECTION_ZERO_WRITE','REGION_IO_NATIVE',...(['ALL','J3'].includes(selectedPath)?['J3_NATIVE_HOUSE_RESTART_UNDO']:[]),...(['ALL','J5'].includes(selectedPath)?['J5_NATIVE_BATCH_RESTART_RESTORE']:[])];
+ const required=['NATIVE_PAIR_AND_FACTS','CALLBACK_AND_PROTECTION_ZERO_WRITE','REGION_IO_NATIVE',...(['ALL','J3'].includes(selectedPath)?['STATE_PROFILE_NATIVE_CLEAR_READBACK_RESTORE','J3_NATIVE_HOUSE_RESTART_UNDO']:[]),...(['ALL','J5'].includes(selectedPath)?['J5_NATIVE_BATCH_RESTART_RESTORE']:[])];
  assert.ok(required.every(name=>evidence.steps.some(s=>s.name===name)),'required path evidence missing');evidence.requiredSteps=required;
  evidence.pass=true;
 } catch(error){evidence.pass=false;evidence.failure={message:error.message,stack:error.stack};throw error;

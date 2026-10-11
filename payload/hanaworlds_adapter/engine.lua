@@ -4,10 +4,10 @@
 local M = {}
 -- The write backend Engine:apply implements: one native swap_node per effect
 -- cell, then a light refresh of the covered cells. Changing that write
--- path requires a new backendProfileId. Revision 2: the engine function bound at
--- load is written with, never a game's replacement of the global.
-M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-native-cell-write/v1',
-  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'native-cell-write/2'}
+-- path requires a new backendProfileId. v2 clears per-cell persistent state
+-- explicitly after the bound engine write, before lighting and full readback.
+M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-native-cell-write/v2',
+  nodeWriteSemantics = 'explicit-nodeName-param2-static-clear-state-v3', revision = 'native-cell-write/3'}
 local Engine = {}
 Engine.__index = Engine
 
@@ -174,12 +174,6 @@ local function static_node(name)
   return true
 end
 
-local function stateless(record)
-  return type(record.metadata) == 'table' and next(record.metadata) == nil
-    and type(record.inventory) == 'table' and next(record.inventory) == nil
-    and record.timer == nil
-end
-
 local function light_capable()
   return type(minetest.fix_light) == 'function'
     and type(minetest.get_node_light) == 'function'
@@ -237,7 +231,7 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
       return nil, 'SCHEMA_INVALID'
     end
     if not static_node(effect.nodeName) or not static_node(before_image.records[i].nodeName)
-      or not stateless(before_image.records[i]) then return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
+      then return nil, 'UNSUPPORTED_MUTATION_SEMANTICS' end
     if type(effect.param2) ~= 'number' or effect.param2 < 0 or effect.param2 > 255
       or effect.param2 ~= math.floor(effect.param2) then return nil, 'SCHEMA_INVALID' end
     local current, code = public_record(effect.position)
@@ -254,6 +248,13 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
     local ok, changed = pcall(native_swap, pos,
       {name = effect.nodeName, param1 = 0, param2 = effect.param2})
     if not ok or changed ~= true then return nil, 'APPLY_FAILED' end
+    -- swap_node preserves metadata. Ordinary writes implement StateProfile's
+    -- clearedFields explicitly; snapshots and recovery retain the saved state.
+    local cleared = pcall(function()
+      assert(minetest.get_meta(pos):from_table({fields = {}, inventory = {}}) ~= false)
+      minetest.get_node_timer(pos):stop()
+    end)
+    if not cleared then return nil, 'APPLY_FAILED' end
     count = count + 1
   end
   if not refresh_light(before_image.coveredPositions) then return nil, 'APPLY_FAILED' end

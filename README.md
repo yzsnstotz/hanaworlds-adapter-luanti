@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.17.0 · contracts 2.8.0
+# HanaWorlds Luanti Adapter 0.18.1 · contracts 2.8.0
 
 The world source uses the exact published dependency
 `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.8.0`.
@@ -18,12 +18,24 @@ snapshots and restores retain native orientation bytes through the private trans
 A changed translation table invalidates older refs before any restore write; lighting
 is recomputed by the engine and excluded from state comparisons.
 
+Ordinary cell writes explicitly clear metadata, inventory and timers after the
+native node write; `swap_node` itself preserves metadata. Static node definitions
+may have stored state, so it is saved before writing and restored on recovery.
+`Readback` returns all actual state, including current derived lighting and any
+metadata added by an external edit. Its digest covers that complete projection.
+`RestoreTransaction` restores the saved metadata/inventory/timer fields exactly
+and recomputes lighting; clearing rules apply to ordinary writes, not recovery.
+Canvas must use the actual readback value for every declared derived field when
+building its expected projection, including rollback verification. Metadata
+mismatches still fail verification. A restore failure remains pending recovery.
+
 Config facts carry the loaded payload's opaque backend identity and the released
 `UNAVAILABLE/NO_PUBLIC_SOURCE` avatar fact. New named fact operations, display names/colors,
 public player envelopes belong to later cards (adapter-08/10). Cell writes use native
 `swap_node` (adapter-06); WorldEdit is neither a dependency nor a readiness prerequisite (adapter-07).
 The payload binds the engine's own (C) `swap_node` when it loads and writes only through it
-(write backend revision `native-cell-write/2`): a game that later replaces the global — VoxeLibre
+(write backend `hanaworlds-luanti-native-cell-write/v2`, revision `native-cell-write/3`,
+payload `0.12.0`): a game that later replaces the global — VoxeLibre
 0.92.3 `mcl_observers` wraps it, runs observer code and returns nothing — is never written through.
 If the global was already replaced before the payload loaded, the StateProfile is
 `CAPABILITY_UNAVAILABLE` with detail `NATIVE_WRITER_REPLACED_BEFORE_LOAD` (or

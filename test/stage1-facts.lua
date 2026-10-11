@@ -10,7 +10,7 @@ local unbound = function() return false, 'NATIVE_WRITER_REPLACED_BEFORE_LOAD' en
 -- No player/body fact is produced by the payload facts module.
 assert(F.avatar_envelope == nil)
 -- The declaration is the loaded engine module's own.
-assert(E.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-native-cell-write/v1')
+assert(E.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-native-cell-write/v2')
 local w = assert(F.write_backend(core, E.WRITE_BACKEND, bound))
 assert(w.writeBackend.profileId == E.WRITE_BACKEND.backendProfileId and w.writeBackend.revision == E.WRITE_BACKEND.revision and w.ready == true)
 for k in pairs(w) do assert(k == 'writeBackend' or k == 'ready', k) end

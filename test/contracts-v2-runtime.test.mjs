@@ -10,13 +10,15 @@ import {LocalCourier} from '../src/local-courier.mjs';
 import {createLocalRuntime} from '../src/local-runtime.mjs';
 import {ENGINE_GUARDS} from '../src/safety-capabilities.mjs';
 import {WORLD_GEOMETRY,STATE_PROFILE} from '../src/world-vocabulary.mjs';
+import {cellDigest} from '../src/local-transactions.mjs';
 const plain=v=>JSON.parse(JSON.stringify(v));
 const digest=(k,v)=>C.digestValue(k,v).sha256;
-async function fixture(t,{mismatch=false,root:reuse=null,incarnation='fixture-incarnation'}={}) {
+async function fixture(t,{mismatch=false,initialState={},root:reuse=null,incarnation='fixture-incarnation'}={}) {
  const base=process.env.HW_ADAPTER_TEST_ROOT ?? join(tmpdir(),'hanaworlds-adapter-tests');
  await mkdir(base,{recursive:true});const root=reuse ?? await mkdtemp(join(base,'v2-runtime-'));
  const catalogue=JSON.parse(execFileSync('lua',['test/support/material-facts.lua','glass'],{encoding:'utf8'})).catalogue;
- let record={position:[0,0,0],nodeName:'air',param1:0,param2:0,metadata:{},inventory:{},timer:null};
+ let record={position:[0,0,0],nodeName:'air',param1:0,param2:0,metadata:{},inventory:{},timer:null,...plain(initialState)};
+ let restoreBlocked=false,restoreCorrupt=false;
  const calls=[];
  const image=()=>({worldRef:'fixture-world',coveredPositions:[[0,0,0]],records:[plain(record)]});
  const native={closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:incarnation,
@@ -24,9 +26,10 @@ async function fixture(t,{mismatch=false,root:reuse=null,incarnation='fixture-in
   regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000}),capacity:async()=>({allowed:true}),
   snapshot:async()=>image(),prepareCheck:async(positions,effects)=>{calls.push({kind:'check',effects:plain(effects)});},
   apply:async(effects,before,scope)=>{calls.push({kind:'apply',effects:plain(effects),before:plain(before),scope:plain(scope)});
-    record={...record,...effects[0],param1:15,param2:mismatch?0:effects[0].param2};return {status:'APPLIED_PENDING_READBACK'};},
+    record={...record,...effects[0],param1:15,param2:mismatch?0:effects[0].param2,metadata:{},inventory:{},timer:null};return {status:'APPLIED_PENDING_READBACK'};},
   applyState:async(target,before)=>{calls.push({kind:'history',target:plain(target),before:plain(before)});record={...plain(target.records[0]),param1:12};return {status:'APPLIED_PENDING_READBACK'};},
-  restore:async(before)=>{calls.push({kind:'restore',before:plain(before)});record={...plain(before.records[0]),param1:14};return {status:'ROLLED_BACK'};},
+  restore:async(before)=>{calls.push({kind:'restore',before:plain(before)});if(restoreBlocked)throw Error('RESTORE_FAILED');
+    record={...plain(before.records[0]),param1:14};if(restoreCorrupt)record.metadata={owner:'wrong'};return {status:'ROLLED_BACK'};},
   inspect:async positions=>({occupiedCells:record.nodeName==='air'?[]:[{position:record.position,nodeName:record.nodeName,param2:record.param2}],knownEmptyCells:record.nodeName==='air'?positions:[],unknownCells:[]})};
  t.mock.method(LocalCourier,'open',async()=>native);
  const localContext={worldRef:'fixture-world',connectionRef:'fixture-connection',connectionIncarnationRef:incarnation,selectionRevision:'selection-1'};
@@ -41,7 +44,8 @@ async function fixture(t,{mismatch=false,root:reuse=null,incarnation='fixture-in
  await runtime.pairLocal({worldRef:localContext.worldRef,connectionRef:localContext.connectionRef,worldPath:root,payloadVersion:'fixture-payload',payloadDigest:'0'.repeat(64),gameId:'fixture'});
  let seq=0;
  const call=(name,extra={})=>runtime.port.call(name,{contractVersion:'world-adapter/v8',sessionRef:'fixture-session',requestId:`request-${++seq}`,worldRef:localContext.worldRef,localContext,...extra});
- return {root,runtime,call,localContext,calls,recomputeLight:()=>{record.param1=10;}};
+ return {root,runtime,call,localContext,calls,recomputeLight:()=>{record.param1=10;},
+  editMetadata:value=>{record.metadata=plain(value);},blockRestore:value=>{restoreBlocked=value;},corruptRestore:value=>{restoreCorrupt=value;}};
 }
 test('existing catalogue supplier and ReadLocalConnection expose complete v2 material/geometry facts',async t=>{
  const f=await fixture(t),catalogue=await f.runtime.readCatalogue(f.localContext.worldRef);
@@ -82,6 +86,42 @@ test('mismatched native readback restores saved neutral image with derived light
  assert.equal(apply.error,null);assert.equal(apply.result.status,'ROLLED_BACK');
  assert.equal(f.calls.find(c=>c.kind==='restore').before.records[0].nodeName,'air');
  assert.equal(apply.result.restoreStatus,'VERIFIED_RESTORED');
+});
+
+test('Readback returns current derived light and complete metadata without applying write rules to reads',async t=>{
+ const f=await fixture(t,{initialState:{metadata:{owner:'before'},inventory:{main:['item','']},timer:{timeout:60,elapsed:4}}});
+ const {apply}=await transaction(f);assert.equal(apply.result.status,'VERIFIED');
+ const cleared=await f.call('Readback',{transactionId:'tx',coveredPositions:[[0,0,0]],stateProfile:STATE_PROFILE});
+ assert.deepEqual(plain(cleared.result.projection.records[0].state),{lighting:15});
+ f.recomputeLight();
+ const relit=await f.call('Readback',{transactionId:'tx',coveredPositions:[[0,0,0]],stateProfile:STATE_PROFILE});
+ assert.equal(relit.error,null);assert.equal(relit.result.projection.records[0].state.lighting,10);
+ assert.equal(cellDigest(STATE_PROFILE,relit.result.projection.records[0]),cellDigest(STATE_PROFILE,cleared.result.projection.records[0]));
+ assert.notEqual(relit.result.readbackDigest,cleared.result.readbackDigest,'the digest still covers actual derived values');
+ f.editMetadata({owner:'external'});
+ const read=await f.call('Readback',{transactionId:'tx',coveredPositions:[[0,0,0]],stateProfile:STATE_PROFILE});
+ assert.equal(read.error,null);assert.deepEqual(plain(read.result.projection.records[0].state),{lighting:10,metadata:{owner:'external'}});
+ assert.equal(read.result.readbackDigest,digest('readback',read.result.projection));
+ assert.notEqual(read.result.readbackDigest,apply.result.readbackDigest);
+ assert.notEqual(cellDigest(STATE_PROFILE,read.result.projection.records[0]),cellDigest(STATE_PROFILE,relit.result.projection.records[0]));
+});
+
+test('RestoreTransaction verifies saved metadata, inventory and timer exactly while accepting recomputed light',async t=>{
+ const state={metadata:{owner:'before',note:'saved'},inventory:{main:['item','']},timer:{timeout:60,elapsed:4}};
+ const f=await fixture(t,{mismatch:true,initialState:state});f.blockRestore(true);
+ const {apply,common,prepared}=await transaction(f);assert.equal(apply.error.code,'RESTORE_FAILED');
+ const restore=()=>f.call('RestoreTransaction',{originTransactionId:'tx',operationDigest:common.operationDigest,
+  beforeImageDigest:prepared.result.beforeImageDigest,restoreAttemptIdentity:'attempt-1',guarantee:'RECOVERABLE_VERIFIED'});
+ f.blockRestore(false);f.corruptRestore(true);
+ const corrupt=await restore();assert.equal(corrupt.error.code,'RESTORE_FAILED');
+ f.corruptRestore(false);
+ const restored=await restore();assert.equal(restored.error,null);assert.equal(restored.result.status,'ROLLED_BACK');
+ assert.equal(restored.result.restoreStatus,'VERIFIED_RESTORED');
+ const read=await f.call('Readback',{transactionId:'tx',coveredPositions:[[0,0,0]],stateProfile:STATE_PROFILE});
+ assert.equal(read.error,null);assert.deepEqual(plain(read.result.projection.records[0].state),{lighting:14,...state});
+ assert.equal(restored.result.readbackDigest,read.result.readbackDigest);
+ assert.notEqual(read.result.readbackDigest,prepared.result.beforeStateReadbackDigest,'digest describes actual light, not the saved light');
+ assert.deepEqual(plain((await restore()).result),plain(restored.result),'settled recovery returns the issued receipt');
 });
 
 test('InspectWorld returns target-facts/v5 with neutral material and geometry profile',async t=>{
