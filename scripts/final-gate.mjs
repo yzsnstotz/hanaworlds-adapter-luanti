@@ -34,11 +34,13 @@ try{
  writeFileSync(join(evidence,'source.json'),JSON.stringify({commit,node:process.version,gate,contracts:JSON.parse(readFileSync(join(source,'scripts/contracts-source.json')))},null,2)+'\n');
  run('verify-contracts',npm,['run','verify:contracts']);run('contract-tests',npm,['run','test:contracts']);run('source-tests',npm,['test']);run('build',npm,['run','build']);run('lua-tests',npm,['run','test:lua']);
  run('pack',npm,['pack','--json','--pack-destination',evidence]);
- const tar=join(evidence,JSON.parse(readFileSync(join(evidence,'pack.log')))[0].filename);
+ const meta=JSON.parse(readFileSync(join(source,'package.json')));
+ const tar=join(evidence,meta.name+'-'+meta.version+'.tgz');assert.ok(existsSync(tar),'npm pack artifact missing');
  writeFileSync(join(evidence,'tar.sha256'),createHash('sha256').update(readFileSync(tar)).digest('hex')+'\n');
  const extract=join(evidence,'extract');mkdirSync(extract);run('extract','tar',['-xzf',tar,'-C',extract]);
  const packed=join(extract,'package');run('production-install',npm,['install','--omit=dev','--ignore-scripts','--no-audit','--no-fund'],packed);
- const files=JSON.parse(readFileSync(join(evidence,'pack.log')))[0].files;
+ const files=execFileSync('tar',['-tzf',tar],{encoding:'utf8'}).trim().split('\n').filter(p=>!p.endsWith('/')).map(p=>{assert.ok(p.startsWith('package/'));return {path:p.slice('package/'.length)};});
+ writeFileSync(join(evidence,'pack-files.json'),JSON.stringify(files,null,2)+'\n');
  assert.ok(files.every(f=>! /^(archive|dev|test|scripts)\//.test(f.path)),'development file in package');
  const rows=files.map(({path})=>{const original=readFileSync(join(source,path)),actual=readFileSync(join(packed,path));assert.deepEqual(actual,original,path);return {path,sha256:createHash('sha256').update(actual).digest('hex')};});
  writeFileSync(join(evidence,'artifact-entries.json'),JSON.stringify(rows,null,2)+'\n');

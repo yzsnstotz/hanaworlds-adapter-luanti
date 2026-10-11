@@ -231,6 +231,7 @@ const {WorldVocabulary}=await import(pathToFileURL(join(installed,'dist/runtime/
 const {LocalCourier}=await import(pathToFileURL(join(installed,'dist/runtime/local-courier.mjs')));
 const originalCatalogue=LocalCourier.prototype.catalogue;let vocabulary;
 LocalCourier.prototype.catalogue=async function(){const r=await originalCatalogue.call(this);vocabulary=new WorldVocabulary(r);return r;};
+let passed=false;
 const sameDigests = (res, read, expected) => res.result.chunks.forEach((c, i) => {
   assert.equal(c.status, 'WRITTEN'); assert.equal(c.readbackDigest, expected[i]);
   assert.equal(read.chunks.find(r => r.chunkPos.join() === c.chunkPos.join()).stateDigest, expected[i]);
@@ -345,12 +346,13 @@ try {
   const te = (r) => r.chunks[0].state?.extras.find(e => e.position.join() === '200,0,200')?.state.timer ?? null;
   events.push({ event: 'OBSERVED_RUNNING_TIMER_DIGEST', firstTimer: te(t1), secondTimer: te(t2), digestChanged: t1.chunks[0].stateDigest !== t2.chunks[0].stateDigest });
 
-  check('PASS', { counts: await counts() });
+  check('PASS', { counts: await counts() });passed=true;
 } finally {
   LocalCourier.prototype.catalogue=originalCatalogue;
   await adapterFiber.dispose(); await canvasFiber.dispose(); await stop();
   await writeFile(join(root, 'calls.json'), JSON.stringify(calls, null, 2) + '\n');
   await writeFile(join(root, 'processes.json'), JSON.stringify(processes, null, 2) + '\n');
   await writeFile(join(root, 'events.json'), JSON.stringify(events, null, 2) + '\n');
+  await writeFile(join(root,'results.json'),JSON.stringify({pass:passed,events,processes,evidence:'REAL_ENGINE_WITH_HOST_FIXTURE',productUI:'NOT_RUN'},null,2)+'\n');
 }
 console.log('REAL_RUNTIME world-adapter-region/v3 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');
