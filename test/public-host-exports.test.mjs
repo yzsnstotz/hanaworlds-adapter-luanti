@@ -25,6 +25,6 @@ test('public declarations and runtime subpaths are packaged without development 
  for(const sub of ['host','inspection-context']){
   const row=pkg.exports['./'+sub];assert.equal(typeof row.types,'string');assert.equal(typeof row.import,'string');
   const source=await readFile(new URL('../'+row.import,import.meta.url),'utf8');assert.equal(/from\s+['"][^'"]*dev\//.test(source),false);
-  assert.ok((await readFile(new URL('../'+row.types,import.meta.url),'utf8')).includes('hanaworlds-contracts'));
+  assert.ok((await readFile(new URL('../'+row.types,import.meta.url),'utf8')).includes('../dist/contracts-types/index.js'));
  }
 });

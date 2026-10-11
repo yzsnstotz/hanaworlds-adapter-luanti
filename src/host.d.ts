@@ -1,7 +1,7 @@
-import type { LocalEngineControlPort } from 'hanaworlds-contracts';
+import type { LocalEngineControlPort } from '../dist/contracts-types/index.js';
 /** Own canonical paths; the caller creates empty directories before assembly. */
 export interface NativeHostOptions {
- C: Pick<typeof import('hanaworlds-contracts'), 'validateType'>;
+ C: Pick<typeof import('../dist/contracts-types/index.js'), 'validateType'>;
  state: string; profile: string; worlds: string; luanti: string; luantiClient?: string;
  event(kind: string, facts: Record<string, unknown>): void;
 }

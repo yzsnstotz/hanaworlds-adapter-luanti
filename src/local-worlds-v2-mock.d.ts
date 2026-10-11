@@ -1,4 +1,4 @@
-import type { LocalWorldsPort, ErrorCode, LocalConnectionReadbackRequest, LocalConnectionReadbackResponse } from 'hanaworlds-contracts';
+import type { LocalWorldsPort, ErrorCode, LocalConnectionReadbackRequest, LocalConnectionReadbackResponse } from '../dist/contracts-types/index.js';
 /** Stateless fixture provider of all five local-worlds/v2 operations; no filesystem or engine effects. */
 export declare function createLocalWorldsMock(
   refusals?: Readonly<Record<string, ErrorCode>>

@@ -1,5 +1,5 @@
 import { validateBoundRequest, validateBoundResponse, ContractError } from '#contracts';
-import examples from 'hanaworlds-contracts/fixtures/world-source-facts' with {type:'json'};
+import examples from '../fixtures/world-source-facts.json' with {type:'json'};
 const errors={ReadCatalogue:['ADAPTER_UNAVAILABLE','WORLD_NOT_BOUND'],ReadMaterialSources:['CAPABILITY_UNAVAILABLE'],
   ReadEngineFacts:['ADAPTER_UNAVAILABLE'],ReadWriteProfile:['ADAPTER_UNAVAILABLE','CAPABILITY_UNAVAILABLE'],
   ReadWorldSourceCapabilities:['ADAPTER_UNAVAILABLE']};

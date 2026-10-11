@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as c from 'hanaworlds-contracts';
+import { publicError as providerPublicError } from '#contracts';
 import { createStage1Facts } from '../src/stage1-facts.mjs';
 const fx = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/config-engine-facts'))));
 const catalogue = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/main')))).request.catalogue;
@@ -37,5 +38,14 @@ test('Adapter provider records satisfy contracts and existing typed refusals sur
   }
   const changed = structuredClone(catalogue); changed.engineRevisions.registry = 'changed-revision';
   let reads = 0;
-  await assert.rejects(producer.configEngineFacts(row, { catalogue: async () => ++reads === 1 ? catalogue : changed, writeBackend: async () => ({ ...declaration, ready: true }) }), e => named(e, { code: 'CURRENT_WORLD_MISMATCH', reason: 'REVISION_CHANGED' }));
+  await assert.rejects(producer.configEngineFacts(row, { catalogue: async () => ++reads === 1 ? catalogue : changed, writeBackend: async () => ({ ...declaration, ready: true }) }), e => {
+    // The provider's embedded SDK owns its error class. Check the JSON error with
+    // the separately installed development SDK, rather than sharing class identity.
+    const error = providerPublicError(e);
+    assert.equal(error.code, 'CURRENT_WORLD_MISMATCH');
+    assert.equal(error.reason, 'REVISION_CHANGED');
+    assert.equal(error.mutationState, 'NONE');
+    c.validateType('Error', error);
+    return true;
+  });
 });

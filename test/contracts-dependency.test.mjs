@@ -19,8 +19,8 @@ function verify(mutate) {
 }
 const edit = (file, change) => dir => { const p = join(dir, file); const v = JSON.parse(readFileSync(p)); change(v); writeFileSync(p, JSON.stringify(v)); };
 const dependency = spec => dir => {
-  edit('package.json', v => { v.dependencies['hanaworlds-contracts'] = spec; })(dir);
-  edit('package-lock.json', v => { v.packages[''].dependencies['hanaworlds-contracts'] = spec; })(dir);
+  edit('package.json', v => { v.devDependencies['hanaworlds-contracts'] = spec; })(dir);
+  edit('package-lock.json', v => { v.packages[''].devDependencies['hanaworlds-contracts'] = spec; })(dir);
 };
 test('contracts come from the contract source release tag and the installed version is that tag', () => {
   const r = verify(); assert.equal(r.exit, 0, JSON.stringify(r)); assert.equal(r.ok, true);
@@ -34,8 +34,13 @@ for (const [name, mutate] of [
   // The #semver: range form is no longer accepted: the dependency is the published tag.
   ['semver range of the installed major', dependency(`${SOURCE}#semver:^2.0.0`)],
   ['github shorthand of the same tag', dependency('github:yzsnstotz/hanaworlds-contracts#v2.0.0')],
-  // Installed is the formal 2.8.0: any other tag must refuse it.
-  ['a later release tag', dependency(`${SOURCE}#v2.8.1`)],
+  // Installed is the formal 2.13.0: any other tag must refuse it.
+  ['a later release tag', dependency(`${SOURCE}#v2.13.1`)],
   ['the old major tag', dependency(`${SOURCE}#v1.0.0`)],
-  ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.8.0-rc.3`)],
+  ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.13.0-rc.3`)],
 ]) test(`tag verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });
+
+test('verification refuses contracts in production dependencies', () => {
+ const r = verify(edit('package.json', v => { v.dependencies['hanaworlds-contracts'] = v.devDependencies['hanaworlds-contracts']; }));
+ assert.equal(r.exit, 1); assert.ok(r.problems.includes('contracts must be development-only'));
+});

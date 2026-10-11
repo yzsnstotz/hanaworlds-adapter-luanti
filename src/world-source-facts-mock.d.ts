@@ -1,6 +1,6 @@
 import type { ReadCatalogueRequest, ReadCatalogueResponse, ReadMaterialSourcesRequest, ReadMaterialSourcesResponse,
  ReadEngineFactsRequest, ReadEngineFactsResponse, ReadWriteProfileRequest, ReadWriteProfileResponse,
- ReadWorldSourceCapabilitiesRequest, ReadWorldSourceCapabilitiesResponse } from 'hanaworlds-contracts';
+ ReadWorldSourceCapabilitiesRequest, ReadWorldSourceCapabilitiesResponse } from '../dist/contracts-types/index.js';
 export interface WorldSourceFactsMock {
  call(operation:'ReadCatalogue',request:ReadCatalogueRequest):Promise<ReadCatalogueResponse>;
  call(operation:'ReadMaterialSources',request:ReadMaterialSourcesRequest):Promise<ReadMaterialSourcesResponse>;

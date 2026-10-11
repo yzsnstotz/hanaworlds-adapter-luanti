@@ -48,3 +48,19 @@ explicit; Host may wire Workshop Catalogue.read to this method.
 Canvas context, no transaction, no write) and a development page (dev/world-readback, port
 47606) that shows a clearly marked sample-world FIXTURE's surface materials and heights from
 one real read. Owner worlds need the App Host's public connection supply.
+
+## Development API and production package
+
+hanaworlds-contracts is an exact-tag devDependency. A supported Node 24 development
+install runs prepare to compile its SDK into dist/contracts.mjs and emit local public
+declarations; npm run build and npm pack also regenerate these outputs. Production
+packages contain the outputs and required MIT attribution, resolve #contracts locally,
+and install/run without the contract package, esbuild or TypeScript. Existing public
+export paths and protocol identities remain unchanged. Build provenance and file
+digests are recorded in dist/contracts-build.json.
+
+The original npm test gate also installs an actual tar offline with --omit=dev and
+--ignore-scripts, imports every public runtime export, exercises fixture exchanges
+and the real Adapter factory, and compiles a consumer of every public declaration.
+The test denies external contract imports; its temporary consumer is SOURCE/PACKAGE
+evidence, not a product Host or UI acceptance.

@@ -1,4 +1,4 @@
-import type { InspectWorldRequest, OperationMap, Ref, Revision } from 'hanaworlds-contracts';
+import type { InspectWorldRequest, OperationMap, Ref, Revision } from '../dist/contracts-types/index.js';
 export type CanvasReadOperation = 'ReadWorldSelectionContext' | 'ListObjects';
 export interface CanvasReadPort {
  call<N extends CanvasReadOperation>(name: N, input: OperationMap['canvas/v7'][N]['request']): Promise<OperationMap['canvas/v7'][N]['response']>;

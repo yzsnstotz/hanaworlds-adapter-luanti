@@ -1,3 +1,12 @@
+# principles section 5 packaging correction (2026-10-11)
+
+- hanaworlds-contracts · 2.13.0 · MIT · published Git tag v2.13.0 / f8baf189099b517cacfe8a0b385d140932923b17 · development API/fixture/type input; SDK runtime compiled locally by the plugin build. Embedded upstream LICENSE/NOTICE retained.
+- esbuild · 0.28.2 · MIT · npm registry / https://github.com/evanw/esbuild · development-only ESM bundler, exact version and platform binary integrity in lockfile; no builder in runtime dependencies.
+- TypeScript · 5.8.3 · Apache-2.0 · npm registry / https://github.com/microsoft/TypeScript · development-only compiler proving packed public declarations resolve without the contract package.
+- canonicalize 5.1.0 (Apache-2.0), pngjs 7.0.0 (MIT), Node 24.13.1 (MIT), Lua 5.5.1 (MIT): unchanged runtime/test inputs and uses.
+
+No SDK version, published contract tag, engine/payload behavior or authorization is changed. Historical dependency classifications below are superseded by this build-time boundary.
+
 # adapter-source-boundary-01 (2026-10-11)
 
 - hanaworlds-contracts · 2.13.0 · MIT · exact Git tag v2.13.0, peeled f8baf189099b517cacfe8a0b385d140932923b17 · additive opaque startup description and published SDK/fixtures; included LICENSE/NOTICE retained.
