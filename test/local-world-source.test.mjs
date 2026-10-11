@@ -9,7 +9,7 @@ import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, sym
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalWorldSourceMock, describeSourceWorld, validateBoundResponse } from '#contracts';
-import startupExamples from 'hanaworlds-contracts/fixtures/source-startup' with {type:'json'};
+import startupExamples from './fixtures/source-startup.json' with {type:'json'};
 import sourceExamples from '../fixtures/local-world-source.json' with {type:'json'};
 import { createLocalWorldPort } from '../src/local-world-port.mjs';
 import { SOURCE_LOCATOR_VERSION } from '../src/source-locator.mjs';

@@ -7,7 +7,7 @@ const root = new URL('../', import.meta.url);
 const runtime = new URL('dist/runtime/', root);
 await rm(runtime, { recursive: true, force: true });
 await mkdir(runtime, { recursive: true });
-const names = new Set();
+const names = new Set(['wireVersions','operationContracts','digestProfile','placementInvariants']);
 const artifactHashes = {};
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 for (const file of (await readdir(new URL('src/', root))).filter(x => x.endsWith('.mjs')).sort()) {
@@ -20,7 +20,8 @@ for (const file of (await readdir(new URL('src/', root))).filter(x => x.endsWith
  await writeFile(new URL(file, runtime), compiled);
  artifactHashes[`dist/runtime/${file}`] = hash(compiled);
 }
-const result = await build({stdin: { contents: `export { ${[...names].sort().join(', ')} } from 'hanaworlds-contracts';`, resolveDir: new URL('.',root).pathname, sourcefile: 'adapter-contract-values.mjs' },
+const generatedEntry=`export { ${[...names].sort().join(', ')} } from './src/protocol/values.mjs';`;
+const result = await build({stdin: { contents: generatedEntry, resolveDir: new URL('.',root).pathname, sourcefile: 'adapter-contract-values.mjs' },
  outfile: new URL('contracts.mjs', runtime).pathname, bundle:true, platform:'node', format:'esm', target:'node24',
  external:['canonicalize'], metafile:true, legalComments:'inline' });
 const external = Object.values(result.metafile.outputs).flatMap(x=>x.imports).filter(x=>x.external).map(x=>x.path);
@@ -32,16 +33,20 @@ for(const directory of ['dist/contracts-types/','fixtures/','payload/']) {
  }}
  await assets(directory);
 }
+await writeFile(new URL('dist/protocol-source.json',root),await readFile(new URL('scripts/protocol-source.json',root)));
+artifactHashes['dist/protocol-source.json']=hash(await readFile(new URL('dist/protocol-source.json',root)));
 for(const name of ['dist/contracts-LICENSE','dist/contracts-NOTICE']) artifactHashes[name]=hash(await readFile(new URL(name,root)));
-const supply=JSON.parse(await readFile(new URL('scripts/contracts-source.json',root)));
+for(const file of (await readdir(new URL('src/',root))).filter(n=>n.endsWith('.d.ts')))artifactHashes['src/'+file]=hash(await readFile(new URL('src/'+file,root)));
+const supply=JSON.parse(await readFile(new URL('scripts/protocol-source.json',root)));
 const inputHashes={};
 for(const path of Object.keys(result.metafile.inputs)) {
- if(!path.includes('node_modules/hanaworlds-contracts/'))continue;
- const relative=path.split('node_modules/hanaworlds-contracts/')[1];
- if(!supply.sha256[relative])throw Error('UNVERIFIED_BUILD_INPUT:'+relative);
- inputHashes[relative]=supply.sha256[relative];
+ if(path==='adapter-contract-values.mjs')continue;
+ if(!path.startsWith('src/protocol/'))throw Error('UNVERIFIED_BUILD_INPUT:'+path);
+ if(!supply.sha256[path]||hash(await readFile(new URL(path,root)))!==supply.sha256[path])throw Error('BUILD_INPUT_DIGEST_MISMATCH:'+path);
+ inputHashes[path]=supply.sha256[path];
 }
-const source = JSON.parse(await readFile(new URL('dist/contracts-build.json',root)));
-await writeFile(new URL('dist/runtime-build.json',root),JSON.stringify({sourceVersion:source.sourceVersion,sourceResolved:source.sourceResolved,sourceTag:'v'+source.sourceVersion,
- sourceTagObject:supply.tagObject, sourceCommit:supply.commit, sourceInputs:inputHashes, builder:source.builder, contractExports:[...names].sort(),externalImports:[...new Set(external)].sort(),sha256:artifactHashes},null,2)+'\n');
-console.log(`Generated ${Object.keys(artifactHashes).length} Adapter artifacts; ${names.size} contract values selected by source imports.`);
+const source=JSON.parse(await readFile(new URL('dist/contracts-build.json',root)));
+await writeFile(new URL('dist/runtime-build.json',root),JSON.stringify({owner:source.owner,mechanism:source.mechanism,
+ sourceInputs:inputHashes,generatedEntrySHA256:hash(generatedEntry),protocolSourceSHA256:hash(await readFile(new URL('scripts/protocol-source.json',root))),
+ builder:source.builder,contractExports:[...names].sort(),externalImports:[...new Set(external)].sort(),sha256:artifactHashes},null,2)+'\n');
+console.log(`Generated ${Object.keys(artifactHashes).length} Adapter artifacts; ${names.size} protocol values selected by source imports.`);

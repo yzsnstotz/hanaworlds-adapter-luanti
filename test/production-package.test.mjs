@@ -13,23 +13,15 @@ const npm = join(dirname(process.execPath), 'npm');
 const packageStore=process.env.HW_ADAPTER_PACKAGE_STORE??join(homedir(),'.cache/pnpm/store');
 const run = (file, args, cwd, env = process.env) => execFileSync(file, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
-test('contracts are a pinned development input and production imports resolve to compiled local structures', async () => {
-  const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
-  const lock = JSON.parse(readFileSync(join(root, 'package-lock.json')));
-  assert.equal(pkg.dependencies?.['hanaworlds-contracts'], undefined);
-  assert.equal(pkg.devDependencies['hanaworlds-contracts'], 'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0');
-  assert.equal(lock.packages['node_modules/hanaworlds-contracts'].dev, true);
-  assert.deepEqual(pkg.imports['#contracts'], {development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
-  const upstream = await import('hanaworlds-contracts');
-  const compiled = await import('#contracts');
-  const runtime = await import('../dist/runtime/contracts.mjs');
-  assert.deepEqual(runtime.contractHandshake, upstream.contractHandshake);
-  assert.equal(runtime.canonicalJSON(runtime.schemaBundle), upstream.canonicalJSON(upstream.schemaBundle));
-  assert.notEqual(runtime.ContractError, upstream.ContractError);
-  assert.deepEqual(compiled.contractHandshake, upstream.contractHandshake);
-  assert.equal(compiled.canonicalJSON(compiled.schemaBundle), upstream.canonicalJSON(upstream.schemaBundle));
-  for (const name of ['wireVersions', 'operationContracts', 'digestProfile', 'placementInvariants'])
-    assert.equal(compiled.canonicalJSON(compiled[name]), upstream.canonicalJSON(upstream[name]), name);
+test('document protocol structures are plugin-owned and independently compiled in both graphs', async () => {
+ const pkg=JSON.parse(readFileSync(join(root,'package.json'))),lock=JSON.parse(readFileSync(join(root,'package-lock.json')));
+ for(const key of ['dependencies','devDependencies','optionalDependencies','peerDependencies'])assert.equal(pkg[key]?.['hanaworlds-contracts'],undefined);
+ assert.doesNotMatch(JSON.stringify(lock),/hanaworlds-contracts/);
+ assert.deepEqual(pkg.imports['#contracts'],{development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
+ const compiled=await import('#contracts'),runtime=await import('../dist/runtime/contracts.mjs');
+ for(const key of ['contractHandshake','schemaBundle','wireVersions','operationContracts','digestProfile','placementInvariants'])
+  assert.equal(runtime.canonicalJSON(runtime[key]),compiled.canonicalJSON(compiled[key]),key);
+ assert.notEqual(runtime.ContractError,compiled.ContractError);
 });
 
 test('packed public runtime and declarations work with no contract package or builder installed', async t => {
@@ -46,7 +38,7 @@ test('packed public runtime and declarations work with no contract package or bu
   env.HOME=join(dir,'home'); env.XDG_CONFIG_HOME=join(dir,'config');
   const pnpm=join(root,'node_modules/pnpm/bin/pnpm.cjs');
   assert.equal(run(process.execPath,[pnpm,'--version'],dir,env).trim(),'11.28.5');
-  const install=run(process.execPath,[pnpm,'install','--prod','--store-dir',packageStore,join(dir,packed.filename)],dir,env);
+  const install=run(process.execPath,[pnpm,'install','--prod','--store-dir',packageStore,join(dir,packed.filename),'@deepseek-ai/cordis@4.0.4'],dir,env);
   writeFileSync(join(dir,'install.log'),install);
   assert.doesNotMatch(readFileSync(join(dir,'pnpm-lock.yaml'),'utf8'),/hanaworlds-contracts|esbuild|typescript/);
   writeFileSync(join(dir,'resolution-graph.json'),run(process.execPath,[pnpm,'list','--depth','Infinity','--json'],dir,env));
@@ -64,7 +56,7 @@ registerHooks({resolve(specifier, context, next) {
 }});\n`);
   writeFileSync(join(dir, 'consumer.mjs'), `import assert from 'node:assert/strict';
 import { apply, payloadDigest } from 'hanaworlds-adapter-luanti';
-import { Context } from ${JSON.stringify(fileURLToPath(import.meta.resolve('@deepseek-ai/cordis')))};
+import { Context } from '@deepseek-ai/cordis';
 import { createNativeHost } from 'hanaworlds-adapter-luanti/host';
 import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';
 import { createLocalWorldsMock, createLocalConnectionReadbackMock } from 'hanaworlds-adapter-luanti/local-worlds-v2-mock';
@@ -87,9 +79,10 @@ for(const e of facts.exchanges) { const code=e.operation==='ReadCatalogue'?'WORL
  errors.push({wire:e.wire,operation:e.operation,request:e.request,response});
 }
 await fs.writeFile('protocol-errors.json',JSON.stringify(errors));
-const owned=createNativeHost({C:{validateType:(_type,value)=>value},state:process.cwd(),profile:process.cwd(),worlds:process.cwd(),luanti:'unused',event(){}});
+const owned=createNativeHost({state:process.cwd(),profile:process.cwd(),worlds:process.cwd(),luanti:'unused',event(){}});
 assert.equal(owned.game.running(),false);
-await assert.rejects(owned.host.inspect({controlRef:'missing'}),/CURRENT_WORLD_MISMATCH/);
+await assert.rejects(owned.host.inspect({controlRef:'missing'}),/SCHEMA_INVALID/);
+await assert.rejects(owned.host.inspect({controlRef:'missing',worldPath:process.cwd(),requesterRef:'package-host',operationRef:'missing'}),/CURRENT_WORLD_MISMATCH/);
 await assert.rejects(owned.game.enter({nativeProcessId:-1,worldPath:'absent'}),/CURRENT_WORLD_MISMATCH/);
 await owned.shutdown();
 const foreignCanvas={call:async(_name,q)=>({contractVersion:'canvas/v7',requestId:q.requestId,result:null,error:JSON.parse(JSON.stringify(errors[0].response.error))})};
@@ -170,19 +163,19 @@ facts.readScopedState('connection',[[0,0]]);
 const service:WorldFactsHostPort=apply({}).worldFacts;
 export type PublicTypes = [NativeHostOptions, Host, Inspection, Worlds, Facts, typeof locatorVersion, typeof result, typeof service];\n`);
   run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--strict', '--noEmit', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts'], dir, env);
-  const upstream=await import('hanaworlds-contracts');
+  const upstream=await import('#contracts');
   for(const error of JSON.parse(readFileSync(join(dir,'host-errors.json'))))
    assert.deepEqual(JSON.parse(JSON.stringify(upstream.validateType('Error',error))),error);
   for(const row of JSON.parse(readFileSync(join(dir,'protocol-errors.json')))) {
    assert.deepEqual(JSON.parse(JSON.stringify(upstream.validateBoundResponse(row.wire,row.operation,row.request,row.response).error)),row.response.error);
   }
-  writeFileSync(join(dir,'artifact.json'),JSON.stringify({pnpm:'11.28.5',tarSHA256:createHash('sha256').update(readFileSync(join(dir,packed.filename))).digest('hex'),runtime:'PASS',declarations:'PASS',foreignSDKProtocolErrors:'PASS'},null,2));
+  writeFileSync(join(dir,'artifact.json'),JSON.stringify({pnpm:'11.28.5',tarSHA256:createHash('sha256').update(readFileSync(join(dir,packed.filename))).digest('hex'),runtime:'PASS',declarations:'PASS',independentProtocolErrors:'PASS'},null,2));
   // The exact same target manager must reject exotic subdependencies and unreviewed
   // dependency builds, proving its policies were not disabled by machine configuration.
   for(const kind of ['exotic-subdependency','unreviewed-build']) {
    const negative=join(dir,kind);mkdirSync(negative);cpSync(join(dir,'node_modules/hanaworlds-adapter-luanti'),join(negative,'package'),{recursive:true,dereference:true});
    const manifest=join(negative,'package/package.json');const broken=JSON.parse(readFileSync(manifest));
-   if(kind==='exotic-subdependency')broken.dependencies['hanaworlds-contracts']=broken.devDependencies['hanaworlds-contracts'];
+   if(kind==='exotic-subdependency')broken.dependencies['hanaworlds-contracts']='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0';
    else broken.scripts={postinstall:"node -e \"throw Error('SHOULD_NOT_EXECUTE_UNREVIEWED_BUILD')\""};
    writeFileSync(manifest,JSON.stringify(broken));
    const badTar=join(negative,'negative.tgz');run('tar',['-czf',badTar,'-C',negative,'package'],dir);

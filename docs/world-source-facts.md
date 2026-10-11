@@ -15,7 +15,7 @@ Capability owner is the role `world-source`.
 | ReadWriteProfile | Backend and complete compilation configuration, supported methods and declared avatar envelope | ADAPTER_UNAVAILABLE, CAPABILITY_UNAVAILABLE |
 | ReadWorldSourceCapabilities | All write declarations, StateProfile, guard coverage and source-owned write path conclusions | ADAPTER_UNAVAILABLE |
 
-All reads validate requests and bound responses using published contracts v2.13.0.
+All reads validate requests and bound responses using Adapter-owned document protocol structures.
 The connection is checked before and after reading. The complete loaded Catalogue
 is checked before and after the read; asset reads also recheck metadata and bytes,
 and write/engine/capability reads recheck the payload declaration and engine limits.
@@ -76,7 +76,7 @@ re-provisioned through the existing lifecycle path, not silently upgraded here.
 
 `hanaworlds-adapter-luanti/world-source-facts-mock` exports
 `createWorldSourceFactsMock(refusals)`. It implements all five reads and all declared
-operation errors using the packaged published-contract examples in
+operation errors using the packaged document protocol examples in
 `fixtures/world-source-facts.json`. Those examples and the mock are SOURCE/FIXTURE,
 not evidence of a running engine, provider authenticity or live currency.
 
@@ -96,9 +96,9 @@ and owner acceptance are not established by these tests.
 `frameId` and `providerRef` are opaque identities. Catalogue material extensions,
 including `param2Type` and `collisionBoxes`, retain their baseline opaque semantics;
 wording does not make them consumer input. Visible Frame grid units and usable
-volume units are `cell`. The mock reads the public contracts fixture directly;
-`npm run sync:fixtures` regenerates the five-read exported projection and `npm test`
-checks for drift without changing existing export paths.
+volume units are `cell`. The mock reads the Adapter-owned public fixture directly;
+`npm run sync:fixtures` and `npm test` validate the five-read projection against
+the document protocol and source manifest. Export paths remain unchanged.
 
 ## Read-only Host scoped state
 
@@ -107,8 +107,8 @@ The existing service registration `hanaworldsWorldFacts` additionally provides
 by the package root's `WorldFactsHostPort`. The result reuses the `worldRef`,
 `stateProfile` and `cells` types of the existing `ScopedWorldBinding`: actual
 paired world identity, its validated `StateProfile` and validated `ScopedCells`.
-This source candidate still consumes the published development SDK v2.13.0;
-the shared neutral Host binding addition is pending formal publication.
+Adapter owns the required structures and normal build-generated types under Q-99.
+See [the additive protocol](protocol-scoped-state.md) and [provenance](protocol-provenance.md).
 
 This method is a Host call, separate from the existing four named world-facts
 wire reads. No wire operation or protocol minor is invented. The method captures

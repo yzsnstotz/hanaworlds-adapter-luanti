@@ -20,11 +20,8 @@ const withClient = process.env.HW_REAL_CLIENT === '1';
 if (!installed || !runtimeRoot || !worldEditDirectory)
   throw new Error('HW_INSTALLED_PLUGIN_DIR, HW_RUNTIME_ROOT, HW_WORLDEDIT_DIR required');
 const v2 = await import(pathToFileURL(join(installed, 'src/index.mjs')).href);
-// The installed package's own contracts dependency (npm nests it; pnpm hoists it beside the package).
-const contractsDir = [join(installed, 'vendor/hanaworlds-contracts'),
-  join(installed, 'node_modules/hanaworlds-contracts'),
-  join(installed, '..', 'hanaworlds-contracts')].find(dir => existsSync(join(dir, 'package.json')));
-const { digestValue } = await import(pathToFileURL(join(contractsDir, 'dist/v4/index.mjs')).href);
+// Use the installed artifact's normally compiled local protocol values.
+const {digestValue}=await import(pathToFileURL(join(installed,'dist/runtime/contracts.mjs')).href);
 
 const root = resolve(runtimeRoot, `run-${Date.now()}`);
 const profile = join(root, 'profile');

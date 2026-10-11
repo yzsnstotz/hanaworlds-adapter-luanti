@@ -1,3 +1,4 @@
+export type { Ref, Positions, StateProfile, ScopedCells, ScopedWorldBinding, Error as WorldFactsError, FailureSource } from '../dist/contracts-types/index.js';
 import type { ScopedWorldBinding, Ref, Positions, ReadCatalogueRequest, ReadCatalogueResponse,
  ReadMaterialSourcesRequest, ReadMaterialSourcesResponse, ReadEngineFactsRequest, ReadEngineFactsResponse,
  ReadWriteProfileRequest, ReadWriteProfileResponse } from '../dist/contracts-types/index.js';

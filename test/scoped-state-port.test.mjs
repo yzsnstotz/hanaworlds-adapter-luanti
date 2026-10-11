@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Context, symbols } from '@deepseek-ai/cordis';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as C from '#contracts';
@@ -17,7 +17,7 @@ const refused = code => e => {
 };
 async function setup(t) {
  const base = process.env.HW_ADAPTER_TEST_ROOT ?? join(tmpdir(), 'hw-scoped-state');
- await mkdir(base, {recursive:true}); const root = await mkdtemp(join(base, 'scoped-'));
+ await mkdir(base, {recursive:true}); const root = await realpath(await mkdtemp(join(base, 'scoped-')));
  const profile = join(root, 'profile'), worlds = join(profile, 'worlds');
  await mkdir(worlds, {recursive:true}); await mkdir(join(root,'home')); await mkdir(join(profile, 'games/flatgame'), {recursive:true});
  await writeFile(join(profile, 'games/flatgame/game.conf'), 'title = Fixture\n');
@@ -96,4 +96,14 @@ test('corrupt payload and inactive fiber never return state',async t=>{
 test('closed Adapter refuses a retained authorized method',async t=>{
  const f=await setup(t),read=f.canvas.get('hanaworldsWorldFacts').readScopedState;await f.adapter.close();
  await assert.rejects(async()=>read(f.paired.connectionRef,[[0,0,0]]),refused('ADAPTER_UNAVAILABLE'));
+});
+
+test('neutral read retains a named public refusal from an independent native exception constructor',async t=>{
+ const f=await setup(t);
+ class NativeReadError extends Error {constructor(){super('private constructor detail');this.publicError={code:'TARGET_FACTS_INCOMPLETE',phase:'validate',retryability:'AFTER_NEW_FACTS',mutationState:'NONE',transactionRef:null,causeCode:null,reason:'REQUIRED_FACT_UNKNOWN'};}}
+ f.afterRead(()=>{throw new NativeReadError();});
+ await assert.rejects(f.read(),refused('TARGET_FACTS_INCOMPLETE'));
+ assert.equal(f.calls.length,1);
+ f.afterRead(()=>{throw {publicError:{code:'TARGET_FACTS_INCOMPLETE',extra:true}};});
+ await assert.rejects(f.read(),refused('UNKNOWN_REQUIRED_FIELD'));
 });

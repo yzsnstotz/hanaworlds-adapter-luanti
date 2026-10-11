@@ -8,7 +8,7 @@ import {pathToFileURL} from 'node:url';
 import {Context,symbols} from '@deepseek-ai/cordis';
 import Loader from '@deepseek-ai/cordis-plugin-loader';
 import {dshHomePath} from '@deepseek-ai/dsh-home-paths';
-import * as C from 'hanaworlds-contracts';
+import * as C from '#contracts';
 import {createNativeHost} from 'hanaworlds-adapter-luanti/host';
 import {createInspectionContext} from 'hanaworlds-adapter-luanti/inspection-context';
 const sdk=process.env.HW_PUBLIC_HOST_SDK_ROOT,baseInput=process.env.HW_PUBLIC_HOST_STATE,packetPath=process.env.HW_OFFICIAL_HOST_PACKET;

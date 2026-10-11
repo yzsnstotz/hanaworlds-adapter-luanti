@@ -2,16 +2,16 @@
 // Assembly uses only public Adapter/Host ports. An observation-only HTTP tap
 // records this world's actual payload commands/results, without altering bytes.
 import assert from 'node:assert/strict';
-import { Context } from '@deepseek-ai/cordis';
 import { mkdir, readFile, readdir, realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Server, ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
-import * as C from 'hanaworlds-contracts';
 const root=await realpath(process.env.HW_SCOPED_STATE_ROOT),artifact=await realpath(process.env.HW_SCOPED_STATE_PACKAGE);
-const {apply,inject}=await import(pathToFileURL(join(artifact,'dist/runtime/index.mjs')));
-const {createNativeHost}=await import(pathToFileURL(join(artifact,'dist/runtime/host.mjs')));
+const {Context}=process.env.HW_SCOPED_STATE_CORDIS?await import(pathToFileURL(await realpath(process.env.HW_SCOPED_STATE_CORDIS))):await import('@deepseek-ai/cordis');
+const manifest=JSON.parse(await readFile(join(artifact,'package.json'),'utf8'));
+const {apply,inject}=await import(pathToFileURL(join(artifact,manifest.exports['.'].import)));
+const {createNativeHost}=await import(pathToFileURL(join(artifact,manifest.exports['./host'].import)));
 const profile=join(root,'profile'),worlds=join(profile,'worlds'),home=join(root,'home');
 for(const p of [worlds,home,join(profile,'games'),join(root,'logs'),join(root,'tmp')])await mkdir(p,{recursive:true});
 await symlink(await realpath(process.env.HW_GAME),join(profile,'games','mineclone2'));
@@ -29,7 +29,7 @@ Server.prototype.emit=function(event,...args){
   }
  }return emit.call(this,event,...args);
 };
-const owned=createNativeHost({C,state:root,profile,worlds,luanti:process.env.HW_LUANTI??'/Applications/luanti.app/Contents/MacOS/luanti',event:(kind,facts)=>events.push({kind,...facts})});
+const owned=createNativeHost({state:root,profile,worlds,luanti:process.env.HW_LUANTI??'/Applications/luanti.app/Contents/MacOS/luanti',event:(kind,facts)=>events.push({kind,...facts})});
 const ctx=new Context();let adapter,canvas,created,paired,receipt,failure;
 ctx.provide('webServer',{register:()=>()=>{}});ctx.provide('dshHomePath',(...p)=>join(home,...p));ctx.provide('hanaworldsNativeEngineControl',owned.host);
 const adapterFiber=ctx.plugin({name:'actual-packed-adapter',inject,apply(c){adapter=apply(c,{localUserPath:profile,localWorldRoots:[worlds]});}});await adapterFiber.await();
@@ -81,7 +81,7 @@ end)\n`);
  const read=facts.readScopedState;canvas.set('hanaworldsCanvasV5',{call(){}});
  await assert.rejects(read(paired.connectionRef,positions),refused('CAPABILITY_UNAVAILABLE'));
  receipt={scope:'REAL_ADAPTER_NATIVE_READ + production artifact in official Cordis; Host peer owns actual process; Canvas peer is public fixture',
-  artifact,created:{worldRef:created.worldRef,connectionRef:created.connectionRef,worldPath:created.worldPath,payloadDigest:created.payloadDigest},paired,
+  artifact,cordisModule:process.env.HW_SCOPED_STATE_CORDIS??'official dev Host runtime',created:{worldRef:created.worldRef,connectionRef:created.connectionRef,worldPath:created.worldPath,payloadDigest:created.payloadDigest},paired,
   runtime:'@deepseek-ai/cordis@4.0.4',provider:'hanaworldsCanvasV5',fiberName:'legitimate-renamed-canvas',positions,actual,
   actualNativeSnapshot:raw.result,actualNativeFailure:'TARGET_FACTS_INCOMPLETE',sameLegacyOpaqueHashes:true,StateProfileMatchesConnection:true,
   adapterWorldWrites:0,transactionPreparation:0,historyChanges:0,readBindingChanges:0,synchronousGuard:'NOT_ESTABLISHED',UI:'NOT_RUN',owner:'NOT_ACCEPTED'};

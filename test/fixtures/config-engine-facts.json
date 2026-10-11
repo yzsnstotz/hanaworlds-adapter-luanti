@@ -1,0 +1,611 @@
+{
+  "evidence": "FIXTURE · config-engine-facts/v2 public contract fixture for both sides (world source provider, Canvas consumer). Catalogue/connection come from fixtures/main request; backend refs are fixture inputs, never a real payload declaration. avatarEnvelope has no KNOWN form: no player geometry exists in this seam.",
+  "catalogueRef": "fixtures/local/main.json#/request/catalogue",
+  "connection": {
+    "worldRef": "fixture-world",
+    "connectionRef": "local-connection",
+    "connectionIncarnationRef": "socket-open-1"
+  },
+  "provider": {
+    "valid": [
+      {
+        "title": "payload declares its write backend; avatar has no public source",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        }
+      },
+      {
+        "title": "an opaque world-source backend identity validates",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-world-source-cell-write/v1",
+              "revision": "fixture-world-source-rev-7"
+            }
+          },
+          "sourceRevision": "54238995573bb2796b6e94809aabac30805eacf010965c4ac8ca12f511ac723d"
+        }
+      },
+      {
+        "title": "payload declares no backend is a named UNAVAILABLE",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "UNAVAILABLE",
+            "reason": "NOT_DECLARED_BY_PAYLOAD"
+          },
+          "sourceRevision": "8f3526380b8f50008b7b2531aad60482d2f56debe383d884d586701d70980c02"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "title": "KNOWN avatar envelope is not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "KNOWN",
+            "basis": "CONNECTED_PLAYERS_MAX_COLLISION_EXTENT",
+            "dimensions": {
+              "width": 0.75,
+              "height": 1.25,
+              "depth": 0.5,
+              "unit": "node"
+            }
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "avatar dimensions on the UNAVAILABLE record are not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE",
+            "dimensions": {
+              "width": 0.75,
+              "height": 1.25,
+              "depth": 0.5,
+              "unit": "node"
+            }
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "live-box reasons are not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_CONNECTED_PLAYER"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "SCHEMA_INVALID",
+          "reason": "INVALID_SHAPE"
+        }
+      },
+      {
+        "title": "player collision box is not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669",
+          "collisionBox": [
+            -0.375,
+            0,
+            -0.25,
+            0.375,
+            1.25,
+            0.25
+          ]
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "player position is not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE",
+            "position": [
+              1,
+              2,
+              3
+            ]
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "player yaw is not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669",
+          "yaw": 1.5
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "player identity is not representable",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669",
+          "playerNames": [
+            "fixture-player"
+          ]
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "UNAVAILABLE backend carries a filled value",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "UNAVAILABLE",
+            "reason": "NOT_DECLARED_BY_PAYLOAD",
+            "writeBackend": {
+              "profileId": "fixture-default",
+              "revision": "fixture-default-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "UNKNOWN_REQUIRED_FIELD",
+          "reason": "UNKNOWN_FIELD"
+        }
+      },
+      {
+        "title": "backend identity without a revision",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "SCHEMA_INVALID",
+          "reason": "INVALID_SHAPE"
+        }
+      },
+      {
+        "title": "sourceRevision not recomputed",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-other",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "expect": {
+          "code": "NON_CANONICAL_AMBIGUITY",
+          "reason": "INVALID_SHAPE"
+        }
+      },
+      {
+        "title": "Catalogue changed",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "cb03176042fa1274114e1f608105738502f6371faab39b84af4ba1b23e552872"
+        },
+        "expect": {
+          "code": "CATALOGUE_MISMATCH",
+          "reason": "INVALID_SHAPE"
+        }
+      }
+    ]
+  },
+  "consumer": {
+    "assemble": [
+      {
+        "title": "KNOWN backend assembles writeBackend unchanged",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "writeBackend": {
+          "profileId": "fixture-backend-profile",
+          "revision": "fixture-backend-revision-1"
+        }
+      },
+      {
+        "title": "UNAVAILABLE backend refuses without a value",
+        "facts": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "UNAVAILABLE",
+            "reason": "NOT_DECLARED_BY_PAYLOAD"
+          },
+          "sourceRevision": "8f3526380b8f50008b7b2531aad60482d2f56debe383d884d586701d70980c02"
+        },
+        "writeBackend": {
+          "code": "CAPABILITY_UNAVAILABLE",
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    ],
+    "avatarDimensions": {
+      "title": "SafetyProfile.avatarDimensions always refuses; cause INV-POSE-STAYS-IN-ENGINE; nothing filled or persisted",
+      "cause": "INV-POSE-STAYS-IN-ENGINE",
+      "refusal": {
+        "code": "CAPABILITY_UNAVAILABLE",
+        "phase": "validate",
+        "reason": "REQUIRED_FACT_UNKNOWN"
+      }
+    },
+    "lifecycle": [
+      {
+        "title": "payload declaration change yields a new sourceRevision; previous assembly is invalidated",
+        "previous": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "current": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile-reloaded",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "6a6d1698904f3ab560c9a73d47c20820b551689a6926f275ec5926ab196112d8"
+        },
+        "currentConnection": {
+          "worldRef": "fixture-world",
+          "connectionRef": "local-connection",
+          "connectionIncarnationRef": "socket-open-1"
+        },
+        "previousStillCurrent": false
+      },
+      {
+        "title": "reconnect: facts of the previous incarnation are rejected against the new connection",
+        "previous": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "ba7e899d30ead4bd4b157b6a5266377cb74158fae2e0b2ac5bc29767643da669"
+        },
+        "current": {
+          "profileVersion": "config-engine-facts/v2",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1-fixture-reconnected"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "avatarEnvelope": {
+            "availability": "UNAVAILABLE",
+            "reason": "NO_PUBLIC_SOURCE"
+          },
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-backend-profile",
+              "revision": "fixture-backend-revision-1"
+            }
+          },
+          "sourceRevision": "f8f6c89cec13bb8e029846c00388669716c139abca4cdb8b083144d4d1dae552"
+        },
+        "currentConnection": {
+          "worldRef": "fixture-world",
+          "connectionRef": "local-connection",
+          "connectionIncarnationRef": "socket-open-1-fixture-reconnected"
+        },
+        "previousRejected": {
+          "code": "CURRENT_WORLD_MISMATCH",
+          "reason": "INVALID_SHAPE"
+        }
+      }
+    ]
+  }
+}

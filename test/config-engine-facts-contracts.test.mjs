@@ -1,12 +1,12 @@
-// SOURCE/FIXTURE only: installed public contracts fixtures plus Adapter-owned fact producer.
+// SOURCE/FIXTURE only: document protocol fixtures plus Adapter-owned fact producer.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import * as c from 'hanaworlds-contracts';
+import * as c from '#contracts';
 import { publicError as providerPublicError } from '#contracts';
 import { createStage1Facts } from '../src/stage1-facts.mjs';
-const fx = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/config-engine-facts'))));
-const catalogue = JSON.parse(readFileSync(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/main')))).request.catalogue;
+const fx = JSON.parse(readFileSync(new URL('./fixtures/config-engine-facts.json',import.meta.url)));
+const catalogue = JSON.parse(readFileSync(new URL('./fixtures/catalogue.json',import.meta.url)));
 const named = (error, want) => { const e = c.publicError(error); assert.equal(e.code, want.code); assert.equal(e.reason, want.reason); return true; };
 test('provider valid and invalid public fixtures', () => {
   c.checkContractsVersion(`hanaworlds-contracts@${c.version}`);
@@ -40,7 +40,7 @@ test('Adapter provider records satisfy contracts and existing typed refusals sur
   let reads = 0;
   await assert.rejects(producer.configEngineFacts(row, { catalogue: async () => ++reads === 1 ? catalogue : changed, writeBackend: async () => ({ ...declaration, ready: true }) }), e => {
     // The provider's embedded SDK owns its error class. Check the JSON error with
-    // the separately installed development SDK, rather than sharing class identity.
+    // the independently built provider development structures, rather than sharing class identity.
     const error = providerPublicError(e);
     assert.equal(error.code, 'CURRENT_WORLD_MISMATCH');
     assert.equal(error.reason, 'REVISION_CHANGED');

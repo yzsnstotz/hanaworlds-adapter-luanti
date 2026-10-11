@@ -1,3 +1,4 @@
+import {validateType} from '#contracts';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -14,7 +15,7 @@ async function port() {
 }
 // Real process owner for this isolated development environment. No product profile is used.
 // Native STOPPED truth is from our child exit event, retained for repeated exact callbacks.
-export function createNativeHost({ C, state, profile, worlds, luanti, luantiClient = luanti, event }) {
+export function createNativeHost({ C = {validateType}, state, profile, worlds, luanti, luantiClient = luanti, event }) {
   const records = new Map(); let client = null;
   const environment = { ...process.env, HOME: profile, LUANTI_USER_PATH: profile,
     XDG_CACHE_HOME: join(profile, 'cache'), TMPDIR: join(state, 'tmp') };

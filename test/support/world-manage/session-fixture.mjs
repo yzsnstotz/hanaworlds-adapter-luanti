@@ -2,7 +2,7 @@
 // never the Adapter manager/Host. No real Core, persistent Session delete, peer import or world write.
 import {randomUUID} from 'node:crypto';
 import * as C from '#contracts';
-import published from 'hanaworlds-contracts/fixtures/session-world' with {type:'json'};
+import published from './../../fixtures/session-world.json' with {type:'json'};
 const fail=code=>{throw Error(code);};const same=(a,b)=>C.canonicalJSON(a)===C.canonicalJSON(b);
 export function createSessionWorldFixture({resolveAdapter}) {
  const directory=C.validateType('SessionDirectory',structuredClone(published.sessionDirectory.list.response.result));

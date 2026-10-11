@@ -8,7 +8,7 @@ if(!sdk||!stateInput)throw Error('own SDK/state required');
 assert.equal(import.meta.url,pathToFileURL(join(sdk,'public-host-packed-assembly.mjs')).href,'run this owning-origin test entry from the fresh SDK installation');
 const load=n=>import(n);
 const {Context}=await load('@deepseek-ai/cordis');const {default:Loader}=await load('@deepseek-ai/cordis-plugin-loader');
-const C=await load('hanaworlds-contracts');
+const C=await load('#contracts');
 const {createNativeHost}=await load('hanaworlds-adapter-luanti/host');const {createInspectionContext}=await load('hanaworlds-adapter-luanti/inspection-context');
 for(const p of [stateInput,join(stateInput,'profile/worlds'),join(stateInput,'home'),join(stateInput,'logs'),join(stateInput,'tmp')])await mkdir(p,{recursive:true,mode:0o700});
 const state=await realpath(stateInput),profile=join(state,'profile'),worlds=join(profile,'worlds'),events=[];

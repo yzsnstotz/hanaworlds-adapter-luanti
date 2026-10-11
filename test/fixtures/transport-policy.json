@@ -1,0 +1,42 @@
+{
+  "profileVersion": "world-source-transport-policy/v1",
+  "owner": "world-source",
+  "settings": [
+    {
+      "name": "courierResultWaitMs",
+      "unit": "ms",
+      "defaultValue": 30000,
+      "value": 30000,
+      "min": 1000,
+      "max": 120000,
+      "editable": true,
+      "meaning": "Time from command queueing to receiving its result. Expiry means RECOVERY_PENDING; it does not cancel engine execution.",
+      "tradeoff": "A larger budget delays uncertainty reporting; it does not repair execution or permit retry.",
+      "validation": "Inclusive integer range; no coercion, zero, disabling, or unknown keys. Changes require a fresh paired payload and matching handshake."
+    },
+    {
+      "name": "courierBodyBytes",
+      "unit": "byte",
+      "defaultValue": 4194304,
+      "value": 4194304,
+      "min": 131072,
+      "max": 4194304,
+      "editable": true,
+      "meaning": "Maximum UTF-8 bytes of complete JSON poll or result body, including envelope, in either direction. The 4 MiB hard ceiling cannot be disabled.",
+      "tradeoff": "Smaller bodies reduce memory use and region batch size; a single large record may be refused.",
+      "validation": "Inclusive integer range; no coercion, zero, disabling, or unknown keys. Changes require a fresh paired payload and matching handshake."
+    },
+    {
+      "name": "regionBatchEnvelopeReserveBytes",
+      "unit": "byte",
+      "defaultValue": 65536,
+      "value": 65536,
+      "min": 65536,
+      "max": 65536,
+      "editable": false,
+      "meaning": "Conservative region batch sizing reserve for JSON framing and guards. It is not a maximum envelope size or a business cell quota.",
+      "tradeoff": "Reserve lowers estimated blocks per batch; metadata is unbounded by cell count, so exact serialization still refuses oversized results.",
+      "validation": "Fixed batch sizing reserve; exact complete command and result sizes remain enforced independently."
+    }
+  ]
+}

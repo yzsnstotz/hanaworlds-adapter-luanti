@@ -13,7 +13,7 @@ const root=await realpath(process.env.HW_NATIVE_E);
 const source=resolve(process.env.HW_NATIVE_PACKAGE ?? '.');
 const selectedPath=process.env.HW_NATIVE_PATH ?? 'ALL';assert.ok(['ALL','region','J3','J5'].includes(selectedPath),'unknown native test path');
 const load=path=>import(pathToFileURL(join(source,path.replace(/^src\//,'dist/runtime/'))));
-const C=await import('hanaworlds-contracts');
+const C=await import('#contracts');
 const {Context}=await import('@deepseek-ai/cordis');
 const {createFlatWorld}=await load('src/flat-world.mjs');
 const {createLocalRuntime}=await load('src/local-runtime.mjs');

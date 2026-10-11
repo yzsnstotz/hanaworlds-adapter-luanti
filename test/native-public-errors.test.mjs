@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apply } from '../src/index.mjs';
-import * as C from 'hanaworlds-contracts';
+import * as C from '#contracts';
 test('unbound native fact reads and invalid ledger input expose the public Error', async () => {
   const services = new Map([['webServer', { register: () => () => {} }]]);
   const ctx = {get: n => services.get(n), provide: (n,v) => services.set(n,v), effect: () => {}, webServer: services.get("webServer")};

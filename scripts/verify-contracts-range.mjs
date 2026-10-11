@@ -1,50 +1,39 @@
-// Verify, offline, that contracts come from the contract source as the published release tag
-// (git+https://…/hanaworlds-contracts.git#vX.Y.Z — no #semver: range, vendor copy,
-// tarball/commit pin or workspace link), that the lock resolves that tag from the contract
-// source git repository, and that the installed package is exactly the tagged version and
-// passes the SDK's own major predicate.
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const NAME = 'hanaworlds-contracts';
-const SOURCE = 'git+https://github.com/yzsnstotz/hanaworlds-contracts.git';
-const SPEC = new RegExp(`^${SOURCE.replace(/[.+]/g, '\\$&')}#v(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)$`);
-const LOCKED = /^git\+(?:ssh:\/\/git@|https:\/\/)github\.com\/yzsnstotz\/hanaworlds-contracts\.git#[0-9a-f]{40}$/;
-const root = fileURLToPath(new URL('..', import.meta.url));
-const supply=JSON.parse(readFileSync(join(root,'scripts/contracts-source.json')));
-const problems = [];
-let tag = null, installed = null, locked = null;
+// Offline project-document conformance and plugin-owned input provenance (Q-98/Q-99).
+import {createHash} from 'node:crypto';
+import {readFileSync,existsSync,readdirSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url)),problems=[];
 try {
-  const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
-  const lock = JSON.parse(readFileSync(join(root, 'package-lock.json')));
-  const spec = pkg.devDependencies?.[NAME];
-  if (pkg.dependencies?.[NAME] || pkg.optionalDependencies?.[NAME] || pkg.peerDependencies?.[NAME]) problems.push('contracts must be development-only');
-  const m = SPEC.exec(spec ?? '');
-  if (!m) problems.push(`dependency must be ${SOURCE}#vX.Y.Z[-pre], got ${spec}`);
-  else tag = m[1];
-  if (JSON.stringify(pkg.imports?.['#contracts']) !== JSON.stringify({development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'})) problems.push('#contracts must resolve the local compiled SDK');
-  if (existsSync(join(root, 'vendor', NAME))) problems.push('contracts vendor copy is forbidden');
-  if (lock.packages?.['']?.devDependencies?.[NAME] !== spec) problems.push('lock root dependency differs from package.json');
-  if (lock.packages?.['']?.dependencies?.[NAME]) problems.push('lock root contracts must be development-only');
-  const item = lock.packages?.[`node_modules/${NAME}`];
-  if (item?.dev !== true) problems.push('locked contracts must be development-only');
-  locked = item ? { version: item.version, resolved: item.resolved } : null;
-  if (!item || item.link || !LOCKED.test(item.resolved ?? '')) problems.push('lock must resolve the contract source git repository');
-  if (tag && ('v'+tag!==supply.tag || !item?.resolved?.endsWith('#'+supply.commit))) problems.push('locked source differs from the verified published tag');
-  if (tag && item?.version !== tag) problems.push(`lock resolves ${item?.version}, not the pinned tag v${tag}`);
-  installed = dirname(fileURLToPath(import.meta.resolve(`${NAME}/package.json`)));
-  const meta = JSON.parse(readFileSync(join(installed, 'package.json')));
-  if (meta.name !== NAME || meta.version !== item?.version) problems.push('installed package differs from lock');
-  if (tag && meta.version !== tag) problems.push(`installed ${meta.version} is not the pinned tag v${tag}`);
-  for(const [path,expected] of Object.entries(supply.sha256)) {
-    const actual=createHash('sha256').update(readFileSync(join(installed,path))).digest('hex');
-    if(actual!==expected) problems.push(`tagged source content mismatch: ${path}`);
+ const pkg=JSON.parse(readFileSync(join(root,'package.json'))),lock=JSON.parse(readFileSync(join(root,'package-lock.json')));
+ const supply=JSON.parse(readFileSync(join(root,'scripts/protocol-source.json')));
+ if(supply.owner!=='adapter'||supply.mechanism!=='Q-98/Q-99 document protocol')problems.push('document protocol provenance mismatch');
+ for(const field of ['dependencies','devDependencies','optionalDependencies','peerDependencies'])
+  if(/hanaworlds-contracts/.test(JSON.stringify(pkg[field]??{})))problems.push('retired contracts dependency: '+field);
+ if(/hanaworlds-contracts/.test(JSON.stringify(lock)))problems.push('retired contracts lock resolution');
+ if(existsSync(join(root,'vendor/hanaworlds-contracts')))problems.push('contracts vendor copy is forbidden');
+ if(JSON.stringify(pkg.imports?.['#contracts'])!==JSON.stringify({development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'}))problems.push('local structure import map mismatch');
+ for(const [path,want] of Object.entries(supply.sha256)){
+  if(!/^(src\/protocol\/|docs\/protocol-|fixtures\/|test\/fixtures\/)/.test(path)||path.includes('..'))throw Error('invalid owned source path: '+path);
+  if(createHash('sha256').update(readFileSync(join(root,path))).digest('hex')!==want)problems.push('owned source content mismatch: '+path);
+ }
+ // No hidden unmanifested owned implementation/schema/declaration inputs.
+ for(const name of readdirSync(join(root,'src/protocol')))if(!supply.sha256['src/protocol/'+name])problems.push('unverified owned input: '+name);
+ const directories=['src','test','scripts'];
+ function scan(path){for(const e of readdirSync(join(root,path),{withFileTypes:true})){
+  const p=path+'/'+e.name;if(e.isDirectory())scan(p);else if(/\.mjs$/.test(e.name)){
+   const text=readFileSync(join(root,p),'utf8');
+   // Test negative strings and historical notice names are allowed; actual module/resource edges are not.
+   if(/(?:from\s*|import\s*\(|import\.meta\.resolve\s*\(|(?:createRequire\([^)]*\)|require)\s*\()\s*['"]hanaworlds-contracts(?:\/[^'"]*)?['"]/.test(text)&&!['test/package-boundary.test.mjs','test/production-package.test.mjs'].includes(p))problems.push('retired build/test edge: '+p);
   }
-  const sdk = await import(NAME);
-  sdk.checkContractsVersion(sdk.contractHandshake.contracts);
-  installed = { path: installed, version: meta.version, handshake: sdk.contractHandshake.contracts };
-} catch (error) { problems.push(error.message); }
-const ok = problems.length === 0;
-console.log(JSON.stringify({ name: NAME, source: SOURCE, tag, locked, installed, ok, problems }));
-if (!ok) process.exitCode = 1;
+ }}
+ for(const path of directories)scan(path);
+ const C=await import(new URL('src/protocol/values.mjs',new URL('../',import.meta.url)));
+ C.checkContractHandshake(C.contractHandshake); // historical wire compatibility bytes preserved, no package resolution
+ const facts=JSON.parse(readFileSync(join(root,'fixtures/world-source-facts.json')));
+ for(const row of facts.exchanges)C.validateBoundResponse(row.wire,row.operation,row.request,row.response);
+ const doc=readFileSync(join(root,'docs/protocol-scoped-state.md'),'utf8');
+ for(const required of ['hanaworldsWorldFacts','readScopedState','connectionRef','positions','worldRef','StateProfile','ScopedCells','CURRENT_WORLD_MISMATCH','TARGET_FACTS_INCOMPLETE','SCHEMA_INVALID'])if(!doc.includes(required))problems.push('document protocol missing: '+required);
+} catch(e){problems.push(e.message);}
+console.log(JSON.stringify({owner:'adapter',mechanism:'Q-98/Q-99 document protocol',ok:problems.length===0,problems}));
+if(problems.length)process.exitCode=1;

@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import * as C from 'hanaworlds-contracts';
+import * as C from '#contracts';
 import { LocalCourier } from '../src/local-courier.mjs';
 import { ENGINE_GUARDS, ENGINE_GUARD_DECLARATION, engineGuardDeclaration, refusalDetail } from '../src/safety-capabilities.mjs';
 import { protocolHandshake, worldAdapterProtocolHandshake } from '../src/region-io.mjs';

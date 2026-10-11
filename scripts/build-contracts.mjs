@@ -1,43 +1,20 @@
-// Compile the pinned development SDK into one plugin-local runtime module.
-// No contract-repository package is needed by an installed production tarball.
-import { build } from 'esbuild';
-import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
-const root = fileURLToPath(new URL('..', import.meta.url));
-execFileSync(process.execPath, ['scripts/verify-contracts-range.mjs'], { cwd: root, stdio: 'inherit' });
-const source = dirname(fileURLToPath(import.meta.resolve('hanaworlds-contracts/package.json')));
-const meta = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
-const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
-const out = join(root, 'dist');
-await mkdir(join(out, 'contracts-types'), { recursive: true });
-const result = await build({
-  absWorkingDir: root,
-  entryPoints: [fileURLToPath(import.meta.resolve('hanaworlds-contracts'))],
-  outfile: join(out, 'contracts.mjs'), bundle: true, platform: 'node', format: 'esm',
-  target: 'node24', external: ['canonicalize'], metafile: true, legalComments: 'inline',
-  banner: { js: `// Build-generated plugin runtime structures from the pinned development SDK ${meta.version}.` },
-});
-const external = Object.values(result.metafile.outputs).flatMap(row => row.imports).filter(row => row.external);
-if (external.some(row => !row.path.startsWith('node:') && row.path !== 'canonicalize'))
-  throw Error('UNEXPECTED_COMPILED_CONTRACT_DEPENDENCY');
-const files = ['contracts.mjs'];
-for (const name of ['index.d.ts', 'contracts.d.ts']) {
-  const target = `contracts-types/${name}`;
-  await writeFile(join(out, target), await readFile(join(source, 'types/local', name)));
-  files.push(target);
-}
-for (const name of ['LICENSE', 'NOTICE']) {
-  const target = `contracts-${name}`;
-  await writeFile(join(out, target), await readFile(join(source, name)));
-  files.push(target);
-}
-const hashes = Object.fromEntries(await Promise.all(files.map(async name => [name,
-  createHash('sha256').update(await readFile(join(out, name))).digest('hex')])));
-await writeFile(join(out, 'contracts-build.json'), JSON.stringify({
-  sourceVersion: meta.version, sourceResolved: lock.packages['node_modules/hanaworlds-contracts'].resolved,
-  builder: 'esbuild@0.28.2', externalImports: external.map(row => row.path), sha256: hashes,
-}, null, 2) + '\n');
-console.log(`Compiled plugin-local contract structures ${meta.version}; external imports: ${external.map(row => row.path).join(', ')}`);
+// Compile Adapter-owned protocol values and declarations from audited local inputs.
+import {build} from 'esbuild';
+import {createHash} from 'node:crypto';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+const root=new URL('../',import.meta.url),out=new URL('dist/',root);
+execFileSync(process.execPath,['scripts/verify-contracts-range.mjs'],{cwd:root,stdio:'inherit'});
+await mkdir(new URL('contracts-types/',out),{recursive:true});
+const result=await build({absWorkingDir:root.pathname,entryPoints:['src/protocol/values.mjs'],outfile:new URL('contracts.mjs',out).pathname,
+ bundle:true,platform:'node',format:'esm',target:'node24',external:['canonicalize'],metafile:true,legalComments:'inline',
+ banner:{js:'// Build-generated Adapter-owned document protocol structures; Q-98/Q-99.'}});
+const external=Object.values(result.metafile.outputs).flatMap(x=>x.imports).filter(x=>x.external).map(x=>x.path);
+if(external.some(x=>!x.startsWith('node:')&&x!=='canonicalize'))throw Error('UNEXPECTED_COMPILED_CONTRACT_DEPENDENCY');
+const files=['contracts.mjs'];
+for(const name of ['index.d.ts','contracts.d.ts']){const target='contracts-types/'+name;await writeFile(new URL(target,out),await readFile(new URL('src/protocol/'+name,root)));files.push(target);}
+for(const [source,target] of [['LICENSE','contracts-LICENSE'],['historical-NOTICE','contracts-NOTICE']]){await writeFile(new URL(target,out),await readFile(new URL('src/protocol/'+source,root)));files.push(target);}
+const source=JSON.parse(await readFile(new URL('scripts/protocol-source.json',root)));
+const hashes=Object.fromEntries(await Promise.all(files.map(async n=>[n,createHash('sha256').update(await readFile(new URL(n,out))).digest('hex')])));
+await writeFile(new URL('contracts-build.json',out),JSON.stringify({owner:source.owner,mechanism:source.mechanism,sourceInputs:source.sha256,builder:'esbuild@0.28.2',externalImports:external,sha256:hashes},null,2)+'\n');
+console.log('Compiled Adapter-owned document protocol values and declarations');

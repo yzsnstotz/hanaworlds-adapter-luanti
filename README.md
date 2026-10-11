@@ -14,12 +14,12 @@ npm run build
 npm pack
 ```
 
-The development contract input is exactly
-`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0`.
-Normal builds compile its required runtime structures and public types into this
-plugin. Production exports load `dist/runtime/` without the contract package or
-build tools installed. The lock and `scripts/contracts-source.json` identify the
-published source; embedded SDK LICENSE and NOTICE remain in the package.
+Adapter owns its necessary protocol structures, types and validators. Normal
+builds compile local, audited inputs into this plugin. Neither development nor
+production resolves a contract package/repository. The lock contains only actual
+dependencies; `scripts/protocol-source.json` identifies owned document/schema/
+helper inputs. Historical MIT source attribution and LICENSE/NOTICE remain.
+Production exports load `dist/runtime/` without build tools installed.
 
 Public Cordis services are `hanaworldsWorldAdapterV6` (`world-adapter/v8`),
 `hanaworldsWorldAdapterRegionV1` (`world-adapter-region/v3`),
@@ -38,8 +38,7 @@ and returns the actual `worldRef`, `StateProfile` and opaque `ScopedCells`.
 Positions must be nonempty, sorted numerically by x/y/z and unique; they are
 never reordered or deduplicated. Root callers, forged identities, other roots
 and stale providers refuse. The package root declares `WorldFactsHostPort` and
-`ScopedStateFacts` using the existing scoped binding types. The corresponding
-shared SDK addition is pending formal publication for this source candidate.
+`ScopedStateFacts` using the existing scoped binding types. The additive public protocol and generated types are owned by Adapter under Q-99.
 See [scoped state](docs/world-source-facts.md#read-only-host-scoped-state).
 
 Configure explicit `localUserPath` and `localWorldRoots`; use `localCreationRoot`
@@ -70,7 +69,7 @@ returns the current context separately. Older payloads and records are refused.
 
 The package exports `./host`, `./inspection-context`, `./source-locator`,
 `./local-worlds-v2-mock`, `./world-source-facts-mock` and the declared JSON fixtures.
-Mock providers use the published SDK fixtures; they have no world/runtime effects.
+Mock providers use the Adapter-owned document protocol fixtures; they have no world/runtime effects.
 
 Diagnostic gates run from any working directory:
 
@@ -84,8 +83,8 @@ The evidence directory must be inside
 `HW_ADAPTER_RUN_ROOT`). `final-gate-flat-world.sh`, `final-gate-world-switch.sh`
 and `final-gate-world-delete.sh` use the same inputs. Each preserves its original
 real-engine test entry, runs source and packed artifacts, and retains failures.
-Profiles and worlds are freshly prepared inside that evidence directory. Cordis
-and contract fixtures come from this checkout's development dependencies.
+Profiles and worlds are freshly prepared inside that evidence directory. Cordis is the official development Host runtime; protocol fixtures and structures
+are owned and normally built by this plugin.
 SOURCE/FIXTURE, real-engine diagnostics with Host peers, real Host/UI and owner
 acceptance are separate evidence levels.
 
@@ -95,3 +94,8 @@ Sources: [Luanti](https://github.com/luanti-org/luanti) (D-7 runtime) and
 preserve attribution and approved source records. Historical pages/source moved
 outside the repository; `scripts/migration-archive.json` preserves their inventory
 and hashes for restoration. They are excluded from npm packages.
+
+Q-98/Q-99: protocol documents and owned structure provenance replace SDK package/tag
+publication. Development and production resolve no contract repository/package.
+See [scoped-state protocol](docs/protocol-scoped-state.md) and
+[build provenance](docs/protocol-provenance.md).

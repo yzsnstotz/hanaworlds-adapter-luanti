@@ -521,13 +521,17 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           if(refusal)throw refusal;
           check();
           const result=await scopedStateRead(ref,scope,check);
-          return {worldRef:validateType('Ref',result.worldRef),stateProfile:validateType('StateProfile',result.stateProfile),
-            cells:validateType('ScopedCells',result.cells)};
+          return validateType('ScopedStateFacts',result);
         }catch(error){
           if(error instanceof ContractError)throw error;
+          if(error?.publicError!==undefined){
+            const refusal=validateType('Error',error.publicError);
+            if(refusal.mutationState!=='NONE')throw new ContractError('SCHEMA_INVALID','validate','INVALID_SHAPE');
+            throw new ContractError(refusal.code,refusal.phase,refusal.reason,refusal);
+          }
           const cause=error?.code??error?.message;
           const code=schemaBundle.definitions.ErrorCode.enum.includes(cause)?cause:'CAPABILITY_UNAVAILABLE';
-          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN');
+          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error.source?{source:error.source}:{});
         }
       };
     },

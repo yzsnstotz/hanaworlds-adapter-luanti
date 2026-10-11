@@ -17,7 +17,7 @@ const root = await realpath(process.env.HW_LOCAL_E);
 const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed && process.env.HW_CORDIS_MODULE, 'HW_LOCAL_PACKAGE and HW_CORDIS_MODULE are required');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'dist/runtime/index.mjs')));
-const C = await import('hanaworlds-contracts');
+const C = await import('#contracts');
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const LUANTI = process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti';
 const profile = join(root, 'profile'), world = join(profile, 'worlds', 'current'), home = join(root, 'home');

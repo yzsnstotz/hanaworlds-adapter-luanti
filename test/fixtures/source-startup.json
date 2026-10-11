@@ -1,0 +1,57 @@
+{
+  "evidence": "SOURCE/FIXTURE only; heterogeneous world-source startup descriptions, no native launch or authority",
+  "exchanges": [
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "startup-0",
+        "worldRef": "world-0"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "startup-0",
+        "result": {
+          "worldRef": "world-0",
+          "sourceLocator": {
+            "source": 0
+          },
+          "sourceStartupFacts": {
+            "profile": "renamed-fixture-source",
+            "httpMods": [
+              "renamed_payload"
+            ]
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "startup-1",
+        "worldRef": "world-1"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "startup-1",
+        "result": {
+          "worldRef": "world-1",
+          "sourceLocator": {
+            "source": 1
+          },
+          "sourceStartupFacts": {
+            "profile": "heterogeneous-fixture-source",
+            "bootstrap": {
+              "opaquePermit": "permit-b"
+            }
+          }
+        },
+        "error": null
+      }
+    }
+  ]
+}

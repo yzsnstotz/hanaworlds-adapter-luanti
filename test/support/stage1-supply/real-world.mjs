@@ -136,7 +136,7 @@ export async function openRealWorld({ runRoot, game, worldedit, log = () => {} }
   ctx.provide('hanaworldsWorldRevisionOracle', { read: async () => 'fixture-canvas-world-head-1' });
   ctx.provide('hanaworldsCanvasFootprintRegistry', { readFootprints: async worldRef => ({ current: true, durable: true, worldRef, objects: [] }) });
   ctx.provide('hanaworldsCanvasHistoryFacts', { read: async () => history });
-  const C = await import('hanaworlds-contracts');
+  const C = await import('#contracts');
   const adapterFiber = ctx.plugin({ name: 'hanaworlds-adapter-luanti', inject, apply(c) { apply(c, { localWorldRoots: [worlds] }); } });
   await adapterFiber.await();
   const canvasFiber = ctx.plugin({ name: 'adapter-contract-peer-fixture', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {

@@ -16,7 +16,7 @@ export function verifyPackage(dir) {
    if(name===SDK || spec.includes('hanaworlds-contracts')) fail('PRODUCTION_CONTRACT_DEPENDENCY',field);
    if(/^(?:file:|link:|workspace:|git|https?:)/.test(spec)) fail('EXOTIC_PRODUCTION_DEPENDENCY',name);
   }
- if(pkg.devDependencies?.[SDK]!=='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0') fail('DEVELOPMENT_SUPPLY_MISMATCH',SDK);
+ if(Object.entries(pkg.devDependencies??{}).some(([n,s])=>n===SDK||s.includes(SDK)))fail('DEVELOPMENT_SUPPLY_MISMATCH',SDK);
  if(pkg.imports?.['#contracts']?.development!=='./dist/contracts.mjs'||pkg.imports?.['#contracts']?.default!=='./dist/runtime/contracts.mjs'||existsSync(join(root,'dist/contracts.mjs')))fail('DEVELOPMENT_MODULE_BOUNDARY',SDK);
  const closure=new Set(), external=new Set(), resources=new Set();
  const local = (path, owner, directory=false) => {
@@ -111,10 +111,15 @@ export function verifyPackage(dir) {
  function all(path){for(const n of readdirSync(path)){const p=join(path,n);if(lstatSync(p).isDirectory())all(p);else if(/\.(mjs|cjs|js)$/.test(p))visit(p);}}
  all(root);
  const meta=JSON.parse(readFileSync(join(root,'dist/runtime-build.json')));
- if(meta.sourceVersion!=='2.13.0'||meta.sourceTag!=='v2.13.0'||!meta.sourceResolved.endsWith('#f8baf189099b517cacfe8a0b385d140932923b17'))fail('BUILD_SOURCE_MISMATCH',meta.sourceResolved);
+ const input=readFileSync(join(root,'dist/protocol-source.json'));
+ const provenance=JSON.parse(input);
+ if(meta.owner!=='adapter'||meta.mechanism!=='Q-98/Q-99 document protocol'||provenance.owner!==meta.owner||provenance.mechanism!==meta.mechanism||createHash('sha256').update(input).digest('hex')!==meta.protocolSourceSHA256)fail('BUILD_SOURCE_MISMATCH',meta.protocolSourceSHA256);
+ if(createHash('sha256').update(`export { ${meta.contractExports.join(', ')} } from './src/protocol/values.mjs';`).digest('hex')!==meta.generatedEntrySHA256)fail('BUILD_SOURCE_MISMATCH','generated entry');
+ for(const [p,h] of Object.entries(meta.sourceInputs??{}))if(!p.startsWith('src/protocol/')||provenance.sha256[p]!==h)fail('BUILD_SOURCE_MISMATCH',p);
+ if(!Object.keys(meta.sourceInputs??{}).includes('src/protocol/values.mjs')||!Object.keys(meta.sourceInputs??{}).includes('src/protocol/schema.json'))fail('BUILD_SOURCE_MISMATCH','missing owned values/schema');
  for(const [path,expected] of Object.entries(meta.sha256)) {
   local(path,'build manifest'); const hash=createHash('sha256').update(readFileSync(join(root,path))).digest('hex');
   if(hash!==expected)fail('ARTIFACT_DIGEST_MISMATCH',path);
  }
- return {exports:pkg.exports,modules:[...closure].map(p=>relative(root,p)).sort(),resources:[...resources].sort(),external:[...external].sort(),source:meta.sourceResolved};
+ return {exports:pkg.exports,modules:[...closure].map(p=>relative(root,p)).sort(),resources:[...resources].sort(),external:[...external].sort(),source:meta.protocolSourceSHA256};
 }

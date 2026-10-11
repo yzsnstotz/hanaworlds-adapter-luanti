@@ -21,7 +21,7 @@ test('all real npm tar public runtime/resources close with no SDK runtime loads'
 });
 const edit=(base,path,change)=>{const p=join(base,path);const x=JSON.parse(readFileSync(p));change(x);writeFileSync(p,JSON.stringify(x));};
 for(const [name,mutate,expected] of [
- ['production SDK dependency',b=>edit(b,'package.json',p=>p.dependencies['hanaworlds-contracts']=p.devDependencies['hanaworlds-contracts']),/PRODUCTION_CONTRACT_DEPENDENCY/],
+ ['production SDK dependency',b=>edit(b,'package.json',p=>p.dependencies['hanaworlds-contracts']='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0'),/PRODUCTION_CONTRACT_DEPENDENCY/],
  ['bare SDK value load',b=>writeFileSync(join(b,'dist/runtime/index.mjs'),"import * as SDK from 'hanaworlds-contracts'; export { SDK };"),/CONTRACT_RUNTIME_LOAD/],
  ['private SDK alias load',b=>writeFileSync(join(b,'dist/runtime/index.mjs'),"export * from '#contracts';"),/CONTRACT_RUNTIME_LOAD/],
  ['computed dynamic SDK import',b=>writeFileSync(join(b,'dist/runtime/index.mjs'),"const name='hanaworlds-contracts'; await import(name);"),/DYNAMIC_MODULE_LOAD/],
@@ -31,7 +31,7 @@ for(const [name,mutate,expected] of [
  ['dynamic require constructor',b=>writeFileSync(join(b,'dist/runtime/index.mjs'),"import {createRequire} from 'node:module'; const load=createRequire(import.meta.url); load('hanaworlds-contracts');"),/DYNAMIC_MODULE_LOADER/],
  ['unpacked JSON resource',b=>writeFileSync(join(b,'dist/runtime/index.mjs'),"import data from './lost.json' with {type:'json'}; export {data};"),/UNPACKED_LOCAL_DEPENDENCY/],
  ['omitted bundle',b=>rmSync(join(b,'dist/runtime/contracts.mjs')),/UNPACKED_LOCAL_DEPENDENCY/],
- ['wrong source SHA',b=>edit(b,'dist/runtime-build.json',p=>p.sourceResolved='git+https://github.com/other/contracts.git#0000'),/BUILD_SOURCE_MISMATCH/],
+ ['wrong source SHA',b=>edit(b,'dist/runtime-build.json',p=>p.protocolSourceSHA256='0'.repeat(64)),/BUILD_SOURCE_MISMATCH/],
  ['changed generated value',b=>writeFileSync(join(b,'dist/runtime/contracts.mjs'),readFileSync(join(b,'dist/runtime/contracts.mjs'),'utf8')+'\nexport const fault=true;'),/ARTIFACT_DIGEST_MISMATCH/],
  ['package import outside tar',b=>edit(b,'package.json',p=>p.imports['#other']='../source/secret.mjs'),/UNPACKED_LOCAL_DEPENDENCY/],
 ]) test(`actual corrupted tgz refuses ${name}`,t=>{

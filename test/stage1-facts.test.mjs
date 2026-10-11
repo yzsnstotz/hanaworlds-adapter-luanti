@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createConnection } from 'node:net';
 import { mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } from 'node:fs/promises';
-import { describeSourceWorld, digestValue, validateConfigEngineFacts, requireKnownWriteBackend, publicError } from 'hanaworlds-contracts';
+import { describeSourceWorld, digestValue, validateConfigEngineFacts, requireKnownWriteBackend, publicError } from '#contracts';
 import { openFixtureWorld } from './support/stage1-supply/fixture-world.mjs';
 import { configEngineFactsRevision } from '../src/stage1-facts.mjs';
 

@@ -1,0 +1,51 @@
+{
+  "profileVersion": "catalogue/v3",
+  "engineRevisions": {
+    "fixture-game": "fixture-game-1",
+    "fixture-mod": "fixture-mod-1"
+  },
+  "emptyMaterialRef": "air",
+  "materials": {
+    "air": {
+      "passable": true,
+      "liquid": false,
+      "hazardPerSecond": 0,
+      "emitsLight": false,
+      "placeable": true,
+      "orientations": [
+        0
+      ],
+      "definitionRevision": "fixture-def-1",
+      "unknownFields": [],
+      "extension": {
+        "collisionBoxes": [],
+        "param2Type": "none"
+      }
+    },
+    "fixture:stone": {
+      "passable": false,
+      "liquid": false,
+      "hazardPerSecond": 0,
+      "emitsLight": false,
+      "placeable": true,
+      "orientations": [
+        0
+      ],
+      "definitionRevision": "fixture-def-1",
+      "unknownFields": [],
+      "extension": {
+        "collisionBoxes": [
+          [
+            -0.5,
+            -0.5,
+            -0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        ],
+        "param2Type": "none"
+      }
+    }
+  }
+}

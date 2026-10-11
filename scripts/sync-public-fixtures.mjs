@@ -1,11 +1,11 @@
-// One upstream source for the provider's packaged fixture projection; no old card roots.
-import { readFile, writeFile } from 'node:fs/promises';
-import { canonicalJSON, version } from 'hanaworlds-contracts';
-const upstream = JSON.parse(await readFile(new URL(import.meta.resolve('hanaworlds-contracts/fixtures/world-source-facts'))));
-const operations = ['ReadCatalogue','ReadMaterialSources','ReadEngineFacts','ReadWriteProfile','ReadWorldSourceCapabilities'];
-const fixture = { evidence: `SOURCE/FIXTURE; published contracts v${version} examples, no real engine or currentness`,
-  exchanges: operations.map(operation => upstream.exchanges.find(x=>x.operation===operation && x.response.result)) };
-const path = new URL('../fixtures/world-source-facts.json', import.meta.url);
-if (process.argv.includes('--check')) {
-  if (canonicalJSON(JSON.parse(await readFile(path))) !== canonicalJSON(fixture)) throw Error('PUBLIC_FIXTURE_OUT_OF_DATE');
-} else await writeFile(path,JSON.stringify(fixture,null,2)+'\n');
+// Adapter-owned public fixture; validate against the local document protocol and audited input.
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {validateBoundResponse} from '../src/protocol/values.mjs';
+const root=new URL('../',import.meta.url),path='fixtures/world-source-facts.json';
+const bytes=await readFile(new URL(path,root));
+const manifest=JSON.parse(await readFile(new URL('scripts/protocol-source.json',root)));
+if(createHash('sha256').update(bytes).digest('hex')!==manifest.sha256[path])throw Error('PUBLIC_FIXTURE_OUT_OF_DATE');
+const fixture=JSON.parse(bytes);
+for(const row of fixture.exchanges)validateBoundResponse(row.wire,row.operation,row.request,row.response);
+if(!fixture.exchanges.some(row=>row.operation==='ReadCatalogue'))throw Error('PUBLIC_FIXTURE_INCOMPLETE');

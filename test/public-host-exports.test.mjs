@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,realpath} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import * as C from 'hanaworlds-contracts';
+import * as C from '#contracts';
 const base=process.env.HW_PUBLIC_HOST_TEST_ROOT??process.env.HW_ADAPTER_TEST_ROOT??tmpdir();
 await mkdir(base,{recursive:true});const root=await mkdtemp(join(base,'public-host-'));
 test('public native factory exposes the actual port without inventing child facts',async()=>{

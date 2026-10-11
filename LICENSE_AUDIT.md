@@ -359,3 +359,15 @@ pnpm 11.28.5 (MIT) validates normal strict production installation; TypeScript
 5.8.3 (Apache-2.0) and esbuild 0.28.2 (MIT) remain development build/check tools.
 Native command observation and region-emerge preparation are test-environment
 code in own worlds; no observation fixture is shipped as product capability.
+
+## Q-99 document protocol adaptation
+
+Current structures are plugin-owned MIT adaptations of only necessary historical
+validator/schema/type helpers at v2.13.0/f8baf189099b517cacfe8a0b385d140932923b17.
+No external contract dependency, current SDK publication or complete repository
+is included. Historical entries above remain legal provenance, not present
+build/dependency declarations. Exact local inputs and generation hashes are
+audited in scripts/protocol-source.json; original hashes remain in
+scripts/protocol-history.json. LICENSE and historical NOTICE are retained by
+normal build. Required test fixtures are selected projections; tests and
+fixture sets are excluded from the production artifact.

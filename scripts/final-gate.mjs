@@ -31,7 +31,7 @@ function run(name,file,args,cwd=source,extra={}){
 }
 try{
  run('runtime',env.HW_LUANTI,['--version']);
- writeFileSync(join(evidence,'source.json'),JSON.stringify({commit,node:process.version,gate,contracts:JSON.parse(readFileSync(join(source,'scripts/contracts-source.json')))},null,2)+'\n');
+ writeFileSync(join(evidence,'source.json'),JSON.stringify({commit,node:process.version,gate,contracts:JSON.parse(readFileSync(join(source,'scripts/protocol-source.json')))},null,2)+'\n');
  run('verify-contracts',npm,['run','verify:contracts']);run('contract-tests',npm,['run','test:contracts']);run('source-tests',npm,['test']);run('build',npm,['run','build']);run('lua-tests',npm,['run','test:lua']);
  run('pack',npm,['pack','--json','--pack-destination',evidence]);
  const meta=JSON.parse(readFileSync(join(source,'package.json')));

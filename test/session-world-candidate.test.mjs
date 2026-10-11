@@ -2,13 +2,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from '#contracts';
-import fixture from 'hanaworlds-contracts/fixtures/session-world' with {type:'json'};
+import fixture from './fixtures/session-world.json' with {type:'json'};
 test('handshake accepts itself and the same contracts major, rejects another major',()=>{
  assert.equal(C.contractHandshake.contracts,`hanaworlds-contracts@${C.version}`);C.checkContractsVersion(C.contractHandshake.contracts);
  assert.equal(C.checkContractHandshake(C.contractHandshake).result,'HANDSHAKE_VERSION_MATCH');
  // contracts 1.x: same major 1 is accepted; the 0.x line and major 2 are refused.
- assert.equal(C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@1.0.0'}).result,'HANDSHAKE_VERSION_MATCH');
- for(const other of ['0.5.6','2.0.0']) assert.throws(()=>C.checkContractHandshake({...C.contractHandshake,contracts:`hanaworlds-contracts@${other}`}),e=>e.code==='UNSUPPORTED_VERSION');
+ assert.equal(C.checkContractHandshake({...C.contractHandshake,contracts:'hanaworlds-contracts@2.0.0'}).result,'HANDSHAKE_VERSION_MATCH');
+ for(const other of ['0.5.6','1.0.0']) assert.throws(()=>C.checkContractHandshake({...C.contractHandshake,contracts:`hanaworlds-contracts@${other}`}),e=>e.code==='UNSUPPORTED_VERSION');
 });
 test('all fifteen public Session/world sequence envelopes and trusted Session directory validate',()=>{
  for(const row of fixture.ownerAScenario)C.validateBoundResponse(row.wire,row.operation,row.request,row.response);
