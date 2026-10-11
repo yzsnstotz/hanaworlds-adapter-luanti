@@ -107,3 +107,20 @@ test('neutral read retains a named public refusal from an independent native exc
  f.afterRead(()=>{throw {publicError:{code:'TARGET_FACTS_INCOMPLETE',extra:true}};});
  await assert.rejects(f.read(),refused('UNKNOWN_REQUIRED_FIELD'));
 });
+
+
+// The merged source's optional failure provenance survives neutral reads across
+// independently constructed exceptions, using protocol fields rather than instanceof.
+test('neutral scoped errors retain merged source provenance and reject malformed source',async t=>{
+ const f=await setup(t);
+ const source={owner:'world-source',operation:'snapshot',resource:'courier-result-body',kind:'LIMIT',nativeCode:null};
+ for(const failure of [
+  Object.assign(new Error('LIMIT_EXCEEDED'),{source}),
+  {publicError:{code:'LIMIT_EXCEEDED',phase:'validate',retryability:'AFTER_NEW_FACTS',mutationState:'NONE',transactionRef:null,causeCode:null,reason:'REQUIRED_FACT_UNKNOWN',source}},
+ ]) {
+  f.afterRead(()=>{throw failure;});
+  await assert.rejects(f.read(),e=>{assert.deepEqual(plain(e.publicError.source),source);return refused('LIMIT_EXCEEDED')(e);});
+ }
+ f.afterRead(()=>{throw Object.assign(new Error('LIMIT_EXCEEDED'),{source:{...source,privatePath:'/invented'}});});
+ await assert.rejects(f.read(),refused('UNKNOWN_REQUIRED_FIELD'));
+});

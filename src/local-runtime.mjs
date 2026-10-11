@@ -19,6 +19,8 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
 import { createStage1Facts } from './stage1-facts.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
+import { sourceLog } from './resource-errors.mjs';
+
 const WIRE = 'world-adapter/v8';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
@@ -34,7 +36,7 @@ const trackedCaller = (receiver, port, ctx) => types.isProxy(receiver) &&
   Object.getOwnPropertyDescriptor(receiver, 'ctx')?.value === ctx ? receiver.ctx : null;
 
 /** All dependencies below are in-process ports, never caller JSON facts. */
-export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, log = message => console.warn(message) }) {
+export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, transportSettings = {}, log = message => console.warn(message) }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
   let activeCanvasCheck = () => {}, activeWriteRequest = null;
   let inventorySignature = null, inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`;
@@ -60,7 +62,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     async pairLocal(world) {
       if (closed || rows.has(world.connectionRef) || [...rows.values()].some(row =>
         row.worldRef === world.worldRef || row.worldPath === world.worldPath)) fail('CURRENT_WORLD_MISMATCH');
-      const engine = await LocalCourier.open(world);
+      const engine = await LocalCourier.open(world, transportSettings);
       try {
         await engine.handshake();
         const neutral = new NeutralEngine(engine);
@@ -433,13 +435,14 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           else validateRegionWrite(r, response);
           return response;
         } catch (error) {
+          if(sourceLog(error)) log(sourceLog(error));
           if (error instanceof RegionFault && error.refusal) return validateResponse(REGION_WIRE, name, { contractVersion: REGION_WIRE,
             requestId: r.requestId, result: null, ...error.refusal });
           const code = schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateResponse(REGION_WIRE, name, shaped(name, { contractVersion: REGION_WIRE, requestId: r.requestId, result: null,
             error: { code, phase: 'validate', retryability: 'AFTER_NEW_FACTS', mutationState: 'NONE',
               transactionRef: r.transactionId ?? null, causeCode: null,
-              reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN' } }));
+              reason: error instanceof RegionFault ? error.reason : 'REQUIRED_FACT_UNKNOWN', ...(error.source?{source:error.source}:{}) } }));
         }
       });
       serial = work.finally(() => { activeCanvasCheck = () => {}; activeWriteRequest = null; }).catch(() => {}); return work;
@@ -483,6 +486,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           if (row) await inspectConnection(row.connectionRef);
           return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: await perform(name, r, row), error: null }));
         } catch (error) {
+          if(sourceLog(error)) log(sourceLog(error));
           const saved = r.transactionId && rows.get(r.localContext?.connectionRef)?.store.get(r.transactionId);
           // A failed restore answers with the receipt's restore error and guard refusal; a guard
           // that refused before any write answers with its contract error and GuardRefusal.
@@ -498,7 +502,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
             : schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null,
             error: { code, phase: mutationState==='UNKNOWN'?'apply':'validate', retryability: 'NEVER', mutationState,
-              transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } }));
+              transactionRef: r.transactionId ?? null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN', ...(error.source?{source:error.source}:{}) } }));
         }
       };
       const work = inventoryRead ? execute() : serial.then(execute);
@@ -536,18 +540,19 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       };
     },
     protocolHandshake:validateType('ProtocolHandshake',{...worldAdapterProtocolHandshake,
-      protocols:[{protocol:'world-facts',major:1,minor:0}],capabilities:['world-facts/v1:named-reads']}),
+      protocols:[{protocol:'world-facts',major:1,minor:1}],capabilities:['world-facts/v1:named-reads','world-facts/v1:transport-policy']}),
     async call(name,input) {
       const wire='world-facts/v1';
       const request=typeof input==='string'||input instanceof Uint8Array?admitRequest(wire,name,input):validateBoundRequest(wire,name,input);
       let result=null,error=null;
       try { result=await stage1Read(request.worldRef,row=>readWorldSourceFact(name,row)); }
       catch(failure) {
+        if(sourceLog(failure)) log(sourceLog(failure));
         const cause=failure.code??failure.message;
         const currency=['CURRENT_WORLD_MISMATCH','CATALOGUE_MISMATCH','SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD','UNSUPPORTED_VERSION'];
         const code=currency.includes(cause)?cause:name==='ReadCatalogue'&&cause==='WORLD_NOT_BOUND'?'WORLD_NOT_BOUND'
           :name==='ReadMaterialSources'?'CAPABILITY_UNAVAILABLE':'ADAPTER_UNAVAILABLE';
-        error=new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN').publicError;
+        error=new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN',failure.source?{source:failure.source}:{}).publicError;
       }
       return validateBoundResponse(wire,name,request,{contractVersion:wire,requestId:request.requestId,result,error});
     }};

@@ -104,7 +104,11 @@ await fs.writeFile(worldRoot+'/world/world.mt','gameid = package_probe\\n');
 const services = new Map();
 const adapter = apply({ get() {}, provide: (n, s) => services.set(n, s), effect() {}, webServer: { register: () => () => {} } },{localWorldRoots:[worldRoot]});
 try {
+ // Preserve the legacy compatibility identifier; transport additions use the public protocol declaration.
  assert.equal(services.get('hanaworldsWorldAdapterV6').contractHandshake.contracts, 'hanaworlds-contracts@2.13.0');
+ assert.deepEqual(JSON.parse(JSON.stringify(services.get('hanaworldsWorldAdapterV6').protocolHandshake.protocols)),[{protocol:'world-adapter',major:8,minor:4}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(services.get('hanaworldsWorldFacts').protocolHandshake.protocols)),[{protocol:'world-facts',major:1,minor:1}]);
+ assert.equal(adapter.status().transportPolicy.owner,'world-source');
  const port=services.get('hanaworldsLocalWorlds');
  const rows=await port.discover();assert.equal(rows.length,1);assert.equal(rows[0].gameId,'package_probe');
  const source=await port.describeSourceWorld({contractVersion:'local-worlds/v2',requestId:'source',worldRef:rows[0].connectionRef});

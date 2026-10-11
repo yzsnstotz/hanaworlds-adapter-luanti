@@ -3,7 +3,7 @@
 The world-source provider reads local Luanti worlds and executes authorized Canvas
 transactions using native cell/bulk APIs. Neutral facts, exact world identity,
 current provider ownership, state readback and recovery are defined in README.md
-and the exact published contracts 2.13.0 development input.
+and the public document protocol with Adapter-owned structures (Q-98/Q-99).
 
 Normal builds emit the production entry in dist/runtime/index.mjs. Engine, game,
 contract package and development pages are not installed with this artifact.

@@ -1,7 +1,6 @@
 -- Private loopback courier. It never accepts world commands from a player
 -- form or arbitrary HTTP caller; the host must possess the per-world secret.
 local M = {}
-local MAX_BODY_BYTES = 4 * 1024 * 1024
 
 -- Error text for the server log without positions, yaw or box values.
 function M.redact(message)
@@ -15,9 +14,9 @@ function M.redact(message)
 end
 
 function M.start(http, engine_module, manifest, read_own_file, on_ready, capabilities, present_frame,
-  region, facts, voxel)
+  region, facts, voxel, policy)
   local raw = read_own_file('transport.json')
-  local config = raw and minetest.parse_json(raw) or nil
+  local config = raw and minetest.parse_json(raw, {}) or nil
   if not http then
     minetest.log('warning', 'HanaWorlds local courier unavailable: HTTP mod permission missing')
     return false
@@ -30,6 +29,13 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     minetest.log('warning', 'HanaWorlds local courier unavailable: pairing configuration invalid')
     return false
   end
+
+  local settings, invalid = policy and policy.validate_paired(config.settings)
+  if not settings then
+    minetest.log('error', 'HanaWorlds courier configure courier-settings INVALID_CONFIG')
+    return false
+  end
+  local max_body_bytes = settings.courierBodyBytes
 
   local base = 'http://127.0.0.1:' .. config.port
   local header = {'Authorization: Bearer ' .. config.token, 'Content-Type: application/json'}
@@ -55,6 +61,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     local result, code, detail
     if command.operation == 'handshake' then
       result = capabilities()
+      result.transportSettings = settings
     elseif command.operation == 'fact_profile' then
       if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
@@ -62,7 +69,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     elseif command.operation == 'fact_capacity' then
       if type(facts) ~= 'table' or type(facts.capacity) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
-      else result, code = facts.capacity(minetest, command.cellCount, MAX_BODY_BYTES) end
+      else result, code = facts.capacity(minetest, command.cellCount, max_body_bytes) end
     elseif command.operation == 'fact_catalogue' then
       if type(facts) ~= 'table' or type(facts.catalogue) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
@@ -94,7 +101,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     elseif command.operation == 'region_limits' or command.operation == 'region_emerge'
       or command.operation == 'region_read' or command.operation == 'region_write' then
       if type(voxel) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
-      elseif command.operation == 'region_limits' then result, code = voxel.limits(minetest, MAX_BODY_BYTES)
+      elseif command.operation == 'region_limits' then result, code = voxel.limits(minetest, max_body_bytes)
       elseif command.operation == 'region_emerge' then result, code = voxel.emerge(minetest, command.min, command.max, command)
       elseif command.operation == 'region_read' then result, code = voxel.read(minetest, command)
       else result, code, detail = voxel.write(minetest, command, function(enc) return region:region_enclosure(enc) end) end
@@ -206,12 +213,16 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
         end
         on_ready(true)
         if not decoded.command then minetest.after(0.2, poll); return end
-        local ok, result, code, detail = pcall(run, decoded.command)
+        local ok, result, code, detail
+        if type(response.data) ~= 'string' or #response.data > max_body_bytes then
+          ok, code, detail = true, 'LIMIT_EXCEEDED', 'COURIER_COMMAND_BODY'
+          minetest.log('warning', 'HanaWorlds courier command courier-command-body LIMIT')
+        else ok, result, code, detail = pcall(run, decoded.command) end
         local function send(result, code, detail)
           local body = encode_reply(decoded.command.id, result, code, detail)
-          if #body > MAX_BODY_BYTES then
-            minetest.log('warning', 'HanaWorlds courier reply exceeds paired host body limit')
-            body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED')
+          if #body > max_body_bytes then
+            minetest.log('warning', 'HanaWorlds courier ' .. tostring(decoded.command.operation) .. ' courier-result-body LIMIT: ' .. #body .. ' byte > ' .. max_body_bytes .. ' byte')
+            body = encode_reply(decoded.command.id, nil, 'LIMIT_EXCEEDED', 'COURIER_RESULT_BODY')
           end
           http.fetch({url = base .. '/result', method = 'POST', data = body,
             extra_headers = header, quiet = true}, function()

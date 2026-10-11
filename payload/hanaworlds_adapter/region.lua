@@ -63,15 +63,25 @@ end
 function Region:load()
   local core = self.core
   if type(self.path) ~= 'string' then self.readable = false; return end
-  local file = io.open(self.path, 'rb')
-  if not file then self.readable = true; return end -- no record yet
-  local raw = file:read('*a')
-  file:close()
+  local file, message, errno = io.open(self.path, 'rb')
+  local function failure(kind, code)
+    self.readable = false
+    self.read_failure = {resource='pick-storage',kind=kind,nativeCode=code}
+    if type(core.log)=='function' then core.log('error', 'HanaWorlds storage-read pick-storage ' .. kind .. ' errno=' .. tostring(code)) end
+  end
+  if not file then
+    if errno == 2 then self.readable = true; return end
+    failure((errno == 13 or errno == 1) and 'PERMISSION' or 'IO', errno); return
+  end
+  local raw, read_error, read_errno = file:read('*a')
+  local closed, close_error, close_errno = file:close()
+  if not raw or not closed then failure('IO', read_errno or close_errno); return end
   local ok, decoded = pcall(core.parse_json, raw)
   if not ok or type(decoded) ~= 'table' or decoded.format ~= STATE_FORMAT then
-    self.readable = false
+    failure('CORRUPT', nil)
     return
   end
+  if type(decoded.picks) ~= 'table' then failure('CORRUPT',nil); return end
   self.picks = type(decoded.picks) == 'table' and decoded.picks or {}
   self.readable = true
 end

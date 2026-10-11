@@ -1,3 +1,4 @@
+import { TRANSPORT_DEFAULTS } from '../src/transport-policy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LocalCourier } from '../src/local-courier.mjs';
@@ -7,7 +8,7 @@ import { ENGINE_GUARDS } from '../src/safety-capabilities.mjs';
 test('current payload pairs without WorldEdit while payload and safety checks remain mandatory', async () => {
   const courier = new LocalCourier({worldRef:'world', payloadDigest:'digest'}, {token:'a'.repeat(64)});
   const facts = {worldRef:'world', payloadVersion:PAYLOAD_VERSION, payloadMatches:true,
-    loadedSourceDigest:'digest', engineGuards:ENGINE_GUARDS, worldeditAvailable:false};
+    loadedSourceDigest:'digest', transportSettings:TRANSPORT_DEFAULTS, engineGuards:ENGINE_GUARDS, worldeditAvailable:false};
   courier.dispatch = async () => facts;
   assert.equal(await courier.handshake(), facts);
   delete facts.worldeditAvailable;

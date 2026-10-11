@@ -1,6 +1,7 @@
 // Pure batch planning for region I/O. The number of mapblocks per engine
 // command is derived from the courier's actual reply body limit and the loaded
 // registry; it is a transport bound, not a policy setting.
+import { BATCH_ENVELOPE_RESERVE_BYTES } from './transport-policy.mjs';
 import { chunkOf } from '#contracts';
 const fail = code => { throw new Error(code); };
 
@@ -15,12 +16,14 @@ export function blocksPerBatch(limits, partition) {
   // cells; an oversized reply is refused by the engine (LIMIT_EXCEEDED) and the
   // host then reads that batch one mapblock at a time.
   const perBlock = cells * 24 + 512;
-  const envelope = 64 * 1024;
+  const envelope = limits.envelopeReserveBytes ?? BATCH_ENVELOPE_RESERVE_BYTES;
+  if (envelope !== BATCH_ENVELOPE_RESERVE_BYTES) fail('CAPABILITY_UNAVAILABLE');
   const palette = n => Math.min(registeredNodes, n * cells) * (longestNodeName * 2 + 8);
   let k = 0;
   while (envelope + (k + 1) * perBlock + palette(k + 1) <= maxBodyBytes) k++;
-  if (k < 1) fail('LIMIT_EXCEEDED');
-  return k;
+  // The estimate must not turn a valid small body budget into a blanket region refusal.
+  // One candidate block may compress below it; exact command/result checks remain mandatory.
+  return Math.max(1,k);
 }
 
 /** Split a node box into mapblock-aligned batch boxes of at most perBatch blocks. */

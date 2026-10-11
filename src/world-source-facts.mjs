@@ -90,18 +90,20 @@ export async function readWorldSourceFact(operation,row) {
       overlapRule:'last-writer-wins',effectOrder:'numeric-x-y-z',compressionRule:'exact-final-effects-only'}):null;
     const avatarEnvelope=validateType('AvatarEnvelope',raw?.avatarEnvelope??{availability:'UNAVAILABLE',reason:'NO_PUBLIC_SOURCE'});
     const limits=await engine.regionLimits();
+    const transportPolicy=engine.transportPolicy?.();
+    const transport=transportPolicy?{transportPolicy:validateType('WorldSourceTransportPolicy',transportPolicy)}:{};
     if(limits.mapblockSize!==WORLD_GEOMETRY.partition.edge[0])refuse('CAPABILITY_GAP');
     const bound=limits.mapgenLimit;
     const engineBounds=Number.isSafeInteger(bound)&&bound>0?{min:[-bound,-bound,-bound],max:[bound,bound,bound]}:null;
     if(operation==='ReadEngineFacts')out=validateEngineFacts({profileVersion:'engine-facts/v1',connection,
-      worldGeometry:WORLD_GEOMETRY,engineBounds,frame:{axes:['+X','+Y','+Z'],handedness:'left',gridUnit:{name:'cell',metersPerGridUnit:null}},writeMethods,writeBackend},connection);
+      ...transport,worldGeometry:WORLD_GEOMETRY,engineBounds,frame:{axes:['+X','+Y','+Z'],handedness:'left',gridUnit:{name:'cell',metersPerGridUnit:null}},writeMethods,writeBackend},connection);
     else if(operation==='ReadWriteProfile')out=validateWriteProfile({profileVersion:'write-profile/v1',connection,catalogueDigest,
-      writeBackend,compilationConfig,writeMethods,avatarEnvelope},before,connection);
+      ...transport,writeBackend,compilationConfig,writeMethods,avatarEnvelope},before,connection);
     else if(operation==='ReadWorldSourceCapabilities') {
       const rawPath=await engine.writePath();
       if(canonicalJSON(rawPath.catalogue)!==canonicalJSON(before))refuse('CURRENT_WORLD_MISMATCH');
       const writePath=writePathConclusions(before,rawPath.evidence);
-      const body={profileVersion:'world-source-capabilities/v1',owner:'world-source',connection,catalogueDigest,
+      const body={...transport,profileVersion:'world-source-capabilities/v1',owner:'world-source',connection,catalogueDigest,
         worldGeometry:WORLD_GEOMETRY,engineBounds,stateProfile:await engine.profile(),writeBackend,compilationConfig,writeMethods,
         writePath,engineGuards:engineGuardDeclaration(engine.engineGuards),avatarEnvelope};
       out=validateWorldSourceCapabilities({...body,capabilityRevision:opaqueRevision(body)},before,connection);

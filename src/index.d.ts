@@ -20,6 +20,8 @@ export declare const inject: readonly ['webServer'];
 export declare function payloadDigest(): Promise<string>;
 export declare function discoverLocalWorlds(roots: readonly string[]): Promise<ReadonlyArray<Readonly<Record<string, unknown>>>>;
 export interface AdapterOptions {
+ /** Fresh pairing requires the same validated source configuration. */
+ transportSettings?: { courierResultWaitMs?: number; courierBodyBytes?: number };
  localWorldRoots?: readonly string[];
  localUserPath?: string;
  localCreationRoot?: string;

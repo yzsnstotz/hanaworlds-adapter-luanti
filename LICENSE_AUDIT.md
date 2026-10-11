@@ -1,3 +1,19 @@
+# Current Q-99 mechanism after main integration
+
+External contract packages/tags below are historical attribution, superseded by
+Q-98/Q-99 document protocols and Adapter-owned build inputs. The main transport
+implementation, diagnostics and tests are retained; no external SDK dependency
+returns. Required MIT LICENSE/NOTICE and exact historical sources remain preserved.
+
+# adapter-visible-policy-01 (2026-10-11)
+
+- hanaworlds-contracts · 2.14.0 · MIT · Git tag v2.14.0 / 39781da25e28738e5243e6379e2cad0e03e03b3f · development API/schema/type/fixture input, compiled locally; LICENSE/NOTICE retained.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · installed App / https://github.com/luanti-org/luanti · unchanged D-7 runtime, isolated headless courier boundary test only; App never modified.
+- VoxeLibre · existing 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · unchanged D-8 base; this courier test uses original MIT fixture game and does not load user worlds or game archives.
+- canonicalize 5.1.0 (Apache-2.0), pngjs 7.0.0 (MIT), esbuild 0.28.2 (MIT), TypeScript 5.8.3 (Apache-2.0), Cordis 4.0.4 (MIT), Node 24.13.1 (MIT), Lua 5.5.1 (MIT) · unchanged npm/runtime/development inputs from existing exact lock/runtime paths.
+
+Policy, diagnostics and regressions are original MIT Adapter code. No new dependency or changed base usage. SOURCE/FIXTURE/REAL_ENGINE are separate from REAL_HOST/REAL_UI/owner acceptance.
+
 Current package verification tool: pnpm 11.28.5, MIT, https://github.com/pnpm/pnpm;
 development-only, exact registry identity/integrity in package-lock.json. Used to
 verify normal strict production installation of real Adapter tgz artifacts.

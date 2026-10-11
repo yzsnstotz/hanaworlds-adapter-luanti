@@ -42,8 +42,9 @@ These document-derived shapes and their required validation are retained in the
 owned structures so integration cannot drop them. Their normal default example
 is in test/fixtures/transport-policy.json; duplicate names, bad fields and range
 inconsistency refuse. The three public results and error fields remain additive.
-This compatibility check is not a claim that the current card tree has executed
-that newer main; program rebase and the complete main gate are still required.
+The card tree integrates that main implementation and its Node/Lua/real courier
+regressions. Fresh verification evidence is recorded in the card REPORT; the
+program must still run the complete gate on integrated main before consumption.
 
 The public ./host factory defaults to its plugin-owned built validator. Explicit
 C.validateType injection remains supported for existing Host callers/fixtures;

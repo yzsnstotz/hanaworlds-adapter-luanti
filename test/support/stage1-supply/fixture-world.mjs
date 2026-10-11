@@ -86,7 +86,7 @@ export async function openFixtureWorld({ runRoot, scenario }) {
           const guards = JSON.parse((await run('lua', [join(here, 'engine-fixture.lua'), payloadDir, scenarioFile, 'engine_guards'])).stdout);
           body = { result: { worldRef: manifest.worldRef, payloadVersion: PAYLOAD_VERSION,
             loadedSourceDigest: manifest.payloadDigest, manifestDigest: manifest.payloadDigest, payloadMatches: true,
-            worldeditAvailable: !!current.worldedit, worldeditVersion: 'local-static', engineGuards: guards.result } };
+            worldeditAvailable: !!current.worldedit, worldeditVersion: 'local-static', engineGuards: guards.result, transportSettings:config.settings } };
         } else {
           const args = [join(here, 'engine-fixture.lua'), payloadDir, scenarioFile, command.operation];
           body = JSON.parse((await run('lua', args)).stdout);

@@ -263,3 +263,11 @@ test('a first native dispatch followed by lost capability or invalid reply retai
   assert.ok(out.response.result.chunks.some(c=>c.status==='UNKNOWN'));
  }
 });
+
+test('check-only transport refusal keeps concrete source and writes nothing',async()=>{
+ const e=engine(),before=await read(e,'source-before');
+ const source={owner:'world-source',operation:'region_write',resource:'courier-command-body',kind:'LIMIT',nativeCode:null};
+ e.regionWrite=async()=>{throw Object.assign(Error('LIMIT_EXCEEDED'),{source,beforeNativeDispatch:true});};
+ await assert.rejects(()=>write(e,'APPLY',applyWrites(before),'source-limit'),error=>error instanceof RegionFault&&error.source===source);
+ assert.equal(e.writes,0);
+});

@@ -1,3 +1,4 @@
+import { TRANSPORT_DEFAULTS } from '../src/transport-policy.mjs';
 // SOURCE/FIXTURE: host side of the v1 engine guards (payload test/engine-guards.lua
 // covers the engine). Courier and records are real; the engine is a double.
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ import { PAYLOAD_VERSION } from '../src/version.mjs';
 const manifest = { worldRef: 'local:w', payloadDigest: 'p'.repeat(64) };
 const answer = (courier, result) => { const e = courier.queue.shift(); clearTimeout(e.timer); e.resolve(result); return e.command; };
 const hello = engineGuards => ({ worldRef: manifest.worldRef, payloadVersion: PAYLOAD_VERSION, payloadMatches: true,
-  loadedSourceDigest: manifest.payloadDigest, worldeditAvailable: true, engineGuards });
+  loadedSourceDigest: manifest.payloadDigest, worldeditAvailable: true, transportSettings:TRANSPORT_DEFAULTS, engineGuards });
 const declared = { bodyClearance: ['prepare_check', 'apply', 'apply_state', 'restore', 'region_write'],
   perCellProtection: ['prepare_check', 'apply', 'apply_state', 'restore', 'region_write'],
   playerEnclosure: ['prepare_check', 'apply', 'apply_state', 'region_write'] };
@@ -96,7 +97,7 @@ test('rc.3 engineGuards: declared per guard and stage exactly as the payload run
   // rc.1 capability ids are gone from both handshakes; protocol majors follow rc.2/rc.3.
   for (const h of [worldAdapterProtocolHandshake, protocolHandshake])
     assert.ok(!h.capabilities.some(c => /body|protection|enclosure/.test(c)));
-  assert.equal(JSON.stringify(worldAdapterProtocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter', major: 8, minor: 1 }]));
+  assert.equal(JSON.stringify(worldAdapterProtocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter', major: 8, minor: 4 }]));
   assert.equal(JSON.stringify(protocolHandshake.protocols), JSON.stringify([{ protocol: 'world-adapter-region', major: 3, minor: 0 }]));
 });
 

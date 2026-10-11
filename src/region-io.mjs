@@ -17,7 +17,7 @@ const sha = (kind, v) => digestValue(kind, v).sha256;
 const blockOf = (box, partition) => chunkOf(box.min, partition);
 const layout = partition => ({ geometryProfile: GEOMETRY_PROFILE, partition });
 export class RegionFault extends Error {
-  constructor(code, reason, refusal = null) { super(code); this.reason = reason; this.refusal = refusal; }
+  constructor(code, reason, refusal = null, source) { super(code); this.reason = reason; this.refusal = refusal; if(source)this.source=source; }
 }
 
 export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
@@ -36,8 +36,8 @@ export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake',
  * publishes neutral placeable tags under that scope. */
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter', major: 8, minor: 1 }],
-  capabilities: ['world-adapter/v8:callback-free-write', 'world-adapter/v8:world-source-capabilities', 'world-adapter/v8:write-path-state-facts'],
+  protocols: [{ protocol: 'world-adapter', major: 8, minor: 4 }],
+  capabilities: ['world-adapter/v8:callback-free-write', 'world-adapter/v8:world-source-capabilities', 'world-adapter/v8:write-path-state-facts', 'world-adapter/v8:transport-policy'].sort(),
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
@@ -182,7 +182,7 @@ export async function writeRegion(engine, request) {
       // Engine guards refuse in this check-only pass, before any write of the request. A RESTORE
       // refusal is the engine form (no cause known here); Canvas adds the cause when it rolls back.
       const refusal = refusalDetail(apply ? 'REGION_APPLY' : 'REGION_RESTORE', error?.detail, { transactionRef: request.transactionId });
-      throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', refusal);
+      throw new RegionFault(error?.message ?? 'CAPABILITY_UNAVAILABLE', 'APPLY_ERROR', refusal, error.source);
     }
   }
   const status = new Map(), facts = [];
@@ -206,9 +206,9 @@ export async function writeRegion(engine, request) {
       if (index === 0 && beforeDispatch) throw error;
       // A first-batch refusal is proven zero-write. Later refusals retain partial chunk status
       // for Canvas to restore; never label a partial request NONE.
-      if (index === 0 && refusal) throw new RegionFault(error.message, 'APPLY_ERROR', refusal);
+      if (index === 0 && refusal) throw new RegionFault(error.message, 'APPLY_ERROR', refusal, error.source);
       const code = error?.message ?? 'CAPABILITY_UNAVAILABLE';
-      failure = { batch: index, code, ...(refusal ? { guardRefusal: refusal.guardRefusal } : {}) };
+      failure = { batch: index, code, ...(error.source?{source:error.source}:{}), ...(refusal ? { guardRefusal: refusal.guardRefusal } : {}) };
       facts.push({ batch: index, chunks: group.items.length, error: code });
       group.items.forEach(i => status.set(key(i.box.min), beforeDispatch || refusal || code === 'TRANSACTION_CONFLICT' ? 'NOT_WRITTEN' : 'UNKNOWN'));
     }
@@ -224,7 +224,7 @@ export async function writeRegion(engine, request) {
       done.forEach((item, i) => {
         if (reply.boxes[i].ignoreCells === 0) readback.set(key(item.box.min), sha('region-state', stateOf(engine, request.worldRef, read, item.box)));
       });
-    } catch (error) { facts.push({ readbackError: error?.message ?? 'CAPABILITY_UNAVAILABLE' }); }
+    } catch (error) { facts.push({ readbackError: error?.message ?? 'CAPABILITY_UNAVAILABLE', ...(error.source?{source:error.source}:{}) }); }
   }
   const chunks = items.map(i => {
     let s = status.get(key(i.box.min)); const digest = readback.get(key(i.box.min)) ?? null;

@@ -160,3 +160,49 @@ const { worldRef, stateProfile, cells } = await facts.readScopedState(
   connectionRef, [[-1, 9, 0], [0, 9, 0], [1, 9, 0]]
 );
 ```
+
+## Transport policy (owned document protocol)
+
+`ReadWorldSourceCapabilities`, `ReadEngineFacts` and `ReadWriteProfile` carry the
+same current `transportPolicy` from the paired source. The status read exposes
+configuration before pairing. These declarations are the consumption surface for
+the existing settings card; its actual UI display remains a separate validation gate.
+No engine internals, filesystem locators, credentials or implementation imports
+are needed to display them. Consumers must validate this optional field against the public document protocol;
+old operations remain supported. Adapter owns its required decoding structures.
+
+| Name | Unit | Default | Inclusive range | Meaning and tradeoff |
+| --- | --- | --- | --- | --- |
+| courierResultWaitMs | ms | 30000 | 1000–120000 | Queue-to-result waiting budget. A longer wait delays reporting uncertainty; it does not improve execution or authorize retry. Expiry keeps RECOVERY_PENDING; in-flight work is not cancelled. |
+| courierBodyBytes | byte | 4194304 | 131072–4194304 | Complete UTF-8 JSON poll/result body, envelope included, in either direction. Lower values use smaller batches; a single oversized state/metadata record still refuses. 4 MiB is a fixed, non-disableable ceiling. |
+| regionBatchEnvelopeReserveBytes | byte | 65536 | fixed 65536 | Conservative batch-sizing reserve, not a maximum envelope or cell quota. It covers framing/guard estimates; exact serialization is still enforced. |
+
+Set plugin configuration `transportSettings: {courierResultWaitMs, courierBodyBytes}`.
+Unset keys use declared defaults; null, nonintegers, unknown keys, zero/disable
+values and out-of-range values refuse with SCHEMA_INVALID and INVALID_CONFIG
+source. Fresh provision/create writes the complete configuration to its own
+payload. Node and Lua validate it independently and the handshake must match.
+Changing settings requires a fresh paired payload; existing installations are
+never rewritten or adopted. No migration or compatibility fallback is performed.
+
+The batch estimator admits at least one candidate block under a small body
+budget, because compressed data can fit below its pessimistic full-block estimate.
+The exact complete command refuses before dispatch (beforeNativeDispatch), and
+an oversized result returns LIMIT_EXCEEDED from Lua. Results after engine writes
+remain uncertain unless read back; a result limit does not prove zero writes.
+Existing read-only splitting of oversized multi-block replies remains a sizing
+operation, not a retry of a mutating command.
+
+Public errors preserve FailureSource (logical resource, operation, category and
+native errno code), with no paths or content. Missing identity is MISSING only
+for ENOENT before observing a file. Bad JSON/schema/version, unsafe paths,
+permission and IO refuse discovery/pairing explicitly. Journals use the same
+validation for opening and activity/deletion checks: unknown/corrupt storage can
+never establish no in-flight transaction. Atomic fsync/rename writes and all
+transaction uncertainty/recovery rules remain in place.
+
+`npm test` runs Node/Lua config and boundary regressions, exact HTTP bytes, public
+source propagation, corrupted/permission journal tests and a real Luanti courier
+oversize test in a fresh test-only world. The default binary is the installed
+Luanti App; `HW_LUANTI_BINARY` may select another declared Luanti runtime.
+This verifies source/fixtures/real engine, not product Host, UI or owner acceptance.
