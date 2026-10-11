@@ -2,11 +2,11 @@
 -- world mutation is exposed until the private local Adapter transport supplies a current-world command
 -- and a host-fsynced PREPARED record.
 local M = {}
--- The write backend Engine:apply implements: one WorldEdit set + set_param2 per
--- effect cell, then a light refresh of the covered cells. Changing that write
+-- The write backend Engine:apply implements: one native swap_node per effect
+-- cell, then a light refresh of the covered cells. Changing that write
 -- path requires a new backendProfileId.
-M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-worldedit-cell-write/v1',
-  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'cell-write/1'}
+M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-native-cell-write/v1',
+  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'native-cell-write/1'}
 local Engine = {}
 Engine.__index = Engine
 
@@ -217,17 +217,14 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
       return nil, 'TRANSACTION_CONFLICT'
     end
   end
-  local editing = rawget(_G, 'worldedit')
-  if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' or not light_capable() then
+  if type(minetest.swap_node) ~= 'function' or not light_capable() then
     return nil, 'CAPABILITY_UNAVAILABLE' end
   local count = 0
   for _, effect in ipairs(effects) do
     local pos = position(effect.position)
-    local ok, changed = pcall(editing.set, pos, pos, effect.nodeName)
-    if not ok or changed ~= 1 then return nil, 'APPLY_FAILED' end
-    local param_ok, param_changed = pcall(editing.set_param2, pos, pos, effect.param2)
-    if not param_ok or param_changed ~= 1 then return nil, 'APPLY_FAILED' end
+    local ok, changed = pcall(minetest.swap_node, pos,
+      {name = effect.nodeName, param1 = 0, param2 = effect.param2})
+    if not ok or changed ~= true then return nil, 'APPLY_FAILED' end
     count = count + 1
   end
   if not refresh_light(before_image.coveredPositions) then return nil, 'APPLY_FAILED' end
@@ -251,9 +248,7 @@ function Engine:apply_state(target_image, before_image, prepared)
     or #target_image.records ~= #before_image.coveredPositions then
     return nil, 'SCHEMA_INVALID'
   end
-  local editing = rawget(_G, 'worldedit')
-  if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' or not light_capable() then
+  if type(minetest.swap_node) ~= 'function' or not light_capable() then
     return nil, 'CAPABILITY_UNAVAILABLE' end
   -- Check every cell and non-derived current state before the first write.
   for i, target in ipairs(target_image.records) do
@@ -291,13 +286,9 @@ function Engine:apply_state(target_image, before_image, prepared)
   local count = 0
   for _, target in ipairs(target_image.records) do
     local pos = position(target.position)
-    local ok, changed = pcall(editing.set, pos, pos, target.nodeName)
-    if not ok or changed ~= 1 then return nil, 'APPLY_FAILED' end
-    local p_ok, p_changed = pcall(editing.set_param2, pos, pos, target.param2)
-    if not p_ok or p_changed ~= 1 then return nil, 'APPLY_FAILED' end
     local state_ok = pcall(function()
-      minetest.swap_node(pos, {name = target.nodeName,
-        param1 = target.param1, param2 = target.param2})
+      assert(minetest.swap_node(pos, {name = target.nodeName,
+        param1 = target.param1, param2 = target.param2}) == true)
       assert(minetest.get_meta(pos):from_table({fields = target.metadata,
         inventory = target.inventory}) ~= false)
       local timer = minetest.get_node_timer(pos)
@@ -320,9 +311,7 @@ function Engine:restore(before_image, recovery)
     or not recovery or recovery.status ~= 'RESTORING' then return nil, 'CAPABILITY_UNAVAILABLE' end
   if type(before_image) ~= 'table' or type(before_image.records) ~= 'table'
     or #before_image.records == 0 then return nil, 'SCHEMA_INVALID' end
-  local editing = rawget(_G, 'worldedit')
-  if type(editing) ~= 'table' or type(editing.set) ~= 'function'
-    or type(editing.set_param2) ~= 'function' or not light_capable() then
+  if type(minetest.swap_node) ~= 'function' or not light_capable() then
     return nil, 'CAPABILITY_UNAVAILABLE' end
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
@@ -337,13 +326,9 @@ function Engine:restore(before_image, recovery)
   for _, record in ipairs(before_image.records) do
     local pos = position(record.position)
     if not self.verifyRestore(before_image, recovery) then return nil, 'RESTORE_FAILED' end
-    local ok, changed = pcall(editing.set, pos, pos, record.nodeName)
-    if not ok or changed ~= 1 then return nil, 'RESTORE_FAILED' end
-    local param_ok, param_changed = pcall(editing.set_param2, pos, pos, record.param2)
-    if not param_ok or param_changed ~= 1 then return nil, 'RESTORE_FAILED' end
-    local swap_ok = pcall(minetest.swap_node, pos, {name = record.nodeName,
+    local swap_ok, changed = pcall(minetest.swap_node, pos, {name = record.nodeName,
       param1 = record.param1, param2 = record.param2})
-    if not swap_ok then return nil, 'RESTORE_FAILED' end
+    if not swap_ok or changed ~= true then return nil, 'RESTORE_FAILED' end
     local meta_ok, restored = pcall(function()
       return minetest.get_meta(pos):from_table({fields = record.metadata, inventory = record.inventory})
     end)

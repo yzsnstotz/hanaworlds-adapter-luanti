@@ -319,13 +319,12 @@ end
 -- declaration comes only from the loaded payload, never from Adapter/package
 -- identity or a default. Player bodies stay engine-only (INV-POSE-STAYS-IN-ENGINE):
 -- no collision box, size, position or yaw is produced here.
-function M.write_backend(core, declaration, worldedit)
+function M.write_backend(core, declaration)
   if type(declaration) ~= 'table' or type(declaration.backendProfileId) ~= 'string'
     or declaration.backendProfileId == '' or type(declaration.revision) ~= 'string' or declaration.revision == '' then
     return nil, 'NOT_DECLARED_BY_PAYLOAD'
   end
-  local ready = type(worldedit) == 'table' and type(worldedit.set) == 'function'
-    and type(worldedit.set_param2) == 'function' and available(core, 'fix_light')
+  local ready = available(core, 'swap_node') and available(core, 'fix_light')
     and available(core, 'get_node_light')
   return {writeBackend = {profileId = declaration.backendProfileId, revision = declaration.revision}, ready = ready}
 end

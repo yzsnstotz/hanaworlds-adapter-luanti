@@ -57,7 +57,11 @@ core = {
     from_table = function() return true end} end,
   get_node_timer = function() return {get_timeout = function() return 0 end,
     get_elapsed = function() return 0 end, set = function() end, stop = function() end} end,
-  swap_node = function(p, n) nodes[key(p)] = {name = n.name, param1 = n.param1 or 0, param2 = n.param2 or 0} end,
+  swap_node = function(p, n)
+    writes = writes + 1
+    nodes[key(p)] = {name = n.name, param1 = n.param1 or 0, param2 = n.param2 or 0}
+    return true
+  end,
   fix_light = function() return true end,
   get_node_light = function() return 15 end,
   get_content_id = function(n) return ids[n] end,
@@ -90,10 +94,7 @@ core = {
   end,
 }
 _G.minetest = core
-_G.worldedit = {
-  set = function(p, _, name) writes = writes + 1; nodes[key(p)] = {name = name, param1 = 0, param2 = 0}; return 1 end,
-  set_param2 = function(p, _, v) nodes[key(p)].param2 = v; return 1 end,
-}
+_G.worldedit = nil
 
 local region_module = dofile('payload/hanaworlds_adapter/region.lua')
 local region = region_module.new({core = core})
