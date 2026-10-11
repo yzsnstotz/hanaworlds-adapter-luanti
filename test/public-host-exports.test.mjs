@@ -1,11 +1,12 @@
 // Only the new public packaging surface; no existing candidate gates are replayed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir,readFile,realpath} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,realpath} from 'node:fs/promises';
 import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import * as C from 'hanaworlds-contracts';
-const root=process.env.HW_PUBLIC_HOST_TEST_ROOT;
-if(!root)throw Error('own test root required');
+const base=process.env.HW_PUBLIC_HOST_TEST_ROOT??process.env.HW_ADAPTER_TEST_ROOT??tmpdir();
+await mkdir(base,{recursive:true});const root=await mkdtemp(join(base,'public-host-'));
 test('public native factory exposes the actual port without inventing child facts',async()=>{
  const {createNativeHost}=await import('hanaworlds-adapter-luanti/host');
  const state=join(root,'empty-native'),profile=join(state,'profile'),worlds=join(profile,'worlds');

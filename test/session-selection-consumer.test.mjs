@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as C from '#contracts';
-const mod=await import('../dev/world-manage/session-selection.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
+const mod=await import('./support/world-manage/session-selection.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
 function setup(){
  const selections=new Map(), calls=[],nativeStarts=[];let revision=0,failSwitch=false;
  const connection=world=>({connectionRef:`connection:${world}`,connectionIncarnationRef:`incarnation:${world}`,worldRef:world,payloadVersion:'0.6.0',payloadDigest:'0'.repeat(64),capabilities:{providerRef:'hanaworlds-adapter-luanti',capabilityRevision:'cap:1',worldRef:world,engineBounds:null,limits:[],recoveryGuarantee:'RECOVERABLE_VERIFIED',stateProfile:{profileVersion:'state-profile/v2',nodeFields:['nodeName','param1','param2'],metadataMode:'exact',inventoryMode:'exact',timerMode:'exact',derivedLightMode:'recompute-with-readback'},sessionDeleteSupported:true,imageMediaTypes:[],model:null,engineGuards:null}});

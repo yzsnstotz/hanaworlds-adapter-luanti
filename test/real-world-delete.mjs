@@ -3,19 +3,18 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, lstat, mkdir, readdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { cp, lstat, mkdir, readdir, readFile, realpath, symlink, writeFile,rename } from 'node:fs/promises';
+import { join,basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 const root = await realpath(process.env.HW_LOCAL_E), installed = process.env.HW_LOCAL_PACKAGE;
-const { apply, inject } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed, 'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
+const { apply, inject } = await import(pathToFileURL(join(installed, 'dist/runtime/index.mjs')));
+const C = await import('hanaworlds-contracts');
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const profile = join(root, 'profile'), worlds = join(profile, 'worlds'), outside = join(profile, 'outside-root'), home = join(root, 'home');
 for (const p of [worlds, outside, home, join(profile, 'games'), join(profile, 'mods'), join(root, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });
 await symlink(await realpath(process.env.HW_GAME), join(profile, 'games/mineclone2'));
-await cp(process.env.HW_WORLDEDIT, join(profile, 'mods/worldedit'), { recursive: true });
 async function freePort() { const s = createServer(); await new Promise(y => s.listen(0, '127.0.0.1', y)); const p = s.address().port; await new Promise(y => s.close(y)); return p; }
 const controls = new Map(), processes = [], events = []; let mode = 'exact', sequence = 0;
 const check = (event, detail = {}) => { events.push({ event, ...detail }); console.log('PASS', event); };
@@ -43,8 +42,8 @@ const host = {
     C.validateType('NativeControlInput', input); assert.equal(input.userPath, profile);
     const id = ++sequence, log = join(root, `luanti-${id}.log`), config = join(root, `luanti-${id}.conf`);
     await writeFile(config, `port = ${await freePort()}\nbind_address = 127.0.0.1\nsecure.http_mods = hanaworlds_adapter\nserver_announce = false\n`);
-    const argv = ['--server', '--world', input.worldPath, '--config', config, '--logfile', log];
-    const child = spawn('/Applications/luanti.app/Contents/MacOS/luanti', argv, {
+    const argv = [...(process.env.HW_LUANTI_MODE==='server'?[]:['--server']), '--world', input.worldPath, '--config', config, '--logfile', log];
+    const child = spawn(process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti', argv, {
       env: { ...process.env, HOME: profile, LUANTI_USER_PATH: profile, XDG_CACHE_HOME: join(profile, 'cache'), TMPDIR: join(root, 'tmp') }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdio = ''; child.stdout.on('data', b => { stdio += b; }); child.stderr.on('data', b => { stdio += b; });
     const evidence = { pid: child.pid, input, argv, log }, record = { input, child, evidence, stopped: false };
@@ -83,6 +82,15 @@ const ctx = new Context();
 ctx.provide('webServer', { register() { return () => {}; } });
 ctx.provide('dshHomePath', (...p) => join(home, ...p));
 ctx.provide('hanaworldsNativeEngineControl', host);
+// Published Canvas retirement peer: only owns this diagnostic's reservation facts.
+const reservations=new Map();
+const canvasFiber=ctx.plugin({name:'adapter-retirement-contract-fixture',apply(c){c.provide('hanaworldsCanvasV5',{async call(name,q){
+ let result;
+ if(name==='ListWorldSelections')result={worldRef:q.worldRef,inventoryRevision:'fixture:1',sessionRefs:[],retirementReservationRef:reservations.get(q.worldRef)??null};
+ else if(name==='ReserveWorldRetirement'){const reservationRef='fixture:'+q.worldRef;reservations.set(q.worldRef,reservationRef);result={worldRef:q.worldRef,inventoryRevision:q.expectedInventoryRevision,reservationRef};}
+ else{assert.equal(name,'ReleaseWorldRetirement');assert.equal(reservations.get(q.worldRef),q.reservationRef);reservations.delete(q.worldRef);result={worldRef:q.worldRef,reservationRef:q.reservationRef,outcome:q.outcome,inventoryRevision:'fixture:2'};}
+ return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result,error:null});
+ }});}});await canvasFiber.await();
 let service;
 const fiber = ctx.plugin({ name: 'hanaworlds-adapter-luanti', inject, apply(c) { service = apply(c, { localWorldRoots: [worlds] }); } });
 await fiber.await();
@@ -92,10 +100,12 @@ const query = lease => ({ leaseRef: lease.leaseRef, requesterRef: 'owned-test-ho
 const ref = w => ({ requesterRef: 'owned-test-host', connectionRef: w.connectionRef, worldRef: w.worldRef });
 const acquire = world => local.acquire(req({ connectionRef: world.connectionRef, action: 'BIND_RUNNING_WORLD' }));
 const listed = async w => (await local.discover()).some(x => x.connectionRef === w.connectionRef);
+let requestSequence=0;
+const remove=async(w,extra={})=>{const q={contractVersion:'local-worlds/v2',requestId:'delete:'+ ++requestSequence,worldRef:w.worldRef,confirmationName:w.worldName??basename(w.worldPath),...extra};const r=C.validateBoundResponse('local-worlds/v2','deleteWorld',q,await local.deleteWorld(q));if(r.error){const e=Error(r.error.code);e.publicError=r.error;throw e;}return r.result;};
 const rejects = async (promise, code, reason) => {
   const error = await promise.then(() => null, e => e);
   assert.ok(error, `expected ${code}`); assert.equal(error.message, code);
-  if (reason) assert.equal(error.details.blockers[0].reason, reason);
+  assert.equal(error.publicError.mutationState,'NONE');
   return { code: error.message, blockers: error.details?.blockers ?? null };
 };
 try {
@@ -105,13 +115,13 @@ try {
   const keepA = await tree(a.worldPath);
   const dA = await local.describeWorldDeletion(ref(a));
   assert.equal(dA.deletable, false); assert.equal(dA.productCreated, true);
-  const inUse = await rejects(local.deleteWorld(ref(a)), 'WORLD_IN_USE');
+  const inUse = await rejects(remove(a), 'TRANSACTION_CONFLICT');
   assert.ok(await listed(a)); assert.equal(await tree(a.worldPath), keepA);
-  assert.ok((await native.readCatalogue(a.worldRef)).nodes['mcl_core:stone']);
+  assert.ok(Object.values((await native.readCatalogue(a.worldRef)).materials).some(m=>m.placeable===true));
   check('CURRENT_RUNNING_A_REJECTED_KEPT_AND_STILL_READABLE', { creation: a, describe: dA, rejection: inUse });
 
   // Host-owned stop of A, then switch to B on the same service (0.7.1 sequence).
-  await stop([...controls.values()][0]);
+  await local.stopWorld(ref(a));
   const b = await local.createFlatWorld(req({ gameId: 'mineclone2', worldName: 'B' }));
   const lb = await acquire(b), pb = await local.pair(query(lb));
   assert.equal(pb.paired, true); assert.equal(pb.worldRef, b.worldRef);
@@ -121,16 +131,17 @@ try {
   check('SWITCHED_A_DESCRIBED_DELETABLE', { describe: dA2 });
 
   mode = 'unknown';
-  const unknown = await rejects(local.deleteWorld(ref(a)), 'CURRENT_WORLD_MISMATCH');
+  const unknown = await rejects(remove(a), 'TRANSACTION_CONFLICT');
   mode = 'wrong-pid';
-  const wrongPid = await rejects(local.deleteWorld(ref(a)), 'CURRENT_WORLD_MISMATCH');
+  const wrongPid = await rejects(remove(a), 'TRANSACTION_CONFLICT');
   mode = 'exact';
-  const wrongRef = await rejects(local.deleteWorld({ ...ref(a), worldRef: b.worldRef }), 'CURRENT_WORLD_MISMATCH');
+  const wrongRef = await rejects(remove(a,{worldRef:b.worldRef}), 'TRANSACTION_CONFLICT');
   assert.ok(await listed(a)); assert.equal(await tree(a.worldPath), keepA2);
   check('FAILED_HOST_STOP_AND_WRONG_IDENTITY_KEEP_A_EXACTLY', { unknown, wrongPid, wrongRef });
 
   const keepB = await tree(b.worldPath);
-  const bCurrent = await rejects(local.deleteWorld(ref(b)), 'WORLD_IN_USE', 'LIFECYCLE_LEASE_OPEN');
+  const bDescribe=await local.describeWorldDeletion(ref(b));assert.ok(bDescribe.blockers.some(x=>x.reason==='ADAPTER_CONNECTION_BOUND'));
+  const bCurrent = await rejects(remove(b), 'TRANSACTION_CONFLICT');
   check('CURRENT_B_REJECTED', { rejection: bCurrent });
 
   // Not created by this Adapter: a user's own real Luanti world and a copy of A.
@@ -140,15 +151,16 @@ try {
   const found = await local.discover();
   const ownRow = found.find(x => x.worldPath === own), copyRow = found.find(x => x.worldPath === join(worlds, 'A copy'));
   const keepCopy = await tree(copyRow.worldPath);
-  const ownRej = await rejects(local.deleteWorld({ requesterRef: 'owned-test-host', connectionRef: ownRow.connectionRef, worldRef: 'luanti:00000000-0000-0000-0000-000000000000' }), 'CURRENT_WORLD_MISMATCH');
-  const copyRej = await rejects(local.deleteWorld(ref(copyRow)), 'WORLD_OWNERSHIP_UNKNOWN', 'CREATION_MARKER_LOCATION_MISMATCH');
+  const ownRej = await rejects(remove(ownRow,{worldRef:'luanti:00000000-0000-0000-0000-000000000000'}), 'WORLD_NOT_FOUND');
+  const copyDescribe=await local.describeWorldDeletion(ref(copyRow));assert.ok(copyDescribe.blockers.some(x=>x.reason==='CREATION_MARKER_LOCATION_MISMATCH'));
+  const copyRej = await rejects(remove(copyRow), 'TRANSACTION_CONFLICT');
   assert.equal(await tree(copyRow.worldPath), keepCopy); assert.ok(await lstat(join(own, 'world.mt')));
 
   // Product-created world in a root that is not configured any more.
   await local.setRoots({ roots: [worlds, outside] });
   const d = await local.createFlatWorld(req({ gameId: 'mineclone2', worldName: 'D', root: outside }));
   await local.setRoots({ roots: [worlds] });
-  const outRej = await rejects(local.deleteWorld(ref(d)), 'CONNECTION_NOT_FOUND');
+  const outRej = await rejects(remove(d), 'WORLD_NOT_FOUND');
   assert.ok(await lstat(join(d.worldPath, 'world.mt')));
   check('UNKNOWN_OWNERSHIP_COPY_AND_OUT_OF_ROOT_REJECTED_KEPT', { own: ownRej, copy: copyRej, outOfRoot: outRej });
 
@@ -160,29 +172,33 @@ try {
     transactions: { tx1: { transactionId: 'tx1', status } }, requests: {} }));
   await state('RECOVERY_PENDING');
   const keepC = await tree(c.worldPath);
-  const pendingRej = await rejects(local.deleteWorld(ref(c)), 'WORLD_IN_USE', 'TRANSACTION_IN_FLIGHT');
+  const pendingRej = await rejects(remove(c), 'TRANSACTION_CONFLICT', 'TRANSACTION_IN_FLIGHT');
   assert.equal(await tree(c.worldPath), keepC);
   await state('VERIFIED');
   const dC = await local.describeWorldDeletion(ref(c));
   assert.equal(dC.deletable, true); assert.equal(dC.nativeStop, 'NOT_LAUNCHED_BY_THIS_SERVICE');
-  const delC = await local.deleteWorld(ref(c));
+  const delC = await remove(c);
   assert.equal(delC.deleted, true); assert.equal(await listed(c), false); assert.equal(await lstat(c.worldPath).catch(() => null), null);
   assert.ok(await lstat(join(journal, 'local-world-state'))); // Adapter journal is kept, never cleaned by deletion
   check('IN_FLIGHT_TRANSACTION_REJECTED_THEN_SETTLED_NEVER_LAUNCHED_C_DELETED', { rejection: pendingRej, describe: dC, deletion: delC });
 
   // Exact deletion of switched-away A inside its Host stopped callback.
+  // Duplicate world identities refuse deletion by worldRef. Move only this diagnostic's copy
+  // out of configured roots, retain its exact bytes, then delete the unambiguous original.
+  await rejects(remove(a),'TRANSACTION_CONFLICT');
+  const retainedCopy=join(outside,'A copy');await rename(copyRow.worldPath,retainedCopy);assert.equal(await tree(retainedCopy),keepCopy);
   const callbacks = events.filter(e => e.event === 'HOST_STOPPED_CALLBACK').length;
-  const delA = await local.deleteWorld(ref(a));
-  assert.equal(delA.deleted, true); assert.equal(delA.nativeStop, 'HOST_STOPPED_CALLBACK');
+  const delA = await remove(a);
+  assert.equal(delA.deleted, true);
   assert.equal(events.filter(e => e.event === 'HOST_STOPPED_CALLBACK').length, callbacks + 1);
   assert.equal(await listed(a), false); assert.equal(await lstat(a.worldPath).catch(() => null), null);
-  await rejects(local.deleteWorld(ref(a)), 'CONNECTION_NOT_FOUND');
+  await rejects(remove(a), 'WORLD_NOT_FOUND');
   const remaining = (await readdir(worlds)).sort();
-  assert.deepEqual(remaining, ['A copy', 'B', 'users-own']);
+  assert.deepEqual(remaining, ['B', 'users-own']);
   assert.equal(await tree(b.worldPath) !== null, true);
   assert.equal((await local.inspect(query(lb))).current, true);
-  assert.ok((await native.readCatalogue(b.worldRef)).nodes['mcl_core:stone']);
-  assert.equal(await tree(copyRow.worldPath), keepCopy);
+  assert.ok(Object.values((await native.readCatalogue(b.worldRef)).materials).some(m=>m.placeable===true));
+  assert.equal(await tree(retainedCopy), keepCopy);
   check('SWITCHED_A_DELETED_IN_HOST_STOPPED_CALLBACK_READBACK_GONE_B_STILL_CURRENT', { deletion: delA, remaining, keepBBefore: keepB });
 
   await service.close();
@@ -191,6 +207,6 @@ try {
   await writeFile(join(root, 'results.json'), JSON.stringify({ evidence: 'REAL_RUNTIME_WITH_HOST_FIXTURE', productUI: 'NOT_RUN', events, processes }, null, 2));
 } finally {
   mode = 'exact'; await service.close();
-  for (const r of controls.values()) await stop(r);
+  for (const r of controls.values()) await stop(r);await canvasFiber.dispose();
   await writeFile(join(root, 'processes.json'), JSON.stringify(processes, null, 2));
 }

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply } from '../src/index.mjs';
 import { PAYLOAD_VERSION } from '../src/version.mjs';
 
 // SOURCE/FIXTURE: native Host is a model. The real Host/Luanti self-test is separate.
 async function fixture(t, Context = null) {
-  const cache = join(homedir(), '.cache/hanaworlds-runs/S1-AD-LOCAL-PROVISIONING-01');
+  const cache = process.env.HW_ADAPTER_TEST_ROOT ?? tmpdir();
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(join(cache, 'port-fixture-'));
   const world = join(root, 'world'); await mkdir(world);

@@ -4,7 +4,7 @@ import test from 'node:test';
 import {mkdir,mkdtemp,realpath,writeFile,chmod,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import * as C from '#contracts';
-import {createNativeHost} from '../dev/world-manage/host.mjs';
+import {createNativeHost} from './support/world-manage/host.mjs';
 const base=process.env.HW_BIND_TEST_ROOT;
 if(!base) throw Error('own test root required');
 test('public native Host recipe retains actual owned PID and exit association across finite callbacks',async()=>{

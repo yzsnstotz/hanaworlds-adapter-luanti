@@ -10,6 +10,7 @@ import { verifyPackage } from '../scripts/package-boundary.mjs';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const npm = join(dirname(process.execPath), 'npm');
+const packageStore=process.env.HW_ADAPTER_PACKAGE_STORE??join(homedir(),'.cache/pnpm/store');
 const run = (file, args, cwd, env = process.env) => execFileSync(file, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 test('contracts are a pinned development input and production imports resolve to compiled local structures', async () => {
@@ -39,11 +40,13 @@ test('packed public runtime and declarations work with no contract package or bu
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   run(npm, ['pack', '--cache', join(homedir(), '.npm'), '--pack-destination', dir], root, {...process.env,HW_ADAPTER_BOUNDARY_PACK:'1'});
   const packed = {filename: `${pkg.name}-${pkg.version}.tgz`};
+  const entries=run('tar',['-tzf',join(dir,packed.filename)],dir).trim().split('\n');
+  assert.ok(entries.every(p=>!/^package\/(archive|dev|test|scripts)\//.test(p)&&!/^package\/(PUBLIC_|STAGE1_|SESSION_WORLD_|DEFERRED-)/.test(p)),'archive, development pages or retired card documents in tar');
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>! /^(npm_config_|PNPM_|NODE_PATH$|NODE_OPTIONS$|HW_)/i.test(k)));
   env.HOME=join(dir,'home'); env.XDG_CONFIG_HOME=join(dir,'config');
   const pnpm=join(root,'node_modules/pnpm/bin/pnpm.cjs');
   assert.equal(run(process.execPath,[pnpm,'--version'],dir,env).trim(),'11.28.5');
-  const install=run(process.execPath,[pnpm,'install','--prod','--store-dir',join(homedir(),'.cache/pnpm/store'),join(dir,packed.filename)],dir,env);
+  const install=run(process.execPath,[pnpm,'install','--prod','--store-dir',packageStore,join(dir,packed.filename)],dir,env);
   writeFileSync(join(dir,'install.log'),install);
   assert.doesNotMatch(readFileSync(join(dir,'pnpm-lock.yaml'),'utf8'),/hanaworlds-contracts|esbuild|typescript/);
   writeFileSync(join(dir,'resolution-graph.json'),run(process.execPath,[pnpm,'list','--depth','Infinity','--json'],dir,env));
@@ -156,7 +159,7 @@ export type PublicTypes = [NativeHostOptions, Host, Inspection, Worlds, Facts, t
    writeFileSync(manifest,JSON.stringify(broken));
    const badTar=join(negative,'negative.tgz');run('tar',['-czf',badTar,'-C',negative,'package'],dir);
    const consumer=join(negative,'consumer');mkdirSync(consumer);writeFileSync(join(consumer,'package.json'),JSON.stringify({private:true}));
-   const failure=spawnSync(process.execPath,[pnpm,'install','--prod','--store-dir',join(homedir(),'.cache/pnpm/store'),badTar],{cwd:consumer,env,encoding:'utf8'});
+   const failure=spawnSync(process.execPath,[pnpm,'install','--prod','--store-dir',packageStore,badTar],{cwd:consumer,env,encoding:'utf8'});
    const output=failure.stdout+failure.stderr;writeFileSync(join(negative,'install-failure.log'),output);
    assert.notEqual(failure.status,0,output);
    assert.match(output,kind==='exotic-subdependency'?/ERR_PNPM_EXOTIC_SUBDEP/:/ERR_PNPM_IGNORED_BUILDS/);

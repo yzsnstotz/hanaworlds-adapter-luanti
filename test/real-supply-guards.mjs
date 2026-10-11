@@ -1,12 +1,12 @@
 // REAL_RUNTIME gate for hanaworlds-adapter-luanti-SUPPLY-01: Stage 1 facts and their lifecycle,
 // and the engine guards G1 (restore body recheck), G2 (per-cell protection), G3 (no enclosure),
 // on own source + official SDK Cordis + real Luanti 5.17 + VoxeLibre 0.92.3 + WorldEdit, with a
-// real connected Luanti client player "alice". Layers are named in dev/stage1-supply/real-world.mjs.
+// real connected Luanti client player "alice". Layers are named in test/support/stage1-supply/real-world.mjs.
 // usage: HW_REAL_E=<fresh own evidence dir> HW_GAME=<VoxeLibre dir> HW_WORLDEDIT=<worldedit mod dir> node test/real-supply-guards.mjs
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { openRealWorld } from '../dev/stage1-supply/real-world.mjs';
+import { openRealWorld } from './support/stage1-supply/real-world.mjs';
 
 const E = process.env.HW_REAL_E;
 assert.ok(E && process.env.HW_GAME && process.env.HW_WORLDEDIT, 'HW_REAL_E, HW_GAME, HW_WORLDEDIT required');

@@ -10,7 +10,7 @@ const root = await realpath(process.env.HW_LOCAL_E);
 const installed = process.env.HW_LOCAL_PACKAGE;
 assert.ok(installed, 'extract the actual npm package first');
 const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed,'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed,'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
+const C = await import('hanaworlds-contracts');
 // HW_CORDIS_MODULE (an installed @deepseek-ai/cordis lib/index.js) or the fixed App's copy.
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE ?? join(process.env.HW_CORDIS_APP,
   'Contents/Resources/hanaworlds-dsh/node_modules/@deepseek-ai/cordis/lib/index.js')));
@@ -99,7 +99,7 @@ ctx.provide('hanaworldsCanvasHistoryFacts',{read:async()=>history});
 let service,canvas;
 const adapterFiber=ctx.plugin({name:'hanaworlds-adapter-luanti',inject,apply(c){service=apply(c,{localWorldRoots:[join(profile,'worlds')]});}});
 await adapterFiber.await();
-const canvasFiber=ctx.plugin({name:'hanaworlds-canvas',apply(c){canvas=c;c.provide('hanaworldsCanvasV5',{call(name,r){
+const canvasFiber=ctx.plugin({name:'adapter-contract-peer-fixture',apply(c){canvas=c;c.provide('hanaworldsCanvasV5',{call(name,r){
  assert.equal(name,'ReadWorldSelectionContext');C.validateBoundRequest('canvas/v5',name,r);
  return C.validateBoundResponse('canvas/v5',name,r,{contractVersion:'canvas/v5',requestId:r.requestId,error:null,result:{
    sessionRef:r.sessionRef,worldRef:r.worldRef,inventory:{capabilityRevision:'fixture-inventory-1',connections:[]},
@@ -108,7 +108,7 @@ const canvasFiber=ctx.plugin({name:'hanaworlds-canvas',apply(c){canvas=c;c.provi
 }});}});
 // Fixture supplies the same origin metadata as Host Loader. Caller fiber and root are real Cordis objects.
 await canvasFiber.await();
-canvas.fiber.entry={options:{name:'hanaworlds-canvas'}};
+
 const local=ctx.get('hanaworldsLuantiLocalWorlds'),native=ctx.get('hanaworldsLuantiNativeFacts');
 const base=()=>({contractVersion:'world-adapter/v6',sessionRef:'fixture-session',worldRef:localContext.worldRef,localContext});
 const invoke=async(name,input,caller=canvas)=>{const r=await caller.get('hanaworldsWorldAdapterV6').call(name,input);protocol.push({name,request:input,response:r});return r;};

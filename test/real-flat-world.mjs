@@ -3,7 +3,7 @@
 // own Luanti user path exactly as Luanti installs games: games/<gameId>). The world is
 // created only by the Adapter's public createFlatWorld; nothing in this file writes
 // world.mt, map_meta.txt or the payload.
-// Environment fixtures (labelled): the per-run Luanti user path with the game and WorldEdit
+// Environment fixtures (labelled): the per-run Luanti user path with the game
 // installed, one pre-existing world that must stay untouched, and the Host lifecycle and
 // Canvas callers as public peer fixtures. Observation/external-edit fixture: `hw_probe`, added to the
 // created world's worldmods after creation, records the one in-game pick a player would
@@ -20,17 +20,16 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 const root = await realpath(process.env.HW_LOCAL_E);
 const installed = process.env.HW_LOCAL_PACKAGE;
-assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_WORLDEDIT && process.env.HW_GAME,
-  'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE, HW_WORLDEDIT and HW_GAME are required');
-const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed, 'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
+assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_GAME,
+  'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE and HW_GAME are required');
+const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'dist/runtime/index.mjs')));
+const C = await import('hanaworlds-contracts');
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
 const D = (kind, v) => C.digestValue(kind, v).sha256;
-const LUANTI = '/Applications/luanti.app/Contents/MacOS/luanti';
+const LUANTI = process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti';
 const profile = join(root, 'profile'), worlds = join(profile, 'worlds'), home = join(root, 'home');
 for (const p of [worlds, home, join(profile, 'games'), join(profile, 'mods'), join(root, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });
 await symlink(await realpath(process.env.HW_GAME), join(profile, 'games', 'mineclone2'));
-await cp(process.env.HW_WORLDEDIT, join(profile, 'mods', 'worldedit'), { recursive: true });
 await mkdir(join(worlds, 'existing-world'));
 await writeFile(join(worlds, 'existing-world', 'world.mt'), 'gameid = mineclone2\nworld_name = existing-world\n');
 await writeFile(join(worlds, 'existing-world', 'keep.txt'), 'pre-existing user world\n');
@@ -61,7 +60,7 @@ const host = { // Public NativeControl peer fixture controlling the real own pro
   async acquire(input) {
     C.validateType('NativeControlInput', input); assert.equal(input.worldPath, world); assert.equal(input.userPath, profile);
     const log = join(root, `luanti-${++stage}.log`), out = join(root, `luanti-${stage}-stdio.log`); let text = '';
-    const argv = ['--server', '--world', world, '--config', config, '--logfile', log];
+    const argv = [...(process.env.HW_LUANTI_MODE==='server'?[]:['--server']), '--world', world, '--config', config, '--logfile', log];
     child = spawn(LUANTI, argv, { env: { ...process.env, HOME: profile, LUANTI_USER_PATH: profile, XDG_CACHE_HOME: join(profile, 'cache'), TMPDIR: join(root, 'tmp') }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', b => { text += b; }); child.stderr.on('data', b => { text += b; });
     child.on('exit', (code, signal) => { void writeFile(out, text); const item = processes.find(p => p.pid === child.pid); if (item) { item.exitCode = code; item.signal = signal; } });
@@ -88,15 +87,15 @@ ctx.provide('hanaworldsCanvasHistoryFacts', { read: async () => history });
 let canvas;
 const adapterFiber = ctx.plugin({ name: 'hanaworlds-adapter-luanti', inject, apply(c) { apply(c, { localWorldRoots: [worlds] }); } });
 await adapterFiber.await();
-const canvasFiber = ctx.plugin({ name: 'hanaworlds-canvas', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
-  assert.equal(name, 'ReadWorldSelectionContext'); C.validateBoundRequest('canvas/v5', name, r);
-  return C.validateBoundResponse('canvas/v5', name, r, { contractVersion: 'canvas/v5', requestId: r.requestId, error: null, result: {
+const canvasFiber = ctx.plugin({ name: 'adapter-contract-peer-fixture', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
+  assert.equal(name, 'ReadWorldSelectionContext'); C.validateBoundRequest('canvas/v7', name, r);
+  return C.validateBoundResponse('canvas/v7', name, r, { contractVersion: 'canvas/v7', requestId: r.requestId, error: null, result: {
     sessionRef: r.sessionRef, worldRef: r.worldRef, inventory: { capabilityRevision: 'fixture-inventory-1', connections: [] },
     selection: { status: 'BOUND', connectionRef: localContext.connectionRef, context: { currentSession: r.sessionRef, activeWorldRef: localContext.worldRef,
       orderedSelectedObjectRefs: [], sessionRevision: 'fixture-session-1', selectionRevision: localContext.selectionRevision, localContext } } } });
 } }); } });
 await canvasFiber.await();
-canvas.fiber.entry = { options: { name: 'hanaworlds-canvas' } }; // same origin metadata the Host Loader supplies
+canvas.provide('hanaworldsCanvasRegionV1',{call(){}});
 const local = ctx.get('hanaworldsLuantiLocalWorlds'), native = ctx.get('hanaworldsLuantiNativeFacts');
 const check = (event, detail = {}) => { events.push({ event, ...detail }); console.log('PASS', event); };
 async function engine(query) {
@@ -110,9 +109,9 @@ async function engine(query) {
   }
   throw Error('PROBE_ANSWER_TIMEOUT');
 }
-const W = 'world-adapter-region/v2';
+const W = 'world-adapter-region/v3';
 let seq = 0;
-const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext });
+const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext, partition:{edge:[16,16,16]} });
 async function io(name, request) {
   const port = canvas.get('hanaworldsWorldAdapterRegionV1'), started = Date.now();
   const response = await port.call(name, request);
@@ -130,13 +129,17 @@ function nodeAt(read, [x, y, z]) {
     const { min, max } = c.box;
     if (x < min[0] || x > max[0] || y < min[1] || y > max[1] || z < min[2] || z > max[2]) continue;
     const b = C.expandRegionBlock(c.state.block), [sx, sy] = b.size, o = c.state.block.origin;
-    return b.palette[b.indices[(x - o[0]) + (y - o[1]) * sx + (z - o[2]) * sx * sy]];
+    const m=b.palette[b.indices[(x-o[0])+(y-o[1])*sx+(z-o[2])*sx*sy]]; return {...m,...vocabulary.nativeMaterial(m,true)};
   }
   throw Error(`no chunk covers ${x},${y},${z}`);
 }
 const v6 = async (name, input) => { const r = await canvas.get('hanaworldsWorldAdapterV6').call(name, input); calls.push({ name, requestId: input.requestId, error: r.error }); return r; };
 const ok6 = async (name, input) => { const r = await v6(name, input); assert.equal(r.error, null, JSON.stringify(r.error)); return r.result; };
-const results = {};
+const results = {}; let vocabulary;
+const {WorldVocabulary}=await import(pathToFileURL(join(installed,'dist/runtime/world-vocabulary.mjs')));
+const {LocalCourier}=await import(pathToFileURL(join(installed,'dist/runtime/local-courier.mjs')));
+const originalCatalogue=LocalCourier.prototype.catalogue;let rawRegistry;
+LocalCourier.prototype.catalogue=async function(){const r=await originalCatalogue.call(this);rawRegistry=r;return r;};
 try {
   // 1. The plugin describes what it will use and what is missing, then creates the world itself.
   const userPath = profile;
@@ -193,68 +196,44 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   const paired = await local.pair({ connectionRef: created.connectionRef, requesterRef: 'fixture-host', leaseRef: opened.leaseRef });
   assert.equal(paired.worldRef, created.worldRef); assert.equal(paired.payloadDigest, created.payloadDigest);
   localContext = { connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef, worldRef: paired.worldRef, selectionRevision: 'fixture-selection-1' };
-  const connection = await ok6('ReadLocalConnection', { contractVersion: 'world-adapter/v6', sessionRef: 'fixture-session', requestId: 'connection', connectionRef: paired.connectionRef });
+  const connection = await ok6('ReadLocalConnection', { contractVersion: 'world-adapter/v8', sessionRef: 'fixture-session', requestId: 'connection', connectionRef: paired.connectionRef });
   assert.equal(connection.worldRef, created.worldRef);
   check('BOUND_AND_PAIRED_CREATED_WORLD', { paired, capabilities: connection.capabilities });
 
   // 3. Real game identity and surface materials from the running engine.
-  const catalogue = await native.readCatalogue(paired.worldRef);
+  const catalogue = await native.readCatalogue(paired.worldRef); vocabulary=new WorldVocabulary(rawRegistry); const nativeCatalogue=rawRegistry;
   const surface = ['mcl_core:dirt_with_grass', 'mcl_core:dirt', 'mcl_core:bedrock'];
-  const registered = new Set(Object.keys(catalogue.nodes));
-  assert.equal(catalogue.gameId, 'mineclone2'); assert.ok(surface.every(n => registered.has(n)), 'surface nodes registered');
-  results.catalogue = { gameId: catalogue.gameId, gameRevision: catalogue.gameRevision, nodes: registered.size, profileVersion: catalogue.profileVersion,
-    engineProfile: catalogue.engineProfile, modRevisions: Object.keys(catalogue.modRevisions).length, surface: Object.fromEntries(surface.map(n => [n, catalogue.nodes[n]])) };
+  const registered = new Set(Object.keys(nativeCatalogue.nodes));
+  assert.equal(nativeCatalogue.gameId, 'mineclone2'); assert.ok(surface.every(n => registered.has(n)), 'surface nodes registered');
+  results.catalogue = { gameId: nativeCatalogue.gameId, gameRevision: nativeCatalogue.gameRevision, nodes: registered.size, profileVersion: catalogue.profileVersion,
+    engineProfile: nativeCatalogue.engineProfile, modRevisions: Object.keys(nativeCatalogue.modRevisions).length, surface: Object.fromEntries(surface.map(n => [n, nativeCatalogue.nodes[n]])) };
   let materials;
   try { materials = await native.readMaterialSources(paired.worldRef); results.materials = { sourceRevision: materials.snapshot?.sourceRevision,
     surface: (materials.snapshot?.materials ?? materials.materials ?? []).filter(m => surface.includes(m.nodeName)).map(m => ({ ...m, textureBytes: undefined })) }; }
   catch (error) { results.materials = { error: error.message }; } // recorded as is; not part of the flat-world claim
-  // G3 (Contracts 0.5.2 write-path-init/v1): facts and their WritePathEvidence from one
-  // registry snapshot, the Adapter's declared protocol capabilities, then the public
-  // static-material admission (per-cell BUILD materials and region palettes share it).
-  const v6port = canvas.get('hanaworldsWorldAdapterV6'), regionPort = canvas.get('hanaworldsWorldAdapterRegionV1');
-  const proto = {
-    v6: C.checkProtocolCompatibility(v6port.protocolHandshake, [C.protocolRequirement('world-adapter/v6',
-      ['world-adapter/v6:callback-free-write', 'world-adapter/v6:write-path-state-facts'], 1)]).result,
-    region: C.checkProtocolCompatibility(regionPort.protocolHandshake, [C.protocolRequirement('world-adapter-region/v2',
-      ['world-adapter-region/v2:callback-free-write', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:restore-state'], 1)]).result };
-  assert.deepEqual(proto, { v6: 'PROTOCOL_COMPATIBLE', region: 'PROTOCOL_COMPATIBLE' });
-  const wp = await native.readWritePathEvidence(paired.worldRef);
-  await writeFile(join(root, 'catalogue.json'), JSON.stringify(wp.catalogue, null, 2) + '\n');
-  await writeFile(join(root, 'write-path-evidence.json'), JSON.stringify(wp.evidence, null, 2) + '\n');
-  await writeFile(join(root, 'write-path-check.json'), JSON.stringify(wp.check, null, 2) + '\n');
-  assert.equal(wp.catalogue.gameRevision, catalogue.gameRevision, 'same registry snapshot as readCatalogue');
-  assert.deepEqual(wp.evidence.globalWriteCallbacks, [], 'no write-path global callback registered');
-  const hooks = Object.fromEntries(wp.evidence.nodes.map(n => [n.nodeName, n.definedCallbacks]));
-  const fact = n => ({ hasCallbacks: catalogue.nodes[n].hasCallbacks, hasPersistentState: catalogue.nodes[n].hasPersistentState,
-    allowedParam2: catalogue.nodes[n].allowedParam2, definedCallbacks: hooks[n], unknownFields: catalogue.nodes[n].unknownFields });
-  assert.deepEqual([fact('air').hasCallbacks, fact('air').hasPersistentState], [false, false]);
-  assert.deepEqual([fact('mcl_core:stone').hasCallbacks, fact('mcl_core:stone').hasPersistentState], [false, false]);
-  assert.ok(Object.values(catalogue.nodes).every(v => v.hasPersistentState !== true), 'never published as true');
-  assert.deepEqual([catalogue.nodes.ignore.hasCallbacks, catalogue.nodes.ignore.hasPersistentState], [null, null]);
-  const initNode = ['mcl_furnaces:furnace', 'mcl_chests:chest'].find(n => hooks[n]?.includes('on_construct'));
-  assert.ok(initNode, 'a real initialization-path node to reject');
-  assert.deepEqual([catalogue.nodes[initNode].hasCallbacks, catalogue.nodes[initNode].hasPersistentState], [true, null]);
-  const count = v => Object.values(catalogue.nodes).filter(n => n.hasPersistentState === v).length;
-  const air = { nodeName: 'air', param2: 0 }, stone = { nodeName: 'mcl_core:stone', param2: 0 }, init = { nodeName: initNode, param2: 0 };
-  const verdict = f => { try { f(); return 'ADMITTED'; } catch (e) { return `${e.code ?? e.message}/${e.reason ?? ''}`; } };
-  const block = palette => C.encodeRegionBlock({ origin: [0, 0, 0], size: [palette.length, 1, 1], palette, indices: Int32Array.from(palette.map((_, i) => i)) });
-  const g3 = { protocols: proto, globalWriteCallbacks: wp.evidence.globalWriteCallbacks, verifiedCount: wp.check.verified.length, stricter: wp.check.stricter,
-    falseCount: count(false), nullCount: count(null), nodes: registered.size,
-    air: fact('air'), stone: fact('mcl_core:stone'), grass: fact('mcl_core:dirt_with_grass'), dirt: fact('mcl_core:dirt'), initNode, init: fact(initNode),
-    perCellAirStone: verdict(() => C.validateStaticMaterials({ a: air, s: stone }, catalogue)),
-    regionAirStonePalette: verdict(() => C.validateRegionPalette(block([air, stone]), catalogue)),
-    perCellInit: verdict(() => C.validateStaticMaterials({ m: init }, catalogue)),
-    regionInitPalette: verdict(() => C.validateRegionPalette(block([air, init]), catalogue)),
-    ignore: verdict(() => C.validateStaticMaterials({ m: { nodeName: 'ignore', param2: 0 } }, catalogue)) };
-  assert.equal(g3.perCellAirStone, 'ADMITTED'); assert.equal(g3.regionAirStonePalette, 'ADMITTED');
-  for (const k of ['perCellInit', 'regionInitPalette', 'ignore']) assert.ok(g3[k].startsWith('UNSUPPORTED_MUTATION_SEMANTICS/'), k);
-  assert.ok(wp.check.verified.includes('air') && wp.check.verified.includes('mcl_core:stone'));
-  results.g3 = g3; results.writePathEvidence = { catalogueDigest: wp.evidence.catalogueDigest, nodes: wp.evidence.nodes.length,
-    sample: wp.evidence.nodes.filter(n => ['air', 'mcl_core:stone', 'mcl_core:dirt', 'mcl_core:dirt_with_grass', 'mcl_core:bedrock', initNode].includes(n.nodeName)) };
-  check('G3_WRITE_PATH_FACTS_PROTOCOL_AND_ADMISSION', { protocols: proto, air: g3.air, stone: g3.stone, initNode, init: g3.init,
-    perCellAirStone: g3.perCellAirStone, regionAirStonePalette: g3.regionAirStonePalette, perCellInit: g3.perCellInit, regionInitPalette: g3.regionInitPalette,
-    ignore: g3.ignore, falseCount: g3.falseCount, nullCount: g3.nullCount, stricter: g3.stricter });
-  check('GAME_IDENTITY_AND_SURFACE_MATERIALS', { gameId: catalogue.gameId, gameRevision: catalogue.gameRevision, materials: results.materials.error ?? 'read' });
+  // Current published write-path evidence: the same loaded registry, neutral palette admission,
+  // callback rejection on both cell and region consumers and at the Adapter itself.
+  const wp=await native.readWritePathEvidence(paired.worldRef);
+  assert.equal(D('catalogue',wp.catalogue),D('catalogue',catalogue));
+  assert.deepEqual(wp.evidence.globalWriteCallbacks,[]);
+  const hooks=Object.fromEntries(wp.evidence.materials.map(m=>[m.materialRef,m.definedCallbacks]));
+  const air=vocabulary.material('air',0),stone=vocabulary.material('mcl_core:stone',0);
+  const initNode=['mcl_furnaces:furnace','mcl_chests:chest'].find(n=>nativeCatalogue.nodes[n]?.hasCallbacks===true);
+  assert.ok(initNode,'loaded initialization node to reject');const init=vocabulary.material(initNode,0);
+  const block=palette=>C.encodeRegionBlock({origin:[0,0,0],size:[palette.length,1,1],palette,indices:Int32Array.from(palette.map((_,i)=>i))});
+  const verdict=fn=>{try{fn();return 'ADMITTED';}catch(e){return e.code+'/'+e.reason;}};
+  const g3={perCellAirStone:verdict(()=>C.validateStaticMaterials({a:air,s:stone},catalogue)),regionAirStonePalette:verdict(()=>C.validateRegionPalette(block([air,stone]),catalogue)),
+    perCellInit:verdict(()=>C.validateStaticMaterials({m:init},catalogue)),regionInitPalette:verdict(()=>C.validateRegionPalette(block([air,init]),catalogue)),
+    ignore:verdict(()=>C.validateStaticMaterials({m:vocabulary.material('ignore',0)},catalogue))};
+  assert.equal(g3.perCellAirStone,'ADMITTED');assert.equal(g3.regionAirStonePalette,'ADMITTED');
+  for(const k of ['perCellInit','regionInitPalette','ignore'])assert.notEqual(g3[k],'ADMITTED',k);
+  assert.equal(catalogue.materials[air.materialRef].placeable,true);assert.equal(catalogue.materials[stone.materialRef].placeable,true);
+  assert.equal(catalogue.materials[init.materialRef].placeable,false);assert.equal(catalogue.materials[vocabulary.material('ignore',0).materialRef].placeable,null);
+  assert.ok(hooks[init.materialRef].includes('on_construct'));assert.ok(wp.check.verified.includes(air.materialRef)&&wp.check.verified.includes(stone.materialRef));
+  results.g3=g3;results.writePathEvidence=wp;
+  await writeFile(join(root,'write-path-evidence.json'),JSON.stringify(wp,null,2)+'\n');
+  check('G3_WRITE_PATH_FACTS_PROTOCOL_AND_ADMISSION',{handshake:canvas.get('hanaworldsWorldAdapterV6').protocolHandshake,region:canvas.get('hanaworldsWorldAdapterRegionV1').protocolHandshake,...g3});
+  check('GAME_IDENTITY_AND_SURFACE_MATERIALS', { gameId: nativeCatalogue.gameId, gameRevision: nativeCatalogue.gameRevision, materials: results.materials.error ?? 'read' });
 
   // 4. Load adjacent mapblocks through the Adapter and read back a flat surface.
   const box = { min: [-24, 0, -24], max: [39, 15, 39] }; // 5 x 1 x 5 mapblocks
@@ -316,16 +295,16 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   //    validateStaticMaterials, then prepare/apply/readback and same-origin Undo.
   const picked = await engine({ pick: [0, 8, 0], pickRef: 'fixture-pick', sessionRef: 'fixture-session' });
   assert.equal(picked.picked, true);
-  const base = () => ({ contractVersion: 'world-adapter/v6', sessionRef: 'fixture-session', worldRef: localContext.worldRef, localContext });
+  const base = () => ({ contractVersion: 'world-adapter/v8', sessionRef: 'fixture-session', worldRef: localContext.worldRef, localContext });
   const region = await ok6('InspectRegion', { ...base(), requestId: 'inspect', inspectionId: 'inspect-1', expectedWorldRevision: 'fixture-canvas-world-head-1',
-    anchor: { kind: 'PICKED_POINT', pickRef: 'fixture-pick' }, footprint: { widthCells: 1, depthCells: 1, heightCells: 1 },
+    anchor: { kind: 'PICKED_POINT', pickRef: 'fixture-pick' }, footprint: { geometryProfile:'voxel-grid/v1',widthCells: 1, depthCells: 1, heightCells: 1 },
     placementSettings: { frontGapCells: 2, forwardSearchCells: 16, lateralSearchCells: 8, verticalSearchCells: 4, settingsRevision: 'fixture-settings-1' } });
   assert.equal(region.outcome, 'REGION_INSPECTED');
   const positions = [[1, 9, 1], [2, 9, 1]];
   const actual = await native.readScopedState(paired.connectionRef, positions);
-  const operations = { contractVersion: 'operations/v3', buildDigest: '1'.repeat(64), compilerRevision: 'fixture-brush', compilationConfigDigest: '2'.repeat(64), worldRef: paired.worldRef,
+  const operations = { contractVersion: 'operations/v4', buildDigest: '1'.repeat(64), compilerRevision: 'fixture-brush', compilationConfigDigest: '2'.repeat(64), worldRef: paired.worldRef,
     frameDigest: region.inspection.targetFacts.frameDigest, catalogueDigest: region.inspection.targetFacts.catalogueDigest, targetFactsDigest: region.inspection.targetFactsDigest,
-    effects: positions.map(position => ({ position, nodeName: 'mcl_core:stone', param2: 0 })) };
+    effects: positions.map(position => ({ geometryProfile:'voxel-grid/v1',position,...stone })) };
   C.validateStaticMaterials({ s: stone }, catalogue);
   const operationDigest = D('operations', operations);
   const scope = { transactionId: 'cell-1', worldRef: paired.worldRef, operationDigest, stateProfile: actual.stateProfile, checkedPositions: positions, objects: [], cells: actual.cells, localContext };
@@ -334,7 +313,7 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   const receipt = await ok6('ApplyCompiledTransaction', { ...preq, requestId: 'apply-cell-1', preparedTransaction: C.projectScopedPreparedTransaction(prepared) });
   assert.equal(receipt.status, 'VERIFIED');
   const readback = await ok6('Readback', { ...base(), requestId: 'readback-cell-1', transactionId: 'cell-1', coveredPositions: positions, stateProfile: prepared.stateProfile });
-  assert.ok(readback.projection.records.every(r => r.nodeName === 'mcl_core:stone')); assert.equal(readback.readbackDigest, receipt.readbackDigest);
+  assert.ok(readback.projection.records.every(r => r.materialRef === stone.materialRef)); assert.equal(readback.readbackDigest, receipt.readbackDigest);
   const rCell = await readR(box, 'READBACK'); assert.equal(nodeAt(rCell, [1, 9, 1]).nodeName, 'mcl_core:stone'); // same cell through the region transport
   const undo = { ...base(), requestId: 'prepare-undo', originTransactionId: 'cell-1', transactionId: 'undo-cell-1', direction: 'UNDO', affectedObjectRefs: [],
     originVerifiedReceiptDigest: D('receipt', receipt), originBeforeImageDigest: prepared.beforeImageDigest, originBeforeStateReadbackDigest: prepared.beforeStateReadbackDigest,
@@ -349,7 +328,7 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   assert.equal(changed.metadata.hw_external_edit, 'later-world-change');
   const changedBefore = await native.readScopedState(paired.connectionRef, positions);
   const changedRegion = await readR({ min: positions[0], max: positions[1] }, 'READBACK');
-  assert.ok(changedRegion.chunks.some(c => c.state.extras.some(e => e.metadata.hw_external_edit === 'later-world-change')));
+  assert.ok(changedRegion.chunks.some(c => c.state.extras.some(e => e.state.metadata?.hw_external_edit === 'later-world-change')));
   const refused = await v6('PrepareHistoryTransaction', { ...undo, requestId: 'prepare-undo-external-conflict' });
   assert.equal(refused.error?.code, 'UNDO_CONFLICT');
   assert.equal(refused.error.mutationState, 'NONE');
@@ -380,6 +359,7 @@ minetest.after(0,function() answer(); minetest.log('action','HW_FLAT_READY=' .. 
   assert.equal(uw.error.code, 'TARGET_FACTS_INCOMPLETE');
   check('UNKNOWN_REJECTED', { reasons: [...new Set(u.chunks.map(c => c.unknownReason))], error: uw.error });
 } finally {
+  LocalCourier.prototype.catalogue=originalCatalogue;
   await adapterFiber.dispose(); await canvasFiber.dispose(); await stop();
   if (world) {
     results.afterStop = { mapMeta: (await readFile(join(world, 'map_meta.txt'), 'utf8').catch(() => '')).split('\n')

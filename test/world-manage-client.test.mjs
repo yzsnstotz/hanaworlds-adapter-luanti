@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { createNativeHost } from '../dev/world-manage/host.mjs';
+import { createNativeHost } from './support/world-manage/host.mjs';
 test('game launches the configured isolated official client, independent of the server executable',async()=>{
  const root=await mkdtemp(join(tmpdir(),'hw-client-route-')),out=join(root,'argv.json'),client=join(root,'client');
  await writeFile(client,`#!/bin/sh\nprintf '%s\n' "$@" > '${out}'\n`,{mode:0o700});

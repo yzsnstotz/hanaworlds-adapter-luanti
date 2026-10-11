@@ -15,11 +15,11 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 const root = await realpath(process.env.HW_LOCAL_E);
 const installed = process.env.HW_LOCAL_PACKAGE;
-assert.ok(installed && process.env.HW_CORDIS_MODULE && process.env.HW_WORLDEDIT, 'HW_LOCAL_PACKAGE, HW_CORDIS_MODULE and HW_WORLDEDIT are required');
-const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'src/index.mjs')));
-const C = await import(pathToFileURL(join(installed, 'node_modules/hanaworlds-contracts/dist/local/index.mjs')));
+assert.ok(installed && process.env.HW_CORDIS_MODULE, 'HW_LOCAL_PACKAGE and HW_CORDIS_MODULE are required');
+const { apply, inject, payloadDigest } = await import(pathToFileURL(join(installed, 'dist/runtime/index.mjs')));
+const C = await import('hanaworlds-contracts');
 const { Context } = await import(pathToFileURL(process.env.HW_CORDIS_MODULE));
-const LUANTI = '/Applications/luanti.app/Contents/MacOS/luanti';
+const LUANTI = process.env.HW_LUANTI ?? '/Applications/luanti.app/Contents/MacOS/luanti';
 const profile = join(root, 'profile'), world = join(profile, 'worlds', 'current'), home = join(root, 'home');
 const game = join(profile, 'games', 'hw_region_fixture'), base = join(game, 'mods', 'base');
 for (const p of [world, home, base, join(root, 'tmp')]) await mkdir(p, { recursive: true, mode: 0o700 });
@@ -35,9 +35,8 @@ await writeFile(join(base, 'init.lua'), [
 ].join('\n'));
 await writeFile(join(world, 'world.mt'), 'gameid = hw_region_fixture\nbackend = sqlite3\nplayer_backend = sqlite3\nauth_backend = sqlite3\nmod_storage_backend = sqlite3\n');
 await mkdir(join(world, 'worldmods'), { recursive: true });
-await cp(process.env.HW_WORLDEDIT, join(world, 'worldmods/worldedit'), { recursive: true });
 const probe = join(world, 'worldmods/hw_probe'); await mkdir(probe);
-await writeFile(join(probe, 'mod.conf'), 'name = hw_probe\ndepends = worldedit, base\noptional_depends = hanaworlds_adapter\n');
+await writeFile(join(probe, 'mod.conf'), 'name = hw_probe\ndepends = base\noptional_depends = hanaworlds_adapter\n');
 await writeFile(join(probe, 'init.lua'), `
 local path=minetest.get_worldpath()
 local counts={vm_write=0,fix_light=0,set_node=0,worldedit_set=0}
@@ -58,8 +57,7 @@ for _,n in ipairs({'set_node','swap_node','bulk_set_node','add_node','remove_nod
   local old=minetest[n]
   minetest[n]=function(...) counts.set_node=counts.set_node+1; save(); return old(...) end
 end
-local we=worldedit.set
-worldedit.set=function(...) counts.worldedit_set=counts.worldedit_set+1; save(); return we(...) end
+assert(rawget(_G,'worldedit')==nil, 'no WorldEdit dependency')
 -- fix_light wrapper; a pending probe-conflict file makes one concurrent engine
 -- change right after a region write, as another mod or player would.
 local old_light=minetest.fix_light
@@ -136,7 +134,7 @@ const host = { // Public NativeControl peer fixture controlling the real own pro
   async acquire(input) {
     C.validateType('NativeControlInput', input); assert.equal(input.worldPath, world); assert.equal(input.userPath, profile);
     const log = join(root, `luanti-${++stage}.log`), out = join(root, `luanti-${stage}-stdio.log`); let text = '';
-    const argv = ['--server', '--world', world, '--config', config, '--logfile', log];
+    const argv = [...(process.env.HW_LUANTI_MODE==='server'?[]:['--server']), '--world', world, '--config', config, '--logfile', log];
     child = spawn(LUANTI, argv, { env: { ...process.env, HOME: profile, LUANTI_USER_PATH: profile, XDG_CACHE_HOME: join(profile, 'cache'), TMPDIR: join(root, 'tmp') }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', b => { text += b; }); child.stderr.on('data', b => { text += b; });
     child.on('exit', (code, signal) => { void writeFile(out, text); const item = processes.find(p => p.pid === child.pid); if (item) { item.exitCode = code; item.signal = signal; } });
@@ -160,15 +158,15 @@ ctx.provide('hanaworldsNativeEngineControl', host);
 let canvas, localContext;
 const adapterFiber = ctx.plugin({ name: 'hanaworlds-adapter-luanti', inject, apply(c) { apply(c, { localWorldRoots: [join(profile, 'worlds')] }); } });
 await adapterFiber.await();
-const canvasFiber = ctx.plugin({ name: 'hanaworlds-canvas', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
-  assert.equal(name, 'ReadWorldSelectionContext'); C.validateBoundRequest('canvas/v5', name, r);
-  return C.validateBoundResponse('canvas/v5', name, r, { contractVersion: 'canvas/v5', requestId: r.requestId, error: null, result: {
+const canvasFiber = ctx.plugin({ name: 'adapter-contract-peer-fixture', apply(c) { canvas = c; c.provide('hanaworldsCanvasV5', { call(name, r) {
+  assert.equal(name, 'ReadWorldSelectionContext'); C.validateBoundRequest('canvas/v7', name, r);
+  return C.validateBoundResponse('canvas/v7', name, r, { contractVersion: 'canvas/v7', requestId: r.requestId, error: null, result: {
     sessionRef: r.sessionRef, worldRef: r.worldRef, inventory: { capabilityRevision: 'fixture-inventory-1', connections: [] },
     selection: { status: 'BOUND', connectionRef: localContext.connectionRef, context: { currentSession: r.sessionRef, activeWorldRef: localContext.worldRef,
       orderedSelectedObjectRefs: [], sessionRevision: 'fixture-session-1', selectionRevision: localContext.selectionRevision, localContext } } } });
 } }); } });
 await canvasFiber.await();
-canvas.fiber.entry = { options: { name: 'hanaworlds-canvas' } }; // same origin metadata the Host Loader supplies
+canvas.provide('hanaworldsCanvasRegionV1',{call(){}});
 const local = ctx.get('hanaworldsLuantiLocalWorlds');
 const counts = async () => JSON.parse(await readFile(join(world, 'probe-counts.json'), 'utf8'));
 async function engineRead(positions) {
@@ -182,11 +180,11 @@ async function engineRead(positions) {
   }
   throw Error('PROBE_ANSWER_TIMEOUT');
 }
-const W = 'world-adapter-region/v2';
-const CAPS = ['world-adapter-region/v2:chunked-read', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
-  'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'];
+const W = 'world-adapter-region/v3';
+const CAPS = ['world-adapter-region/v3:chunked-read', 'world-adapter-region/v3:chunked-write', 'world-adapter-region/v3:lighting-complete',
+  'world-adapter-region/v3:load-then-know', 'world-adapter-region/v3:restore-state'];
 let seq = 0;
-const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext });
+const req0 = () => ({ contractVersion: W, sessionRef: 'fixture-session', requestId: `req-${++seq}`, worldRef: localContext.worldRef, localContext,partition:{edge:[16,16,16]} });
 const summarize = r => r.result ? { chunks: r.result.chunks.length,
   status: [...new Set(r.result.chunks.map(c => c.availability ?? c.status))], loadMethod: [...new Set(r.result.chunks.map(c => c.loadMethod).filter(Boolean))],
   unknownReason: [...new Set(r.result.chunks.map(c => c.unknownReason).filter(Boolean))], lighting: r.result.lighting } : { error: r.error };
@@ -212,7 +210,7 @@ async function writeR(purpose, writes, caller) {
 }
 function ops(chunk, rule) {
   const { min, max } = chunk.box, size = max.map((v, i) => v - min[i] + 1);
-  const palette = [{ nodeName: 'base:stone', param2: 0 }, { nodeName: 'air', param2: 0 }, { nodeName: 'base:rotated', param2: 7 }];
+  const palette = [vocabulary.material('base:stone',0),vocabulary.material('air',0),vocabulary.material('base:rotated',7)];
   const indices = new Int32Array(size[0] * size[1] * size[2]); let i = 0, any = false;
   for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) { indices[i] = rule(x, y, z); any ||= indices[i] !== -1; i++; }
   return any ? C.encodeRegionBlock({ origin: min, size, palette, indices }) : null;
@@ -229,6 +227,10 @@ function apply_(read, rule) {
 }
 const R = { min: [-48, -8, -48], max: [63, 7, 63] }; // 7 x 2 x 7 = 98 mapblocks, low side not aligned
 const check = (event, detail = {}) => { events.push({ event, ...detail }); console.log('PASS', event); };
+const {WorldVocabulary}=await import(pathToFileURL(join(installed,'dist/runtime/world-vocabulary.mjs')));
+const {LocalCourier}=await import(pathToFileURL(join(installed,'dist/runtime/local-courier.mjs')));
+const originalCatalogue=LocalCourier.prototype.catalogue;let vocabulary;
+LocalCourier.prototype.catalogue=async function(){const r=await originalCatalogue.call(this);vocabulary=new WorldVocabulary(r);return r;};
 const sameDigests = (res, read, expected) => res.result.chunks.forEach((c, i) => {
   assert.equal(c.status, 'WRITTEN'); assert.equal(c.readbackDigest, expected[i]);
   assert.equal(read.chunks.find(r => r.chunkPos.join() === c.chunkPos.join()).stateDigest, expected[i]);
@@ -276,7 +278,7 @@ try {
   const before3 = await engineRead([[40, 2, 40]]);
   const dig = apply_(r1, rule3);
   const chestChunk = r1.chunks.find(c => c.chunkPos.join() === '2,0,2');
-  assert.ok(chestChunk.state.extras.some(e => e.position.join() === '40,2,40' && e.metadata.owner === 'fixture'));
+  assert.ok(chestChunk.state.extras.some(e => e.position.join() === '40,2,40' && e.state.metadata?.owner === 'fixture'));
   const w2 = await writeR('APPLY', dig.writes);
   assert.equal(w2.allWritten, true, JSON.stringify(w2.res.error));
   const r2 = await readR(R, 'READBACK'); sameDigests(w2.res, r2, dig.expected);
@@ -303,7 +305,7 @@ try {
   const far = { min: [1000, 0, 1000], max: [1040, 20, 1040] };
   const farBefore = await engineRead([[1000, 0, 1000, 'noload']]); // observe without loading
   const g1 = await readR(far, 'INSPECT'); C.requireKnownRegion(g1);
-  assert.ok(g1.chunks.every(c => c.loadMethod === 'LOADED_BY_EMERGE'));
+  assert.ok(g1.chunks.every(c => c.loadMethod === 'LOADED_ON_DEMAND'));
   const g1Facts = port.lastFacts();
   const g2 = await readR(far, 'INSPECT'); assert.ok(g2.chunks.every(c => c.loadMethod === 'ALREADY_LOADED'));
   assert.deepEqual(g2.chunks.map(c => c.stateDigest), g1.chunks.map(c => c.stateDigest));
@@ -340,14 +342,15 @@ try {
   // 8. Observation only: a chunk holding a running node timer, read twice.
   const tbox = { min: [192, 0, 192], max: [207, 15, 207] };
   const t1 = await readR(tbox, 'INSPECT'); await new Promise(y => setTimeout(y, 1500)); const t2 = await readR(tbox, 'INSPECT');
-  const te = (r) => r.chunks[0].state?.extras.find(e => e.position.join() === '200,0,200')?.timer ?? null;
+  const te = (r) => r.chunks[0].state?.extras.find(e => e.position.join() === '200,0,200')?.state.timer ?? null;
   events.push({ event: 'OBSERVED_RUNNING_TIMER_DIGEST', firstTimer: te(t1), secondTimer: te(t2), digestChanged: t1.chunks[0].stateDigest !== t2.chunks[0].stateDigest });
 
   check('PASS', { counts: await counts() });
 } finally {
+  LocalCourier.prototype.catalogue=originalCatalogue;
   await adapterFiber.dispose(); await canvasFiber.dispose(); await stop();
   await writeFile(join(root, 'calls.json'), JSON.stringify(calls, null, 2) + '\n');
   await writeFile(join(root, 'processes.json'), JSON.stringify(processes, null, 2) + '\n');
   await writeFile(join(root, 'events.json'), JSON.stringify(events, null, 2) + '\n');
 }
-console.log('REAL_RUNTIME world-adapter-region/v2 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');
+console.log('REAL_RUNTIME world-adapter-region/v3 own package/Cordis/Luanti PASS; game, Host and Canvas are explicit FIXTURES');

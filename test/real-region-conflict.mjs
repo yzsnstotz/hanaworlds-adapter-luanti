@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {openRealWorld} from '../dev/stage1-supply/real-world.mjs';
+import {openRealWorld} from './support/stage1-supply/real-world.mjs';
 import {LocalCourier} from '../src/local-courier.mjs';
 const E=process.env.HW_REAL_E;
 assert.ok(E && process.env.HW_GAME && process.env.HW_WORLDEDIT);

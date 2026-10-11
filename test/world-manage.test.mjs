@@ -1,7 +1,7 @@
 // FIXTURE: controller consumes public Adapter ports; native processes are not simulated as REAL.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWorldManager } from '../dev/world-manage/manager.mjs';
+import { createWorldManager } from './support/world-manage/manager.mjs';
 function setup() {
   let bound=null, deleted=[], counter=0, processes=[];
   const rows=[{connectionRef:'a',worldRef:'world-a',worldPath:'/worlds/A',worldName:'A'}, {connectionRef:'b',worldRef:'world-b',worldPath:'/worlds/B',worldName:'B'}];

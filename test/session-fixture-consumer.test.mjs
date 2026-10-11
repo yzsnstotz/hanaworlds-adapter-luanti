@@ -1,7 +1,7 @@
 // Development Canvas/Workshop authority fixtures; actual Adapter selection consumer, no real Core.
 import test from 'node:test';import assert from 'node:assert/strict';import * as C from '#contracts';
-import {createSessionSelectionConsumer} from '../dev/world-manage/session-selection.mjs';
-const module=await import('../dev/world-manage/session-fixture.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
+import {createSessionSelectionConsumer} from './support/world-manage/session-selection.mjs';
+const module=await import('./support/world-manage/session-fixture.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
 function setup(){assert.ok(module,'published-contract Session/Canvas fixture is missing');
  const profile={profileVersion:'state-profile/v2',nodeFields:['nodeName','param1','param2'],metadataMode:'exact',inventoryMode:'exact',timerMode:'exact',derivedLightMode:'recompute-with-readback'};
  const connections=['A','B'].map(w=>({adapterId:'hanaworlds-adapter-luanti',connectionRef:'c:'+w,worldRef:w,displayName:w,capabilityRevision:'cap',payloadVersion:'0.6.0',readiness:'READY',connectionIncarnationRef:'inc:'+w}));

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import * as C from '#contracts';
-const module=await import('../dev/world-manage/inspection-context.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
+const module=await import('./support/world-manage/inspection-context.mjs').catch(e=>{if(e.code==='ERR_MODULE_NOT_FOUND')return null;throw e;});
 function setup(refs=['o1']){assert.ok(module,'singular CAS inspection consumer missing');
  let provider,revision='head:1',calls=0;let after=()=>{};
  const context={currentSession:'S1',activeWorldRef:'A',orderedSelectedObjectRefs:refs,sessionRevision:'session:1',selectionRevision:'selection:1',localContext:{worldRef:'A',connectionRef:'c:A',connectionIncarnationRef:'inc:A',selectionRevision:'selection:1'}};

@@ -1,0 +1,995 @@
+{
+  "card": "adapter-migration-cleanup-01",
+  "baseline": "73a2fdc12baa6d43f4f2253ee32f1867432e378f",
+  "items": [
+    {
+      "path": "DEFERRED-LOCAL-WORLD.md",
+      "bytes": 1012,
+      "sha256": "92d21ccf74c3b4442f84d87af8f8953c63b5e09450a8b09019576cee926a7762",
+      "restoreFrom": "archive/DEFERRED-LOCAL-WORLD.md"
+    },
+    {
+      "path": "PUBLIC_ASSEMBLY_075.md",
+      "bytes": 19249,
+      "sha256": "47e154d0f6707edd3584254db3862dd46a7deff1795206ab57d4c97de36686ea",
+      "restoreFrom": "archive/PUBLIC_ASSEMBLY_075.md"
+    },
+    {
+      "path": "PUBLIC_CLIENT_INSPECTION_RECIPE.md",
+      "bytes": 17890,
+      "sha256": "c735795a116c11a506c2f36e73c11f9772994d222d4268f16cef24ca6d820379",
+      "restoreFrom": "archive/PUBLIC_CLIENT_INSPECTION_RECIPE.md"
+    },
+    {
+      "path": "PUBLIC_HOST_RECIPE.md",
+      "bytes": 15005,
+      "sha256": "e62c37e1b837f6def5ed6f4a6a7ad329488901c281414285ab3e09caf1505b9f",
+      "restoreFrom": "archive/PUBLIC_HOST_RECIPE.md"
+    },
+    {
+      "path": "PUBLIC_INSPECTION_RECIPE.md",
+      "bytes": 18150,
+      "sha256": "9083782277350e071f6688c4d4dfd8bc97a1242b91b1ea33b6e8a50574ca7c37",
+      "restoreFrom": "archive/PUBLIC_INSPECTION_RECIPE.md"
+    },
+    {
+      "path": "SESSION_WORLD_BINDING_REQUEST.md",
+      "bytes": 7727,
+      "sha256": "bab44d8f06b3b57bb720ef2578ed5c6dd3cec3812f92a0cec702974948eff31d",
+      "restoreFrom": "archive/SESSION_WORLD_BINDING_REQUEST.md"
+    },
+    {
+      "path": "STAGE1_FACT_SUPPLY.md",
+      "bytes": 6277,
+      "sha256": "654c78991275b574c044bdffda5d69aab4f9dfc70be4eb9a1cde56aa4da4704d",
+      "restoreFrom": "archive/STAGE1_FACT_SUPPLY.md"
+    },
+    {
+      "path": "archive/d19/MANIFEST.json",
+      "bytes": 11950,
+      "sha256": "7d01923bc4fa6e57c41e08da9c1db5e1f54646fcda6706d7e0b2feba615ea4ab",
+      "restoreFrom": "archive/archive/d19/MANIFEST.json"
+    },
+    {
+      "path": "archive/d19/README.md",
+      "bytes": 595,
+      "sha256": "5b9a7847bf8f74c02442358371e4ea7d6f092aa33886ef8a9973dbe1d24c1426",
+      "restoreFrom": "archive/archive/d19/README.md"
+    },
+    {
+      "path": "archive/d19/payload/hanaworlds_adapter/grant.lua",
+      "bytes": 9718,
+      "sha256": "d0de02571b382e8bb27e8ceee55ad7a245376b4abfc0ccf5756e0ffc3e2c1dc8",
+      "restoreFrom": "archive/archive/d19/payload/hanaworlds_adapter/grant.lua"
+    },
+    {
+      "path": "archive/d19/scripts/real-scoped-gate.mjs",
+      "bytes": 23425,
+      "sha256": "191e3bafa40479ffdd7a4c4215fb2d0d7d727f090fe75e76ec4ddb9d99395410",
+      "restoreFrom": "archive/archive/d19/scripts/real-scoped-gate.mjs"
+    },
+    {
+      "path": "archive/d19/scripts/scoped-gate-requests.mjs",
+      "bytes": 7950,
+      "sha256": "cab53cec71fb2b86d4a63a199d5566b96ff51e221f1a6f108a9ea2dbd1b17948",
+      "restoreFrom": "archive/archive/d19/scripts/scoped-gate-requests.mjs"
+    },
+    {
+      "path": "archive/d19/src/bridge.mjs",
+      "bytes": 9967,
+      "sha256": "1e5c084c87400ff94b7e3a1364a1a9830958524c1057dbf8e11feb2385dd6788",
+      "restoreFrom": "archive/archive/d19/src/bridge.mjs"
+    },
+    {
+      "path": "archive/d19/src/journal.mjs",
+      "bytes": 12150,
+      "sha256": "cd0456ff12c3fd65f024a67e169308d894be251d2a50abee3d0089dc879b6f13",
+      "restoreFrom": "archive/archive/d19/src/journal.mjs"
+    },
+    {
+      "path": "archive/d19/src/local-transport.mjs",
+      "bytes": 16551,
+      "sha256": "8ed6cc2d18b0c0ad663ce2695e3d871d160ada9912f6e2b10ebf7df0456056cd",
+      "restoreFrom": "archive/archive/d19/src/local-transport.mjs"
+    },
+    {
+      "path": "archive/d19/src/remote-transport.mjs",
+      "bytes": 6517,
+      "sha256": "8a4bc65ad0df60ccae9ad30f1d462005ef73de15a08d5be887e72898a689750a",
+      "restoreFrom": "archive/archive/d19/src/remote-transport.mjs"
+    },
+    {
+      "path": "archive/d19/src/session-authorization.mjs",
+      "bytes": 4181,
+      "sha256": "6a9977cd566180232b40c8e13b3fc5abf3a6d9bc7d0254a904feae09e68999ae",
+      "restoreFrom": "archive/archive/d19/src/session-authorization.mjs"
+    },
+    {
+      "path": "archive/d19/src/v2-operations.mjs",
+      "bytes": 37891,
+      "sha256": "7e1f86fc9da8d0ed5d025ed1050b97dc0ee480592ef5f2b2780373b06129873f",
+      "restoreFrom": "archive/archive/d19/src/v2-operations.mjs"
+    },
+    {
+      "path": "archive/d19/src/v2-port.mjs",
+      "bytes": 27995,
+      "sha256": "8ff71a0607a4a925d064ec1597f3abdaafdadd1779ac70ed7b6d1a64ecdbf92d",
+      "restoreFrom": "archive/archive/d19/src/v2-port.mjs"
+    },
+    {
+      "path": "archive/d19/src/v2-transactions.mjs",
+      "bytes": 13276,
+      "sha256": "f13616e6765e9d8f4d07704f6c41fc5825379bc8781c15ad0a20a3f70ac42a3a",
+      "restoreFrom": "archive/archive/d19/src/v2-transactions.mjs"
+    },
+    {
+      "path": "archive/d19/src/v3-port.mjs",
+      "bytes": 6161,
+      "sha256": "cb4730b58c910db64f9ef0b4a4ce2823c86a0c328b3f6f688bfabf20a7cf9a96",
+      "restoreFrom": "archive/archive/d19/src/v3-port.mjs"
+    },
+    {
+      "path": "archive/d19/src/v3-transactions.mjs",
+      "bytes": 22363,
+      "sha256": "a495664442b5a8b397044e985a89c500c2714a4cd078e97ff7e8deb140cf13ba",
+      "restoreFrom": "archive/archive/d19/src/v3-transactions.mjs"
+    },
+    {
+      "path": "archive/d19/src/v4-port.mjs",
+      "bytes": 8044,
+      "sha256": "cd6d06fd8ed3a8035d78e2ff2f23de24146b7e43eea000823661d83d3eb37c48",
+      "restoreFrom": "archive/archive/d19/src/v4-port.mjs"
+    },
+    {
+      "path": "archive/d19/src/v4-transactions.mjs",
+      "bytes": 37106,
+      "sha256": "502dc582de05b6f7969f65c75f7e0df09fdfdfd4de3d1df57d0bfec4fda59960",
+      "restoreFrom": "archive/archive/d19/src/v4-transactions.mjs"
+    },
+    {
+      "path": "archive/d19/src/v5-transactions.mjs",
+      "bytes": 20798,
+      "sha256": "b085d18dfd56d21999f677815f31ab2667a7dec99149215822808b6e6b6b24d2",
+      "restoreFrom": "archive/archive/d19/src/v5-transactions.mjs"
+    },
+    {
+      "path": "archive/d19/src/workshop-relay.mjs",
+      "bytes": 790,
+      "sha256": "51a16ed60233c8933bf2d92c59a8e673def83498fad9b3a73501b7a8bf049bf3",
+      "restoreFrom": "archive/archive/d19/src/workshop-relay.mjs"
+    },
+    {
+      "path": "archive/d19/test/auto-grant.lua",
+      "bytes": 9521,
+      "sha256": "f21c3b3c33e1784dd79ccf4c21f602f68eff85afb79563fa8bc6eedac6c1ed07",
+      "restoreFrom": "archive/archive/d19/test/auto-grant.lua"
+    },
+    {
+      "path": "archive/d19/test/auto-native-entry.lua",
+      "bytes": 5564,
+      "sha256": "4996f12b83709620ae466cb643206ca10604ab2c73cdf36040393c6800d260e9",
+      "restoreFrom": "archive/archive/d19/test/auto-native-entry.lua"
+    },
+    {
+      "path": "archive/d19/test/bridge.test.mjs",
+      "bytes": 12699,
+      "sha256": "949713be63d108f406afe0233d620eb6a27e7ea21901b0c7e2fa9d3c93d1d03f",
+      "restoreFrom": "archive/archive/d19/test/bridge.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/current-contracts-advertisement.test.mjs",
+      "bytes": 1773,
+      "sha256": "1f42100a1fc9d67b949553d5823158978398e76b979d8ec4f8ba49d2a53aa955",
+      "restoreFrom": "archive/archive/d19/test/current-contracts-advertisement.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/grant-evidence.test.mjs",
+      "bytes": 12461,
+      "sha256": "33c06048c881836cc455696d315ac02fd26583d3a6063d9382c70b7499376141",
+      "restoreFrom": "archive/archive/d19/test/grant-evidence.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/grant.lua",
+      "bytes": 5616,
+      "sha256": "58cbc1f63806041d78d530ccfea372318035d3a71137968eff2043c3f6c9bf04",
+      "restoreFrom": "archive/archive/d19/test/grant.lua"
+    },
+    {
+      "path": "archive/d19/test/journal.test.mjs",
+      "bytes": 3427,
+      "sha256": "0a36f0dec0b8f9c05a1d6779f141b297873798bf12f3183065032045006b0042",
+      "restoreFrom": "archive/archive/d19/test/journal.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/local-grant.test.mjs",
+      "bytes": 5503,
+      "sha256": "8dd00f981f31797b3624f448ee79b5b7df8aa6905bbe79089fa5b09c82ef27a1",
+      "restoreFrom": "archive/archive/d19/test/local-grant.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/payload.lua",
+      "bytes": 12565,
+      "sha256": "e46bea913af0480bc25c5f5d044c0f9cad40cb731ecbdef0af09c0bb5fc00fc1",
+      "restoreFrom": "archive/archive/d19/test/payload.lua"
+    },
+    {
+      "path": "archive/d19/test/real-luanti.mjs",
+      "bytes": 16765,
+      "sha256": "69df9c1a0fe2721e6582de06e019bc00a6a6533ae6f4cd00d712565f86b07d8c",
+      "restoreFrom": "archive/archive/d19/test/real-luanti.mjs"
+    },
+    {
+      "path": "archive/d19/test/recovery-state.test.mjs",
+      "bytes": 5737,
+      "sha256": "59bfaf4e6b9a3e7edf6243cc9e4c36e651e79f7ff1743063fd37bb808072a677",
+      "restoreFrom": "archive/archive/d19/test/recovery-state.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/remote.test.mjs",
+      "bytes": 6379,
+      "sha256": "99efe183506a49401b36c3e91e33c40431768f5a0168b2ffeda0e94415bd27b1",
+      "restoreFrom": "archive/archive/d19/test/remote.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/scoped-gate/fixture-plugin/cordis.patch.yml",
+      "bytes": 100,
+      "sha256": "582281a25e1a1cff66bf6f3dcb05423ea3f4ecb73605248b9d78b32651310945",
+      "restoreFrom": "archive/archive/d19/test/scoped-gate/fixture-plugin/cordis.patch.yml"
+    },
+    {
+      "path": "archive/d19/test/scoped-gate/fixture-plugin/index.mjs",
+      "bytes": 8487,
+      "sha256": "a9ccf7110805bc30fea1e7d6293f129de2e3489963f4dfb706a3de8abdf37edb",
+      "restoreFrom": "archive/archive/d19/test/scoped-gate/fixture-plugin/index.mjs"
+    },
+    {
+      "path": "archive/d19/test/scoped-gate/fixture-plugin/package.json",
+      "bytes": 238,
+      "sha256": "48157bc2d827d112c67d60922006aa042669bebbe015f9e5248aede352da74b6",
+      "restoreFrom": "archive/archive/d19/test/scoped-gate/fixture-plugin/package.json"
+    },
+    {
+      "path": "archive/d19/test/scoped-gate/worldmod/init.lua",
+      "bytes": 5127,
+      "sha256": "0ed4e44d546ca691af63979bff60a1b3bf46920f0303dbf5962507d0748c0023",
+      "restoreFrom": "archive/archive/d19/test/scoped-gate/worldmod/init.lua"
+    },
+    {
+      "path": "archive/d19/test/scoped-gate/worldmod/mod.conf",
+      "bytes": 62,
+      "sha256": "2176a47956011ebbaf9dfa73c539f8e1f32c7cc2db14aeacdcdc0b9fd7c207e1",
+      "restoreFrom": "archive/archive/d19/test/scoped-gate/worldmod/mod.conf"
+    },
+    {
+      "path": "archive/d19/test/session-authorization.test.mjs",
+      "bytes": 2687,
+      "sha256": "2496d6f28fbb0d6b0b0670321f0f0295550f86d10791c3ff4c6e580733db88ea",
+      "restoreFrom": "archive/archive/d19/test/session-authorization.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/transport.test.mjs",
+      "bytes": 11178,
+      "sha256": "671a49335485361508fa4b1edd603f09c0ee77ddc50753676be0aa52c0f175ba",
+      "restoreFrom": "archive/archive/d19/test/transport.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v2-port.test.mjs",
+      "bytes": 10643,
+      "sha256": "308a2a8ac3e9343b17df461b2ec108c3485ebe6c1bc42d82393ba7571f46382a",
+      "restoreFrom": "archive/archive/d19/test/v2-port.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v2-transactions.test.mjs",
+      "bytes": 11572,
+      "sha256": "aa1277c7dcd2f76458fdde61cce084baba1ce739b5f222c52f4f8af6030f615a",
+      "restoreFrom": "archive/archive/d19/test/v2-transactions.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-history-negative.test.mjs",
+      "bytes": 3064,
+      "sha256": "8f9a134748586986d07fb6ff6b1f6cf266369a00b9b2c8777d1b5a93d3cb4bb2",
+      "restoreFrom": "archive/archive/d19/test/v3-history-negative.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-inspect.test.mjs",
+      "bytes": 1320,
+      "sha256": "8f1c8c23c5f011e1a0b12a03418fa8218e2cb1d589b4525930141d4309d02446",
+      "restoreFrom": "archive/archive/d19/test/v3-inspect.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-journal.test.mjs",
+      "bytes": 2451,
+      "sha256": "37c17b425297866c4010c9bc0f348f00d769259a5cd69344ef0ee5e984c016c7",
+      "restoreFrom": "archive/archive/d19/test/v3-journal.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-port.test.mjs",
+      "bytes": 8093,
+      "sha256": "2dd975b50ffef6c266a1180f0ff4d2de08db9f009f3dafed6084e842f1d75490",
+      "restoreFrom": "archive/archive/d19/test/v3-port.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-recovery.test.mjs",
+      "bytes": 4994,
+      "sha256": "d8a57a8f7aef44a823f988f9e89416925e718b89bbe08b0eadbc105503f5718d",
+      "restoreFrom": "archive/archive/d19/test/v3-recovery.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v3-transactions.test.mjs",
+      "bytes": 8909,
+      "sha256": "fad9b7825f740e93eba5cddc4112914640f380022cd8b513793eafe14a3c3e6a",
+      "restoreFrom": "archive/archive/d19/test/v3-transactions.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-carried-history-negative.test.mjs",
+      "bytes": 3321,
+      "sha256": "f71b5c6b801fc3aaca127e6e01fa75638afd15cf5a7c285ef530b25517a4eb86",
+      "restoreFrom": "archive/archive/d19/test/v4-carried-history-negative.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-carried-journal.test.mjs",
+      "bytes": 2557,
+      "sha256": "12ddf3a1be8601afa9df99749911c66d2241ed4f7e69a1a2137ccc97bc92839b",
+      "restoreFrom": "archive/archive/d19/test/v4-carried-journal.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-carried-recovery.test.mjs",
+      "bytes": 5263,
+      "sha256": "07bb3457399583497d4118f125d86a60618967aa49ba36cecd0742facfcc1f07",
+      "restoreFrom": "archive/archive/d19/test/v4-carried-recovery.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-carried-transactions.test.mjs",
+      "bytes": 10896,
+      "sha256": "f5eab75dfd5cf6ab37914f9e8ff775ff038bfd65a4b9e4fa6263b4cb559abcc4",
+      "restoreFrom": "archive/archive/d19/test/v4-carried-transactions.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-d1-d3.test.mjs",
+      "bytes": 108172,
+      "sha256": "c13cd85e406fd9351f7c901e78e09874cfecb5a84ac003e3d9a6536b7637fdee",
+      "restoreFrom": "archive/archive/d19/test/v4-d1-d3.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-native-storage.test.mjs",
+      "bytes": 8428,
+      "sha256": "6d452e2ab80e0a27f45c8fc6aacbfbd3c3718ae5871dab3c33ceead5f3c96ad4",
+      "restoreFrom": "archive/archive/d19/test/v4-native-storage.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-port.test.mjs",
+      "bytes": 11252,
+      "sha256": "4bef08835e75af7d2fa64e68a9bd2659d239c5e4d46a1babc020bd672177d4bd",
+      "restoreFrom": "archive/archive/d19/test/v4-port.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-region.test.mjs",
+      "bytes": 19678,
+      "sha256": "fd54378c1b43939ac121a15e025025f194c8799eed57b6f42ea07730ea906756",
+      "restoreFrom": "archive/archive/d19/test/v4-region.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v4-workshop-relay.test.mjs",
+      "bytes": 16115,
+      "sha256": "928b5af3271f0928ae463f898413f0615658f7afd7cb930456f3d42c1e7909cd",
+      "restoreFrom": "archive/archive/d19/test/v4-workshop-relay.test.mjs"
+    },
+    {
+      "path": "archive/d19/test/v5-scoped.test.mjs",
+      "bytes": 12205,
+      "sha256": "0964488c6f44bf937cf3c93928235177d07684778c11ca5e12d5fe5eaf2f29c5",
+      "restoreFrom": "archive/archive/d19/test/v5-scoped.test.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/browser-walk-real.mjs",
+      "bytes": 5036,
+      "sha256": "c38ca69a6cbe9fdc6d09181980f618089074104b27fc182c1f81a4206360e56c",
+      "restoreFrom": "archive/dev/stage1-supply/browser-walk-real.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/browser-walk.mjs",
+      "bytes": 4913,
+      "sha256": "ab6195d0027b1ef16751efc163f799823a3972c605783ca4ccc2880109f5000e",
+      "restoreFrom": "archive/dev/stage1-supply/browser-walk.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/collision-semantics.mjs",
+      "bytes": 5457,
+      "sha256": "c06c512cc0accc25ef9f91351a48cab3a68870c3c8294389f5e2226dd469e7de",
+      "restoreFrom": "archive/dev/stage1-supply/collision-semantics.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/material-semantics.mjs",
+      "bytes": 6911,
+      "sha256": "2191a9066cde03fced633cc2b9a55eb55de405dfb28549aa730c51749b3a9dce",
+      "restoreFrom": "archive/dev/stage1-supply/material-semantics.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/page.html",
+      "bytes": 11069,
+      "sha256": "4ee5c75e3ab5f44807d59ad10e62ef3f200001659fdc64862c1f58b1a923d126",
+      "restoreFrom": "archive/dev/stage1-supply/page.html"
+    },
+    {
+      "path": "dev/stage1-supply/server.mjs",
+      "bytes": 7443,
+      "sha256": "5defacb0667bdded12be227953442d6d1b5372ee825a1d8fcaea24fddcaa5e5f",
+      "restoreFrom": "archive/dev/stage1-supply/server.mjs"
+    },
+    {
+      "path": "dev/stage1-supply/start.sh",
+      "bytes": 294,
+      "sha256": "f47dae1a1c86d9c8162101815b1d2a3f437e06da74ccfd56dd3a6ad12250152f",
+      "restoreFrom": "archive/dev/stage1-supply/start.sh"
+    },
+    {
+      "path": "dev/world-manage/page.html",
+      "bytes": 10186,
+      "sha256": "24ed873c72ff03c4b0a537c3a9f98b719624c0992496d2c54fd369c23e419a38",
+      "restoreFrom": "archive/dev/world-manage/page.html"
+    },
+    {
+      "path": "dev/world-manage/server.mjs",
+      "bytes": 6177,
+      "sha256": "938b2d7279c19b5464484342c0baa1981b1b8c177fa9494a578eaf69c1ba9e03",
+      "restoreFrom": "archive/dev/world-manage/server.mjs"
+    },
+    {
+      "path": "dev/world-manage/session-page.html",
+      "bytes": 10283,
+      "sha256": "5ec258c843a040a78b4ed27cc96768bf8b3e95ac3b2a9f51ffa4f37cfe6709b7",
+      "restoreFrom": "archive/dev/world-manage/session-page.html"
+    },
+    {
+      "path": "dev/world-manage/session-server.mjs",
+      "bytes": 6164,
+      "sha256": "a6b597791f20992863ed9c0a120d058eba53a4e2a62ff9b694a037ae94c88d1c",
+      "restoreFrom": "archive/dev/world-manage/session-server.mjs"
+    },
+    {
+      "path": "dev/world-manage/start.sh",
+      "bytes": 1020,
+      "sha256": "f9c013ab8d6f361e7ef1f08e9a006d34e6392b189d44c0fc4cd2dd3a24cb0704",
+      "restoreFrom": "archive/dev/world-manage/start.sh"
+    },
+    {
+      "path": "dev/world-readback/browser-walk.mjs",
+      "bytes": 5908,
+      "sha256": "fb11ac126ada040693a3ca98ccbac79a4e33d8209a7dbdf72aec506c13485a3b",
+      "restoreFrom": "archive/dev/world-readback/browser-walk.mjs"
+    },
+    {
+      "path": "dev/world-readback/page.html",
+      "bytes": 12262,
+      "sha256": "5651fb80a24dde6648aac1fd2b2140d478cc381b26210ecdde047e127608b468",
+      "restoreFrom": "archive/dev/world-readback/page.html"
+    },
+    {
+      "path": "dev/world-readback/server.mjs",
+      "bytes": 12545,
+      "sha256": "5f72f7f43e42db1d2218e50b7bd5ca8530dea011f6e3d7e09129973e5a673a18",
+      "restoreFrom": "archive/dev/world-readback/server.mjs"
+    },
+    {
+      "path": "dev/world-readback/start.sh",
+      "bytes": 934,
+      "sha256": "25b0a72435599c4d4f762d32160d3791188f9f039dfa5bd7354bbc574254ec7e",
+      "restoreFrom": "archive/dev/world-readback/start.sh"
+    },
+    {
+      "path": "docs/PALETTE-SOURCE-GAP-20261007.md",
+      "bytes": 8698,
+      "sha256": "02d1de32e020e32f311a86011ad64638de1c7438fa7432377e37989f43fe7c4a",
+      "restoreFrom": "archive/docs/PALETTE-SOURCE-GAP-20261007.md"
+    },
+    {
+      "path": "docs/acceptance.md",
+      "bytes": 1704,
+      "sha256": "974e474991eee4c8bce69f6cf7de6b4ef4492e35e6fce2c904645234056c14af",
+      "restoreFrom": "archive/docs/acceptance.md"
+    },
+    {
+      "path": "docs/s1-ad-auto-01-plan.md",
+      "bytes": 2423,
+      "sha256": "004c3fadae4299e91fbd79faa087c928e4772aeae2f101bd020f7b362f5600ee",
+      "restoreFrom": "archive/docs/s1-ad-auto-01-plan.md"
+    },
+    {
+      "path": "docs/s1-ad-local-provisioning-01-plan.md",
+      "bytes": 3328,
+      "sha256": "d85c93020eb9b087b4c959666a05a5ced05c3d7e8ea1a35fb34f2ad93d811067",
+      "restoreFrom": "archive/docs/s1-ad-local-provisioning-01-plan.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-06-auto-native-entry.md",
+      "bytes": 3041,
+      "sha256": "6a64958cca411a34a875484f00616efdaa9b5f391382a57e07bce2f8474c7b0a",
+      "restoreFrom": "archive/docs/superpowers/plans/2026-10-06-auto-native-entry.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-06-host-lifecycle.md",
+      "bytes": 5192,
+      "sha256": "5ed46c7200a9e685ae8aaa8cc5481c77e3c5664581990ac67c380b02aec1a474",
+      "restoreFrom": "archive/docs/superpowers/plans/2026-10-06-host-lifecycle.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-07-material-sources.md",
+      "bytes": 2851,
+      "sha256": "5cc165f1d18dc12d1499750c4db6262ba35c4b76f91a96e970a349bf1e562d94",
+      "restoreFrom": "archive/docs/superpowers/plans/2026-10-07-material-sources.md"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-06-auto-native-entry.md",
+      "bytes": 3623,
+      "sha256": "fe6f0ff4f13d84e1e8ec765914fe8f9fc373cb69d2a773cbf1c0742c6acb8645",
+      "restoreFrom": "archive/docs/superpowers/specs/2026-10-06-auto-native-entry.md"
+    },
+    {
+      "path": "scripts/audit-palette-source.py",
+      "bytes": 4331,
+      "sha256": "813bba0aa7b84b3ef39052a480dedf09103ba8e42d9e4a79f58f2d5fe2db4166",
+      "restoreFrom": "archive/scripts/audit-palette-source.py"
+    },
+    {
+      "path": "scripts/probe-native-http-api.py",
+      "bytes": 3441,
+      "sha256": "000480e701d942774da1e014b103a13e7293c68e471d74959b62b810b37d2050",
+      "restoreFrom": "archive/scripts/probe-native-http-api.py"
+    },
+    {
+      "path": "scripts/probe-native-operator-console.mjs",
+      "bytes": 3219,
+      "sha256": "d6f314b1c0c9926ae54971df962b57016887a2e98f2c0387d7e96a07ddd197e3",
+      "restoreFrom": "archive/scripts/probe-native-operator-console.mjs"
+    },
+    {
+      "path": "README.md",
+      "bytes": 55300,
+      "sha256": "c77404ec77b640c06e306f1fb5e650179239ced81ec478df2400ed1ac8e5292f",
+      "restoreFrom": "archive/README.md",
+      "action": "replace-current-doc"
+    },
+    {
+      "path": "test/real-flat-world.mjs",
+      "bytes": 34906,
+      "sha256": "6c4d907d77a90a4a0ce8db0bfa2a73ac2e21b9e6b3cbbd2bdaed449290263519",
+      "restoreFrom": "archive/test/real-flat-world.mjs",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "test/real-region-io.mjs",
+      "bytes": 25480,
+      "sha256": "e75b63dd44e8f13cd5c6d8afdb64431acabc0caf1ce1701d452ca6bfd827f0a3",
+      "restoreFrom": "archive/test/real-region-io.mjs",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "test/real-world-switch.mjs",
+      "bytes": 9554,
+      "sha256": "c3d8084d579e451b0f0ab266b694ee6c908dbe865e594d46aacd931f30766ae6",
+      "restoreFrom": "archive/test/real-world-switch.mjs",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "test/real-world-delete.mjs",
+      "bytes": 13431,
+      "sha256": "d3c03aae51d0a97f85b2d2875f0ea9ce4f6d25d290dc19366067497f0e37dcca",
+      "restoreFrom": "archive/test/real-world-delete.mjs",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "scripts/final-gate-flat-world.sh",
+      "bytes": 6556,
+      "sha256": "e660e9c4d0cb3e524d75d3ef1a0fb530bd74546ba41c19cb1d23e43fa5f96cd2",
+      "restoreFrom": "archive/scripts/final-gate-flat-world.sh",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "scripts/final-gate-region-io.sh",
+      "bytes": 4055,
+      "sha256": "e0e4c4b7b3bea4df49ea1d8bd58e5ebc40dfa606fbb880a1002ea0c292d4320d",
+      "restoreFrom": "archive/scripts/final-gate-region-io.sh",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "scripts/final-gate-world-switch.sh",
+      "bytes": 3130,
+      "sha256": "b96a3a294b122faa5ec59bc76cedd5474e9cc3ca9a4002e8b89fb275a320fcbb",
+      "restoreFrom": "archive/scripts/final-gate-world-switch.sh",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "scripts/final-gate-world-delete.sh",
+      "bytes": 3318,
+      "sha256": "d54fb2b38a2b4e5908270ee2b2fed91972d50eeea6b66ee3a373e593c5995e3c",
+      "restoreFrom": "archive/scripts/final-gate-world-delete.sh",
+      "action": "replace-current-runner"
+    },
+    {
+      "path": "GADGET.md",
+      "bytes": 5378,
+      "sha256": "eada09866dc63c4f250ffcc0f13b30e3b35b28c90b1b93bb6c5685ac627d96c7",
+      "restoreFrom": "archive/GADGET.md",
+      "action": "replace-current-runner"
+    }
+  ],
+  "d19": {
+    "decision": "D-19",
+    "sourceBaseline": "e7f6a572c0b8f608624149a633d964d78a40ca98",
+    "items": [
+      {
+        "path": "payload/hanaworlds_adapter/grant.lua",
+        "archive": "archive/d19/payload/hanaworlds_adapter/grant.lua",
+        "sha256": "d0de02571b382e8bb27e8ceee55ad7a245376b4abfc0ccf5756e0ffc3e2c1dc8",
+        "lines": 229
+      },
+      {
+        "path": "scripts/real-scoped-gate.mjs",
+        "archive": "archive/d19/scripts/real-scoped-gate.mjs",
+        "sha256": "191e3bafa40479ffdd7a4c4215fb2d0d7d727f090fe75e76ec4ddb9d99395410",
+        "lines": 429
+      },
+      {
+        "path": "scripts/scoped-gate-requests.mjs",
+        "archive": "archive/d19/scripts/scoped-gate-requests.mjs",
+        "sha256": "cab53cec71fb2b86d4a63a199d5566b96ff51e221f1a6f108a9ea2dbd1b17948",
+        "lines": 148
+      },
+      {
+        "path": "src/bridge.mjs",
+        "archive": "archive/d19/src/bridge.mjs",
+        "sha256": "1e5c084c87400ff94b7e3a1364a1a9830958524c1057dbf8e11feb2385dd6788",
+        "lines": 194
+      },
+      {
+        "path": "src/journal.mjs",
+        "archive": "archive/d19/src/journal.mjs",
+        "sha256": "cd0456ff12c3fd65f024a67e169308d894be251d2a50abee3d0089dc879b6f13",
+        "lines": 236
+      },
+      {
+        "path": "src/local-transport.mjs",
+        "archive": "archive/d19/src/local-transport.mjs",
+        "sha256": "8ed6cc2d18b0c0ad663ce2695e3d871d160ada9912f6e2b10ebf7df0456056cd",
+        "lines": 345
+      },
+      {
+        "path": "src/remote-transport.mjs",
+        "archive": "archive/d19/src/remote-transport.mjs",
+        "sha256": "8a4bc65ad0df60ccae9ad30f1d462005ef73de15a08d5be887e72898a689750a",
+        "lines": 128
+      },
+      {
+        "path": "src/session-authorization.mjs",
+        "archive": "archive/d19/src/session-authorization.mjs",
+        "sha256": "6a9977cd566180232b40c8e13b3fc5abf3a6d9bc7d0254a904feae09e68999ae",
+        "lines": 88
+      },
+      {
+        "path": "src/v2-operations.mjs",
+        "archive": "archive/d19/src/v2-operations.mjs",
+        "sha256": "7e1f86fc9da8d0ed5d025ed1050b97dc0ee480592ef5f2b2780373b06129873f",
+        "lines": 665
+      },
+      {
+        "path": "src/v2-port.mjs",
+        "archive": "archive/d19/src/v2-port.mjs",
+        "sha256": "8ff71a0607a4a925d064ec1597f3abdaafdadd1779ac70ed7b6d1a64ecdbf92d",
+        "lines": 525
+      },
+      {
+        "path": "src/v2-transactions.mjs",
+        "archive": "archive/d19/src/v2-transactions.mjs",
+        "sha256": "f13616e6765e9d8f4d07704f6c41fc5825379bc8781c15ad0a20a3f70ac42a3a",
+        "lines": 244
+      },
+      {
+        "path": "src/v3-port.mjs",
+        "archive": "archive/d19/src/v3-port.mjs",
+        "sha256": "cb4730b58c910db64f9ef0b4a4ce2823c86a0c328b3f6f688bfabf20a7cf9a96",
+        "lines": 121
+      },
+      {
+        "path": "src/v3-transactions.mjs",
+        "archive": "archive/d19/src/v3-transactions.mjs",
+        "sha256": "a495664442b5a8b397044e985a89c500c2714a4cd078e97ff7e8deb140cf13ba",
+        "lines": 395
+      },
+      {
+        "path": "src/v4-port.mjs",
+        "archive": "archive/d19/src/v4-port.mjs",
+        "sha256": "cd6d06fd8ed3a8035d78e2ff2f23de24146b7e43eea000823661d83d3eb37c48",
+        "lines": 154
+      },
+      {
+        "path": "src/v4-transactions.mjs",
+        "archive": "archive/d19/src/v4-transactions.mjs",
+        "sha256": "502dc582de05b6f7969f65c75f7e0df09fdfdfd4de3d1df57d0bfec4fda59960",
+        "lines": 637
+      },
+      {
+        "path": "src/v5-transactions.mjs",
+        "archive": "archive/d19/src/v5-transactions.mjs",
+        "sha256": "b085d18dfd56d21999f677815f31ab2667a7dec99149215822808b6e6b6b24d2",
+        "lines": 382
+      },
+      {
+        "path": "src/workshop-relay.mjs",
+        "archive": "archive/d19/src/workshop-relay.mjs",
+        "sha256": "51a16ed60233c8933bf2d92c59a8e673def83498fad9b3a73501b7a8bf049bf3",
+        "lines": 17
+      },
+      {
+        "path": "test/auto-grant.lua",
+        "archive": "archive/d19/test/auto-grant.lua",
+        "sha256": "f21c3b3c33e1784dd79ccf4c21f602f68eff85afb79563fa8bc6eedac6c1ed07",
+        "lines": 161
+      },
+      {
+        "path": "test/auto-native-entry.lua",
+        "archive": "archive/d19/test/auto-native-entry.lua",
+        "sha256": "4996f12b83709620ae466cb643206ca10604ab2c73cdf36040393c6800d260e9",
+        "lines": 100
+      },
+      {
+        "path": "test/bridge.test.mjs",
+        "archive": "archive/d19/test/bridge.test.mjs",
+        "sha256": "949713be63d108f406afe0233d620eb6a27e7ea21901b0c7e2fa9d3c93d1d03f",
+        "lines": 204
+      },
+      {
+        "path": "test/current-contracts-advertisement.test.mjs",
+        "archive": "archive/d19/test/current-contracts-advertisement.test.mjs",
+        "sha256": "1f42100a1fc9d67b949553d5823158978398e76b979d8ec4f8ba49d2a53aa955",
+        "lines": 31
+      },
+      {
+        "path": "test/grant-evidence.test.mjs",
+        "archive": "archive/d19/test/grant-evidence.test.mjs",
+        "sha256": "33c06048c881836cc455696d315ac02fd26583d3a6063d9382c70b7499376141",
+        "lines": 207
+      },
+      {
+        "path": "test/grant.lua",
+        "archive": "archive/d19/test/grant.lua",
+        "sha256": "58cbc1f63806041d78d530ccfea372318035d3a71137968eff2043c3f6c9bf04",
+        "lines": 97
+      },
+      {
+        "path": "test/journal.test.mjs",
+        "archive": "archive/d19/test/journal.test.mjs",
+        "sha256": "0a36f0dec0b8f9c05a1d6779f141b297873798bf12f3183065032045006b0042",
+        "lines": 52
+      },
+      {
+        "path": "test/local-grant.test.mjs",
+        "archive": "archive/d19/test/local-grant.test.mjs",
+        "sha256": "8dd00f981f31797b3624f448ee79b5b7df8aa6905bbe79089fa5b09c82ef27a1",
+        "lines": 100
+      },
+      {
+        "path": "test/payload.lua",
+        "archive": "archive/d19/test/payload.lua",
+        "sha256": "e46bea913af0480bc25c5f5d044c0f9cad40cb731ecbdef0af09c0bb5fc00fc1",
+        "lines": 203
+      },
+      {
+        "path": "test/real-luanti.mjs",
+        "archive": "archive/d19/test/real-luanti.mjs",
+        "sha256": "69df9c1a0fe2721e6582de06e019bc00a6a6533ae6f4cd00d712565f86b07d8c",
+        "lines": 283
+      },
+      {
+        "path": "test/recovery-state.test.mjs",
+        "archive": "archive/d19/test/recovery-state.test.mjs",
+        "sha256": "59bfaf4e6b9a3e7edf6243cc9e4c36e651e79f7ff1743063fd37bb808072a677",
+        "lines": 100
+      },
+      {
+        "path": "test/remote.test.mjs",
+        "archive": "archive/d19/test/remote.test.mjs",
+        "sha256": "99efe183506a49401b36c3e91e33c40431768f5a0168b2ffeda0e94415bd27b1",
+        "lines": 121
+      },
+      {
+        "path": "test/scoped-gate/fixture-plugin/cordis.patch.yml",
+        "archive": "archive/d19/test/scoped-gate/fixture-plugin/cordis.patch.yml",
+        "sha256": "582281a25e1a1cff66bf6f3dcb05423ea3f4ecb73605248b9d78b32651310945",
+        "lines": 3
+      },
+      {
+        "path": "test/scoped-gate/fixture-plugin/index.mjs",
+        "archive": "archive/d19/test/scoped-gate/fixture-plugin/index.mjs",
+        "sha256": "a9ccf7110805bc30fea1e7d6293f129de2e3489963f4dfb706a3de8abdf37edb",
+        "lines": 163
+      },
+      {
+        "path": "test/scoped-gate/fixture-plugin/package.json",
+        "archive": "archive/d19/test/scoped-gate/fixture-plugin/package.json",
+        "sha256": "48157bc2d827d112c67d60922006aa042669bebbe015f9e5248aede352da74b6",
+        "lines": 9
+      },
+      {
+        "path": "test/scoped-gate/worldmod/init.lua",
+        "archive": "archive/d19/test/scoped-gate/worldmod/init.lua",
+        "sha256": "0ed4e44d546ca691af63979bff60a1b3bf46920f0303dbf5962507d0748c0023",
+        "lines": 121
+      },
+      {
+        "path": "test/scoped-gate/worldmod/mod.conf",
+        "archive": "archive/d19/test/scoped-gate/worldmod/mod.conf",
+        "sha256": "2176a47956011ebbaf9dfa73c539f8e1f32c7cc2db14aeacdcdc0b9fd7c207e1",
+        "lines": 2
+      },
+      {
+        "path": "test/session-authorization.test.mjs",
+        "archive": "archive/d19/test/session-authorization.test.mjs",
+        "sha256": "2496d6f28fbb0d6b0b0670321f0f0295550f86d10791c3ff4c6e580733db88ea",
+        "lines": 53
+      },
+      {
+        "path": "test/transport.test.mjs",
+        "archive": "archive/d19/test/transport.test.mjs",
+        "sha256": "671a49335485361508fa4b1edd603f09c0ee77ddc50753676be0aa52c0f175ba",
+        "lines": 190
+      },
+      {
+        "path": "test/v2-port.test.mjs",
+        "archive": "archive/d19/test/v2-port.test.mjs",
+        "sha256": "308a2a8ac3e9343b17df461b2ec108c3485ebe6c1bc42d82393ba7571f46382a",
+        "lines": 196
+      },
+      {
+        "path": "test/v2-transactions.test.mjs",
+        "archive": "archive/d19/test/v2-transactions.test.mjs",
+        "sha256": "aa1277c7dcd2f76458fdde61cce084baba1ce739b5f222c52f4f8af6030f615a",
+        "lines": 188
+      },
+      {
+        "path": "test/v3-history-negative.test.mjs",
+        "archive": "archive/d19/test/v3-history-negative.test.mjs",
+        "sha256": "8f9a134748586986d07fb6ff6b1f6cf266369a00b9b2c8777d1b5a93d3cb4bb2",
+        "lines": 50
+      },
+      {
+        "path": "test/v3-inspect.test.mjs",
+        "archive": "archive/d19/test/v3-inspect.test.mjs",
+        "sha256": "8f1c8c23c5f011e1a0b12a03418fa8218e2cb1d589b4525930141d4309d02446",
+        "lines": 24
+      },
+      {
+        "path": "test/v3-journal.test.mjs",
+        "archive": "archive/d19/test/v3-journal.test.mjs",
+        "sha256": "37c17b425297866c4010c9bc0f348f00d769259a5cd69344ef0ee5e984c016c7",
+        "lines": 47
+      },
+      {
+        "path": "test/v3-port.test.mjs",
+        "archive": "archive/d19/test/v3-port.test.mjs",
+        "sha256": "2dd975b50ffef6c266a1180f0ff4d2de08db9f009f3dafed6084e842f1d75490",
+        "lines": 155
+      },
+      {
+        "path": "test/v3-recovery.test.mjs",
+        "archive": "archive/d19/test/v3-recovery.test.mjs",
+        "sha256": "d8a57a8f7aef44a823f988f9e89416925e718b89bbe08b0eadbc105503f5718d",
+        "lines": 82
+      },
+      {
+        "path": "test/v3-transactions.test.mjs",
+        "archive": "archive/d19/test/v3-transactions.test.mjs",
+        "sha256": "fad9b7825f740e93eba5cddc4112914640f380022cd8b513793eafe14a3c3e6a",
+        "lines": 146
+      },
+      {
+        "path": "test/v4-carried-history-negative.test.mjs",
+        "archive": "archive/d19/test/v4-carried-history-negative.test.mjs",
+        "sha256": "f71b5c6b801fc3aaca127e6e01fa75638afd15cf5a7c285ef530b25517a4eb86",
+        "lines": 51
+      },
+      {
+        "path": "test/v4-carried-journal.test.mjs",
+        "archive": "archive/d19/test/v4-carried-journal.test.mjs",
+        "sha256": "12ddf3a1be8601afa9df99749911c66d2241ed4f7e69a1a2137ccc97bc92839b",
+        "lines": 48
+      },
+      {
+        "path": "test/v4-carried-recovery.test.mjs",
+        "archive": "archive/d19/test/v4-carried-recovery.test.mjs",
+        "sha256": "07bb3457399583497d4118f125d86a60618967aa49ba36cecd0742facfcc1f07",
+        "lines": 83
+      },
+      {
+        "path": "test/v4-carried-transactions.test.mjs",
+        "archive": "archive/d19/test/v4-carried-transactions.test.mjs",
+        "sha256": "f5eab75dfd5cf6ab37914f9e8ff775ff038bfd65a4b9e4fa6263b4cb559abcc4",
+        "lines": 173
+      },
+      {
+        "path": "test/v4-d1-d3.test.mjs",
+        "archive": "archive/d19/test/v4-d1-d3.test.mjs",
+        "sha256": "c13cd85e406fd9351f7c901e78e09874cfecb5a84ac003e3d9a6536b7637fdee",
+        "lines": 1844
+      },
+      {
+        "path": "test/v4-native-storage.test.mjs",
+        "archive": "archive/d19/test/v4-native-storage.test.mjs",
+        "sha256": "6d452e2ab80e0a27f45c8fc6aacbfbd3c3718ae5871dab3c33ceead5f3c96ad4",
+        "lines": 139
+      },
+      {
+        "path": "test/v4-port.test.mjs",
+        "archive": "archive/d19/test/v4-port.test.mjs",
+        "sha256": "4bef08835e75af7d2fa64e68a9bd2659d239c5e4d46a1babc020bd672177d4bd",
+        "lines": 170
+      },
+      {
+        "path": "test/v4-region.test.mjs",
+        "archive": "archive/d19/test/v4-region.test.mjs",
+        "sha256": "fd54378c1b43939ac121a15e025025f194c8799eed57b6f42ea07730ea906756",
+        "lines": 326
+      },
+      {
+        "path": "test/v4-workshop-relay.test.mjs",
+        "archive": "archive/d19/test/v4-workshop-relay.test.mjs",
+        "sha256": "928b5af3271f0928ae463f898413f0615658f7afd7cb930456f3d42c1e7909cd",
+        "lines": 269
+      },
+      {
+        "path": "test/v5-scoped.test.mjs",
+        "archive": "archive/d19/test/v5-scoped.test.mjs",
+        "sha256": "0964488c6f44bf937cf3c93928235177d07684778c11ca5e12d5fe5eaf2f29c5",
+        "lines": 219
+      }
+    ]
+  },
+  "baselineDefaultTests": [
+    "test/native-readiness.test.mjs",
+    "test/local-world-current.test.mjs",
+    "test/local-world-v6.test.mjs",
+    "test/contracts-dependency.test.mjs",
+    "test/local-contract-handshake.test.mjs",
+    "test/contracts-v2-vocabulary.test.mjs",
+    "test/contracts-v2-runtime.test.mjs",
+    "test/local-catalogue.test.mjs",
+    "test/local-region-io.test.mjs",
+    "test/local-material-sources.test.mjs",
+    "test/config-engine-facts-contracts.test.mjs",
+    "test/world-source-facts.test.mjs",
+    "test/contracts-v2-archive.test.mjs",
+    "test/local-world-source.test.mjs",
+    "test/stage1-facts.test.mjs",
+    "test/inspection-context-consumer.test.mjs",
+    "test/contracts-v2-state.lua",
+    "test/world-source-facts.lua",
+    "test/stage1-facts.lua"
+  ],
+  "baselineScriptNames": [
+    "build",
+    "build:artifacts",
+    "build:contracts",
+    "prepack",
+    "prepare",
+    "pretest",
+    "pretest:contracts",
+    "sync:fixtures",
+    "test",
+    "test:catalogue",
+    "test:config-facts",
+    "test:contracts",
+    "test:delete",
+    "test:flat",
+    "test:guards",
+    "test:lua",
+    "test:materials",
+    "test:package-boundary",
+    "test:public-host",
+    "test:readback",
+    "test:region",
+    "test:source",
+    "test:stage1",
+    "test:switch",
+    "test:world-manage",
+    "verify:contracts"
+  ]
+}

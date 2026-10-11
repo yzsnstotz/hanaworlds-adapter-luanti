@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeRegionBlock, expandRegionBlock, digestValue } from '#contracts';
-import { projectSurface, readSurface } from '../dev/world-readback/surface.mjs';
+import { projectSurface, readSurface } from './support/world-readback/surface.mjs';
 import { STATE_PROFILE } from '../src/world-vocabulary.mjs';
 
 const world='luanti:fixture';
