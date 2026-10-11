@@ -30,6 +30,18 @@ package names and caller JSON supply no authority. Selection, inspection,
 footprint/history and native lifecycle peers must supply their published facts.
 Missing or stale peers refuse the operation.
 
+The existing `hanaworldsWorldFacts` service also implements the read-only Host
+method `readScopedState(connectionRef, positions)`. The active registered
+`hanaworldsCanvasV5` provider in the same official Cordis root calls it through
+the tracked service reference. It delegates to the paired native snapshot path
+and returns the actual `worldRef`, `StateProfile` and opaque `ScopedCells`.
+Positions must be nonempty, sorted numerically by x/y/z and unique; they are
+never reordered or deduplicated. Root callers, forged identities, other roots
+and stale providers refuse. The package root declares `WorldFactsHostPort` and
+`ScopedStateFacts` using the existing scoped binding types. The corresponding
+shared SDK addition is pending formal publication for this source candidate.
+See [scoped state](docs/world-source-facts.md#read-only-host-scoped-state).
+
 Configure explicit `localUserPath` and `localWorldRoots`; use `localCreationRoot`
 and `localGameId` when there is a choice. The local-world service provides
 `discover`, `createWorld` (`templateId: 'flat'`), `pair`, `describeSourceWorld` and

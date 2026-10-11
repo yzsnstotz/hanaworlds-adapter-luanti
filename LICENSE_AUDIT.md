@@ -340,3 +340,22 @@ existing canonical JSON dependency. Node 24.13.1 · MIT with third-party notices
 nodejs.org · test runner; Lua 5.5.1 · MIT · lua.org · source/fixture tests.
 WorldEdit is neither installed nor loaded by the new runtime gate. Its historical
 read-only diagnostics report absence; native readiness does not depend on it.
+
+## adapter-scoped-state-port-01 (2026-10-11)
+
+New Adapter origin Host binding/types/tests remain MIT. No engine/game or SDK
+runtime repository is added to production dependencies. Existing runtime inputs:
+Luanti 5.17.0, LGPL-2.1-or-later, https://github.com/luanti-org/luanti (D-7);
+VoxeLibre 0.92.3, GPL-3.0-or-later code / CC-BY-SA-4.0 media,
+https://content.luanti.org/packages/Wuzzy/mineclone2/ (D-8), an own extraction of
+the installed official game archive, with notices retained. No upstream edits.
+Official @deepseek-ai/cordis 4.0.4, MIT,
+https://github.com/deepseek-ai/deepseek-harness/tree/main/vendor/cordis, supplies
+the test Host singleton; it stays development-only. hanaworlds-contracts v2.13.0,
+MIT, https://github.com/yzsnstotz/hanaworlds-contracts, stays the exact published
+development input; the neutral scoped Host SDK addition is an unpublished draft
+in this card's evidence directory pending the authorized publication route.
+pnpm 11.28.5 (MIT) validates normal strict production installation; TypeScript
+5.8.3 (Apache-2.0) and esbuild 0.28.2 (MIT) remain development build/check tools.
+Native command observation and region-emerge preparation are test-environment
+code in own worlds; no observation fixture is shipped as product capability.

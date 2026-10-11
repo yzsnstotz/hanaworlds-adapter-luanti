@@ -64,6 +64,7 @@ registerHooks({resolve(specifier, context, next) {
 }});\n`);
   writeFileSync(join(dir, 'consumer.mjs'), `import assert from 'node:assert/strict';
 import { apply, payloadDigest } from 'hanaworlds-adapter-luanti';
+import { Context } from ${JSON.stringify(fileURLToPath(import.meta.resolve('@deepseek-ai/cordis')))};
 import { createNativeHost } from 'hanaworlds-adapter-luanti/host';
 import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';
 import { createLocalWorldsMock, createLocalConnectionReadbackMock } from 'hanaworlds-adapter-luanti/local-worlds-v2-mock';
@@ -120,6 +121,23 @@ try {
  assert.equal(absent.error.code,'WORLD_NOT_FOUND');
  await assert.rejects(services.get('hanaworldsLocalWorlds').setRoots({roots:['relative']}), /SCHEMA_INVALID/);
 } finally { await adapter.close(); }
+// The installed artifact must expose the neutral Host capability in the official
+// singleton runtime, without SDK/dev resolution or a historical-name fallback.
+const cordis=new Context();let source,canvas;
+cordis.provide('webServer',{register:()=>()=>{}});
+const sourceFiber=cordis.plugin({name:'packed-adapter',apply(c){source=apply(c);}});await sourceFiber.await();
+const canvasFiber=cordis.plugin({name:'renamed-packed-canvas',apply(c){canvas=c;c.provide('hanaworldsCanvasV5',{call(){throw Error('UNEXPECTED_CANVAS_CALL');}});}});await canvasFiber.await();
+const hostErrors=[],refused=code=>e=>{hostErrors.push(e.publicError);return e.publicError?.code===code&&e.publicError.mutationState==='NONE';};
+try {
+ const read=canvas.get('hanaworldsWorldFacts').readScopedState;
+ assert.equal(typeof read,'function');
+ await assert.rejects(read('absent',[[0,0,0]]),refused('WORLD_NOT_BOUND'));
+ await assert.rejects(read('absent',[[1,0,0],[0,0,0]]),refused('SCHEMA_INVALID'));
+ await assert.rejects(cordis.get('hanaworldsWorldFacts').readScopedState('absent',[[0,0,0]]),refused('CAPABILITY_UNAVAILABLE'));
+ await source.close();
+ await assert.rejects(read('absent',[[0,0,0]]),refused('ADAPTER_UNAVAILABLE'));
+}finally{await source.close();await canvasFiber.dispose();await sourceFiber.dispose();await cordis.fiber.dispose();}
+await fs.writeFile('host-errors.json',JSON.stringify(hostErrors));
 const noBundle = await import('node:fs/promises');
 const bundle=new URL('./node_modules/hanaworlds-adapter-luanti/dist/runtime/contracts.mjs',import.meta.url);
 await noBundle.rename(bundle,new URL('./contracts.saved.mjs',bundle));
@@ -133,6 +151,7 @@ console.log('packed runtime without external contracts PASS');\n`);
   // Retain the former denial gate after ordinary default-condition execution succeeds.
   assert.match(run(process.execPath, ['--import', './deny-contract-import.mjs', 'consumer.mjs'], dir, env), /PASS/);
   writeFileSync(join(dir, 'consumer.ts'), `import { createNativeHost, type NativeHostOptions } from 'hanaworlds-adapter-luanti/host';
+import { apply, type WorldFactsHostPort, type ScopedStateFacts } from 'hanaworlds-adapter-luanti';
 import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';
 import { createLocalWorldsMock, createLocalConnectionReadbackMock } from 'hanaworlds-adapter-luanti/local-worlds-v2-mock';
 import { createWorldSourceFactsMock } from 'hanaworlds-adapter-luanti/world-source-facts-mock';
@@ -142,9 +161,18 @@ type Inspection = ReturnType<typeof createInspectionContext>;
 type Worlds = ReturnType<typeof createLocalWorldsMock>;
 type Facts = ReturnType<typeof createWorldSourceFactsMock>;
 const locatorVersion: LuantiSourceLocator['locatorVersion'] = SOURCE_LOCATOR_VERSION;
-export type PublicTypes = [NativeHostOptions, Host, Inspection, Worlds, Facts, typeof locatorVersion];\n`);
+declare const facts:WorldFactsHostPort;
+const result:Promise<ScopedStateFacts>=facts.readScopedState('connection',[[0,0,0]]);
+// @ts-expect-error wrong connection type
+facts.readScopedState(1,[[0,0,0]]);
+// @ts-expect-error wrong position shape
+facts.readScopedState('connection',[[0,0]]);
+const service:WorldFactsHostPort=apply({}).worldFacts;
+export type PublicTypes = [NativeHostOptions, Host, Inspection, Worlds, Facts, typeof locatorVersion, typeof result, typeof service];\n`);
   run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--strict', '--noEmit', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts'], dir, env);
   const upstream=await import('hanaworlds-contracts');
+  for(const error of JSON.parse(readFileSync(join(dir,'host-errors.json'))))
+   assert.deepEqual(JSON.parse(JSON.stringify(upstream.validateType('Error',error))),error);
   for(const row of JSON.parse(readFileSync(join(dir,'protocol-errors.json')))) {
    assert.deepEqual(JSON.parse(JSON.stringify(upstream.validateBoundResponse(row.wire,row.operation,row.request,row.response).error)),row.response.error);
   }

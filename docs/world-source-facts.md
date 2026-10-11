@@ -99,3 +99,64 @@ wording does not make them consumer input. Visible Frame grid units and usable
 volume units are `cell`. The mock reads the public contracts fixture directly;
 `npm run sync:fixtures` regenerates the five-read exported projection and `npm test`
 checks for drift without changing existing export paths.
+
+## Read-only Host scoped state
+
+The existing service registration `hanaworldsWorldFacts` additionally provides
+`readScopedState(connectionRef, positions): Promise<ScopedStateFacts>`, declared
+by the package root's `WorldFactsHostPort`. The result reuses the `worldRef`,
+`stateProfile` and `cells` types of the existing `ScopedWorldBinding`: actual
+paired world identity, its validated `StateProfile` and validated `ScopedCells`.
+This source candidate still consumes the published development SDK v2.13.0;
+the shared neutral Host binding addition is pending formal publication.
+
+This method is a Host call, separate from the existing four named world-facts
+wire reads. No wire operation or protocol minor is invented. The method captures
+the current registration when its tracked Cordis getter is obtained. Only the
+active registered `hanaworldsCanvasV5` provider/fiber in the same official runtime
+and root may invoke it. That exact provider/value/fiber is checked before native
+reading and after each availability check; replacement or fiber disposal refuses.
+Package/plugin names, root callers, caller JSON, forged receivers and cross-root
+references provide no authority. A legally renamed Canvas provider succeeds.
+
+`connectionRef` is a nonempty exact `Ref`. `positions` is a nonempty existing
+`Positions` value: numeric x/y/z ascending with no duplicate positions. Missing,
+empty, invalid, repeated or unsorted coordinates refuse with the published schema
+error, without reaching the native read. The method never sorts, deduplicates,
+fills gaps or retries. Snapshot coverage and records retain exactly this order.
+The existing native paired connection, world/root, lifecycle provider, engine
+currency and Catalogue are checked through the original reading path before and
+after the snapshot. No new shared private state or alias fallback is involved.
+
+Each cell is `KNOWN` with its original opaque `stateDigest`. The existing hash
+prefix is `HanaWorlds|contracts@2.0.0|adapter-scoped-cell/v2\n`; its canonical JSON
+covers `{profile, record}`, with StateProfile-derived state fields omitted from
+the record. Material, orientation, position and all other state retain the exact
+existing native conversion and digest bytes. Consumers forward these hashes;
+they do not reconstruct the world source's engine mapping or opaque state.
+
+Refusals retain the existing public Error protocol, always with mutationState
+`NONE`: `SCHEMA_INVALID` for bad input/decoded shape; `CAPABILITY_UNAVAILABLE` for
+missing/unauthorized, stale or forged provider/root identities and unknown native
+capability; `WORLD_NOT_BOUND` for an unpaired connection; `ADAPTER_UNAVAILABLE`
+after closure; `CURRENT_WORLD_MISMATCH` for lost/changed world, source or connection;
+`TARGET_FACTS_INCOMPLETE` for an unreadable native cell. Native payload/version,
+coverage, decoding and unsupported state errors retain their published names
+(including `PAYLOAD_VERSION_MISMATCH`, `READBACK_MISMATCH`,
+`UNKNOWN_REQUIRED_FIELD`, `UNSUPPORTED_MUTATION_SEMANTICS`). No unavailable state
+becomes a fabricated `KNOWN` cell. Protocol fields, rather than a private
+exception constructor, identify a refusal across roots/artifacts.
+
+This read performs no world write, transaction preparation, history update,
+selection, connection or binding change. It offers before/after availability
+checks, not a synchronous stable session guard: Q42/Q61/Q62 remain separate.
+The previous facts service and aliases stay available until the existing alias
+retirement card handles all consumers.
+
+```js
+// Inside the active registered C-canvas provider's official Cordis context:
+const facts = ctx.get('hanaworldsWorldFacts');
+const { worldRef, stateProfile, cells } = await facts.readScopedState(
+  connectionRef, [[-1, 9, 0], [0, 9, 0], [1, 9, 0]]
+);
+```

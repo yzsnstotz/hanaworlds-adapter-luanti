@@ -51,7 +51,9 @@ export function apply(ctx, config = {}) {
   const facts = Object.fromEntries(['readScopedState', 'readCatalogue', 'readWritePathEvidence', 'readRegionState',
     'readMaterialSources', 'readConfigEngineFacts', 'readWorldEditFacts', 'readStage1FactLedger']
     .map(name => [name, publicFailures(runtime[name])]));
-  Object.assign(facts,runtime.worldFacts);
+  // Keep the historical supplier unchanged until its separate alias retirement.
+  // Do not evaluate the tracked Host getter into an untracked legacy function.
+  for(const key of ['contractVersion','contractHandshake','protocolHandshake','call'])facts[key]=runtime.worldFacts[key];
   ctx.provide('hanaworldsWorldFacts', runtime.worldFacts);
   ctx.provide('hanaworldsWorldSourceFacts', facts);
   ctx.provide('hanaworldsLuantiNativeFacts', facts);

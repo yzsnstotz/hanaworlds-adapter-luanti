@@ -187,20 +187,29 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       serial=work.catch(()=>{});return work;
     },
     readScopedState(connectionRef, positions) {
+      return scopedStateRead(connectionRef,positions,()=>{});
+    },
+    async close() { closed = true; await serial.catch(() => {}); stage1.withdrawAll('ADAPTER_CLOSED'); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
+  };
+  // One native snapshot path shared by the retained supplier and neutral Host
+  // port; read authority is supplied only by this module, never caller arguments.
+  function scopedStateRead(connectionRef,positions,checkAuthority) {
       const work = serial.then(async () => {
         if (closed) fail('ADAPTER_UNAVAILABLE');
+        checkAuthority();
         const row = rows.get(connectionRef); if (!row) fail('WORLD_NOT_BOUND');
         await inspectConnection(connectionRef);
+        checkAuthority();
+        if (closed || row.engine.closed || rows.get(connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
         const image = await row.backend.snapshot(positions);
         await inspectConnection(connectionRef);
-        if (row.engine.closed || rows.get(connectionRef) !== row) fail('CURRENT_WORLD_MISMATCH');
+        checkAuthority();
+        if (closed || row.engine.closed || rows.get(connectionRef) !== row || image.worldRef !== row.worldRef) fail('CURRENT_WORLD_MISMATCH');
         return { worldRef: row.worldRef, stateProfile: row.profile, cells: image.records.map(record => ({
           position: record.position, availability: 'KNOWN', stateDigest: cellDigest(row.profile, record) })) };
       });
       serial = work.catch(() => {}); return work;
-    },
-    async close() { closed = true; await serial.catch(() => {}); stage1.withdrawAll('ADAPTER_CLOSED'); await Promise.all([...rows.values()].map(x => x.engine.close())); rows.clear(); },
-  };
+  }
   function stage1Read(worldRef, read) {
     const work=serial.then(async()=>{
       if(closed) fail('ADAPTER_UNAVAILABLE');
@@ -498,7 +507,30 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       };
     },
   };
-  const worldFacts={contractVersion:'world-facts/v1',contractHandshake,
+  const worldFacts={ctx,[Symbol.for('cordis.tracker')]:{property:'ctx'},contractVersion:'world-facts/v1',contractHandshake,
+    // Host method on the existing fact service, not an added wire operation or a
+    // synchronous session guard. Capture the real Cordis caller before queueing.
+    get readScopedState() {
+      const caller=trackedCaller(this,worldFacts,ctx);
+      let check,refusal;
+      try {check=canvasCaller(caller);}catch(error){refusal=error;}
+      return async (connectionRef,positions) => {
+        try {
+          const ref=validateType('Ref',connectionRef),scope=validateType('Positions',positions);
+          if(!scope.length)throw new ContractError('SCHEMA_INVALID','validate','INVALID_SHAPE');
+          if(refusal)throw refusal;
+          check();
+          const result=await scopedStateRead(ref,scope,check);
+          return {worldRef:validateType('Ref',result.worldRef),stateProfile:validateType('StateProfile',result.stateProfile),
+            cells:validateType('ScopedCells',result.cells)};
+        }catch(error){
+          if(error instanceof ContractError)throw error;
+          const cause=error?.code??error?.message;
+          const code=schemaBundle.definitions.ErrorCode.enum.includes(cause)?cause:'CAPABILITY_UNAVAILABLE';
+          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN');
+        }
+      };
+    },
     protocolHandshake:validateType('ProtocolHandshake',{...worldAdapterProtocolHandshake,
       protocols:[{protocol:'world-facts',major:1,minor:0}],capabilities:['world-facts/v1:named-reads']}),
     async call(name,input) {
