@@ -53,3 +53,8 @@ test('tag verification refuses altered installed schema content', () => {
  const r=verify(dir=>{const p=join(dir,'node_modules/hanaworlds-contracts/schemas/local/contracts.schema.json');writeFileSync(p,readFileSync(p,'utf8')+'\n');});
  assert.equal(r.exit,1);assert.ok(r.problems.some(p=>p.startsWith('tagged source content mismatch:')));
 });
+
+test('tag verification refuses a changed SDK package export map with the same version', () => {
+ const r=verify(edit('node_modules/hanaworlds-contracts/package.json', v=>{v.exports['.'].import='./dist/local/runtime.mjs';}));
+ assert.equal(r.exit,1);assert.ok(r.problems.includes('tagged source content mismatch: package.json'));
+});

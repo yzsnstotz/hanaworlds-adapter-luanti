@@ -62,6 +62,7 @@
     "fixtures/local/world-lifecycle.json": "cc3d64f8a6590bbb2e2bec7df220ab43c8509693bdf66547bef80bda26f1ebd5",
     "fixtures/local/world-source-facts.json": "2b02602d7d225c5d6dc3b1b59ec697011b578925d40514021cea60528b8f259b",
     "LICENSE": "921940ddfcb1c9915b4d55942203a52ca8abf2e71354df85a8464f589d17c548",
-    "NOTICE": "eb379fc4d7055a01aec0e0064ac5ad884aa662f1a7d16ce13ff14c609126f591"
+    "NOTICE": "eb379fc4d7055a01aec0e0064ac5ad884aa662f1a7d16ce13ff14c609126f591",
+    "package.json": "23fd781c1765d365382f6b7d4814d31490de246a9e1b41bbb01127e0bcb8319e"
   }
 }
