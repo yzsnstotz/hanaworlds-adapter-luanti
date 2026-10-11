@@ -21,5 +21,5 @@ test('migration cleanup leaves current gates self-contained and preserves every 
   assert.doesNotMatch(text,/HW_WORLDEDIT|node_modules\/hanaworlds-contracts|fiber\.entry\s*=|name:\s*'hanaworlds-canvas'/,name);
  }
  assert.equal(pkg.files.some(p=>/^(dev|archive)\//.test(p)),false);
- assert.equal(pkg.devDependencies['hanaworlds-contracts'],'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0');
+ assert.equal(pkg.devDependencies['hanaworlds-contracts'],'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.14.0');
 });

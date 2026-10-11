@@ -10,6 +10,8 @@ import { readWorldSelections, withWorldRetirement } from './world-retirement.mjs
 import { readSourceStartupFacts } from './source-startup.mjs';
 import { SOURCE_LOCATOR_VERSION } from './source-locator.mjs';
 
+import { sourceLog } from './resource-errors.mjs';
+
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
 function deny(code = 'CURRENT_WORLD_MISMATCH', details) { const error = new Error(code); if (details) error.details = details; throw error; }
 function text(value) { return typeof value === 'string' && value.length > 0; }
@@ -28,7 +30,7 @@ async function freePort() {
 
 /** In-process Host lifecycle port. Never accepts lifecycle facts from request JSON. Native process and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
-export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameId, resolveControl, resolveCanvas, runtime, log = () => {} }) {
+export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameId, resolveControl, resolveCanvas, runtime, transportSettings = {}, log = (_,message) => {if(message.startsWith('WORLD_SOURCE_FAILURE'))console.warn(message);} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
   const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
   // Latest Host control record per world path this service acquired; kept after the lease ends so a
@@ -48,8 +50,9 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     let result = null, error = null;
     try { result = await run(request); }
     catch (failure) {
-      const origin = operation === 'pair' ? (failure.cause ?? failure) : failure;
+      const origin = operation === 'pair' && !failure.source ? (failure.cause ?? failure) : failure;
       const cause = origin.code ?? origin.message;
+      if(sourceLog(origin)) log('warn',sourceLog(origin));
       const code = operation === 'deleteWorld'
         ? (cause === 'WORLD_NOT_FOUND' ? 'WORLD_NOT_FOUND' : 'TRANSACTION_CONFLICT')
         : operation === 'pair'
@@ -62,7 +65,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
         : failure.code?.startsWith('E') ? 'UNKNOWN' : 'NONE');
       error = new ContractError(code, operation === 'deleteWorld' ? 'apply' : 'validate',
         code === 'INVALID_NAME' ? 'INVALID_SHAPE' : code === 'PAYLOAD_VERSION_MISMATCH' ? 'VERSION_UNSUPPORTED'
-          : 'REQUIRED_FACT_UNKNOWN', { mutationState }).publicError;
+          : 'REQUIRED_FACT_UNKNOWN', { mutationState, ...(origin.source?{source:origin.source}:{}) }).publicError;
     }
     return validateBoundResponse('local-worlds/v2', operation, request,
       { contractVersion: 'local-worlds/v2', requestId: request.requestId, result, error });
@@ -326,7 +329,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
             if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
             phase = 'INSTALL';
             const transportPort = q.transportPort ?? await freePort();
-            return provisionLocalPayload(row.world.worldPath, { transportPort,
+            return provisionLocalPayload(row.world.worldPath, { transportPort, transportSettings,
               stoppedWorld: () => {
                 provider(row);
                 if (!callbackActive || !factsMatch(row, facts, 'STOPPED')) deny();
@@ -355,7 +358,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
           ['root', 'gameId', 'worldName'].some(k => k in q && !text(q[k])) || ('root' in q && !isAbsolute(q.root)))
         return Promise.reject(new Error('SCHEMA_INVALID'));
       return track(async () => {
-        const made = await createFlatWorld({ roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
+        const made = await createFlatWorld({ transportSettings, roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
           gameId: q.gameId, worldName: q.worldName, transportPort: await freePort() });
         const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
         if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('LOCAL_CREATE_DISCOVERY_MISMATCH'); }

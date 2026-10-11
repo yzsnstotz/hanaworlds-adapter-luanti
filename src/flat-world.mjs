@@ -71,7 +71,7 @@ export async function describeFlatWorldCreation({ roots, userPath }) {
  * an existing name is never reused or overwritten). The new world carries world.mt,
  * map_meta.txt with the flat mapgen, and this Adapter's payload with a fresh identity.
  */
-export async function createFlatWorld({ roots, root, userPath, gameId, worldName, transportPort }) {
+export async function createFlatWorld({ roots, root, userPath, gameId, worldName, transportPort, transportSettings }) {
   const plan = await describeFlatWorldCreation({ roots, userPath });
   let base = root;
   if (base === undefined) {
@@ -109,7 +109,7 @@ export async function createFlatWorld({ roots, root, userPath, gameId, worldName
       `${Object.entries(mapgen).map(([k, v]) => `${k} = ${v}`).join('\n')}\n[end_of_params]\n`);
     const mods = join(staging, 'worldmods'), payload = join(mods, 'hanaworlds_adapter');
     await mkdir(mods, { mode: 0o700 }); await mkdir(payload, { mode: 0o700 });
-    const identity = await writePayload(payload, { transportPort });
+    const identity = await writePayload(payload, { transportPort, transportSettings });
     await syncFile(join(staging, CREATED_MARKER), createdMarker({ worldRef: identity.worldRef, worldName: name, root: base, adapterVersion: ADAPTER_VERSION }));
     await syncDirectory(mods); await syncDirectory(staging);
     if (await lstat(target).catch(() => null)) throw fault('WORLD_EXISTS', { worldPath: target });

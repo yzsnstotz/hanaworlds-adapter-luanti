@@ -3,6 +3,10 @@ import { lstat, mkdir, open, readdir, readFile, realpath, rename } from 'node:fs
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
+import { absentOnly, resourceFailure, ioKind } from './resource-errors.mjs';
+
+import { validateRecordData } from './local-records.mjs';
+
 const OWNER = 'hanaworlds-adapter-luanti';
 // Not *.json: DurableJournal reads every *.json entry as a transaction record.
 const MARKER = 'world-binding';
@@ -57,7 +61,7 @@ export async function nativeJournalDirectory(homePath, worldRef, env = process.e
   const directory = join(root, ...segments);
   if (homePath(...segments) !== directory)
     throw unavailable('dshHomePath does not join segments under the DSH home');
-  const rootStat = await lstat(root).catch(() => null);
+  const rootStat = await absentOnly(()=>lstat(root),'ADAPTER_STORAGE_UNAVAILABLE','storage-read','journal-root');
   if (!rootStat?.isDirectory() || rootStat.isSymbolicLink())
     throw unavailable('DSH home is missing, not a directory, or a symlink');
   const canonicalRoot = await realpath(root);
@@ -131,11 +135,12 @@ export async function readJournalActivity(homePath, worldRef) {
     const info = await lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
     if (!info) return { state: 'NONE' };
     if (!info.isFile() || info.isSymbolicLink()) return { state: 'UNKNOWN', reason: 'journal state is not a regular file' };
-    const data = JSON.parse(await readFile(file, 'utf8'));
-    if (data?.worldRef !== worldRef || typeof data.transactions !== 'object' || data.transactions === null)
-      return { state: 'UNKNOWN', reason: 'journal names another world or is malformed' };
+    const raw=await readFile(file,'utf8');
+    let data;try {data=JSON.parse(raw);}catch(error){throw resourceFailure('SAVED_RESOURCE_UNAVAILABLE','storage-read','transaction-journal','CORRUPT');}
+    validateRecordData(data,worldRef);
     const unsettled = Object.values(data.transactions).filter(t => !SETTLED.has(t?.status))
       .map(t => ({ transactionId: t?.transactionId ?? null, status: t?.status ?? null }));
     return { state: 'PRESENT', unsettled };
-  } catch (error) { return { state: 'UNKNOWN', reason: `journal unreadable: ${error.code ?? error.message}` }; }
+  } catch (error) { const source=error.source??resourceFailure('SAVED_RESOURCE_UNAVAILABLE','storage-read','transaction-journal',ioKind(error),error).source;
+    return { state:'UNKNOWN', reason:`transaction-journal ${source.kind} ${source.nativeCode??'NONE'}`, source }; }
 }

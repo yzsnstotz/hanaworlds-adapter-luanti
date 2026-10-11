@@ -1,3 +1,4 @@
+import { TRANSPORT_DEFAULTS } from '../src/transport-policy.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -100,7 +101,7 @@ async function courier(t, f, { mismatch = false, onRead = () => {} } = {}) {
       if (!command) { await new Promise(r => setTimeout(r, 5)); continue; }
       let result;
       if (command.operation === 'handshake') result = { worldRef: manifest.worldRef,
-        payloadVersion: PAYLOAD_VERSION, loadedSourceDigest: mismatch ? '0'.repeat(64) : manifest.payloadDigest,
+        transportSettings:TRANSPORT_DEFAULTS, payloadVersion: PAYLOAD_VERSION, loadedSourceDigest: mismatch ? '0'.repeat(64) : manifest.payloadDigest,
         manifestDigest: manifest.payloadDigest, payloadMatches: true, worldeditAvailable: true };
       else if (command.operation === 'list_grants') {
         onRead(); result = { grants: [{ worldRef: manifest.worldRef, engineActorName: 'NativeAdmin',

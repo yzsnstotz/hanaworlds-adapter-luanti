@@ -17,7 +17,7 @@ test('contracts are a pinned development input and production imports resolve to
   const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json')));
   assert.equal(pkg.dependencies?.['hanaworlds-contracts'], undefined);
-  assert.equal(pkg.devDependencies['hanaworlds-contracts'], 'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0');
+  assert.equal(pkg.devDependencies['hanaworlds-contracts'], 'git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.14.0');
   assert.equal(lock.packages['node_modules/hanaworlds-contracts'].dev, true);
   assert.deepEqual(pkg.imports['#contracts'], {development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
   const upstream = await import('hanaworlds-contracts');
@@ -110,7 +110,7 @@ await fs.writeFile(worldRoot+'/world/world.mt','gameid = package_probe\\n');
 const services = new Map();
 const adapter = apply({ get() {}, provide: (n, s) => services.set(n, s), effect() {}, webServer: { register: () => () => {} } },{localWorldRoots:[worldRoot]});
 try {
- assert.equal(services.get('hanaworldsWorldAdapterV6').contractHandshake.contracts, 'hanaworlds-contracts@2.13.0');
+ assert.equal(services.get('hanaworldsWorldAdapterV6').contractHandshake.contracts, 'hanaworlds-contracts@2.14.0');
  const port=services.get('hanaworldsLocalWorlds');
  const rows=await port.discover();assert.equal(rows.length,1);assert.equal(rows[0].gameId,'package_probe');
  const source=await port.describeSourceWorld({contractVersion:'local-worlds/v2',requestId:'source',worldRef:rows[0].connectionRef});

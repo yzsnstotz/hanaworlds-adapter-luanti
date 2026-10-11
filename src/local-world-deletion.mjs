@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { lstat, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { syncDirectory } from './local-worlds.mjs';
+import { ioKind } from './resource-errors.mjs';
 import { ADAPTER_ID } from './version.mjs';
 
 // Written by createFlatWorld into the new world's own directory (outside the
@@ -22,11 +23,12 @@ export function createdMarker({ worldRef, worldName, root, adapterVersion }) {
 /** The marker of an Adapter-created world, or a named reason it is not one. */
 export async function readCreatedMarker(world) {
   const path = join(world.worldPath, CREATED_MARKER);
-  const info = await lstat(path).catch(() => null);
+  let info; try {info=await lstat(path);} catch(error) {if(error.code==='ENOENT')return {owned:false,reason:'NO_CREATION_MARKER'};return {owned:false,reason:'CREATION_MARKER_'+ioKind(error)};}
   if (!info) return { owned: false, reason: 'NO_CREATION_MARKER' };
   if (!info.isFile() || info.isSymbolicLink()) return { owned: false, reason: 'CREATION_MARKER_NOT_A_FILE' };
   let marker;
-  try { marker = JSON.parse(await readFile(path, 'utf8')); } catch { return { owned: false, reason: 'CREATION_MARKER_UNREADABLE' }; }
+  let raw;try {raw=await readFile(path,'utf8');} catch(error) {return {owned:false,reason:'CREATION_MARKER_'+ioKind(error)};}
+  try {marker=JSON.parse(raw);} catch {return {owned:false,reason:'CREATION_MARKER_CORRUPT'};}
   if (marker?.format !== CREATED_FORMAT || marker.createdBy !== ADAPTER_ID) return { owned: false, reason: 'CREATION_MARKER_FOREIGN' };
   if (!world.worldRef || marker.worldRef !== world.worldRef) return { owned: false, reason: 'CREATION_MARKER_WORLD_MISMATCH' };
   if (marker.worldName !== basename(world.worldPath) || marker.root !== dirname(world.worldPath))

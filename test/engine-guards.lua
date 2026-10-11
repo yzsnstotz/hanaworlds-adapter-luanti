@@ -27,6 +27,8 @@ local function encode(v)
   return '{' .. table.concat(out, ',') .. '}'
 end
 
+local json_inputs = {}
+local function json(v) local raw=encode(v); json_inputs[raw]=v; return raw end
 local scheduled = {}
 _G.VoxelArea = function(e1, e2)
   local nx, ny = e2.x - e1.x + 1, e2.y - e1.y + 1
@@ -36,7 +38,7 @@ local core
 core = {
   MAP_BLOCKSIZE = 16,
   registered_nodes = {air = {}, ['test:stone'] = {}, ['test:flower'] = {walkable = false}},
-  parse_json = function(raw) return raw end,
+  parse_json = function(raw) return json_inputs[raw] end,
   write_json = function(v) return encode(v) end,
   log = function() end,
   after = function(_, fn) scheduled[#scheduled + 1] = fn end,
@@ -113,7 +115,7 @@ local transport = dofile('payload/hanaworlds_adapter/transport.lua')
 local queue, replies = {}, {}
 local http = {fetch = function(request, callback)
   if request.url:match('/poll$') then
-    callback({succeeded = true, code = 200, data = {worldRef = 'w', command = table.remove(queue, 1)}})
+    callback({succeeded = true, code = 200, data = json({worldRef = 'w', command = table.remove(queue, 1)})})
   else
     replies[#replies + 1] = request.data
     callback({succeeded = true, code = 200})
@@ -123,8 +125,8 @@ local function capabilities()
   return {worldRef = 'w', engineGuards = region_module.guards(core)}
 end
 assert(transport.start(http, engine_module, {worldRef = 'w'},
-  function() return {worldRef = 'w', port = 30000, token = string.rep('a', 64)} end,
-  function() end, capabilities, nil, region, {}, voxel))
+  function() return json({worldRef = 'w', port = 30000, token = string.rep('a', 64),settings={courierBodyBytes=4194304,courierResultWaitMs=30000}}) end,
+  function() end, capabilities, nil, region, {}, voxel, dofile('payload/hanaworlds_adapter/transport-policy.lua')))
 local function call(command)
   if command.operation:find('region_',1,true)==1 then geometry(command) end
   command.id = 'c' .. (#replies + 1); command.worldRef = 'w'

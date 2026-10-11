@@ -16,7 +16,7 @@ export function verifyPackage(dir) {
    if(name===SDK || spec.includes('hanaworlds-contracts')) fail('PRODUCTION_CONTRACT_DEPENDENCY',field);
    if(/^(?:file:|link:|workspace:|git|https?:)/.test(spec)) fail('EXOTIC_PRODUCTION_DEPENDENCY',name);
   }
- if(pkg.devDependencies?.[SDK]!=='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0') fail('DEVELOPMENT_SUPPLY_MISMATCH',SDK);
+ if(pkg.devDependencies?.[SDK]!=='git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.14.0') fail('DEVELOPMENT_SUPPLY_MISMATCH',SDK);
  if(pkg.imports?.['#contracts']?.development!=='./dist/contracts.mjs'||pkg.imports?.['#contracts']?.default!=='./dist/runtime/contracts.mjs'||existsSync(join(root,'dist/contracts.mjs')))fail('DEVELOPMENT_MODULE_BOUNDARY',SDK);
  const closure=new Set(), external=new Set(), resources=new Set();
  const local = (path, owner, directory=false) => {
@@ -111,7 +111,7 @@ export function verifyPackage(dir) {
  function all(path){for(const n of readdirSync(path)){const p=join(path,n);if(lstatSync(p).isDirectory())all(p);else if(/\.(mjs|cjs|js)$/.test(p))visit(p);}}
  all(root);
  const meta=JSON.parse(readFileSync(join(root,'dist/runtime-build.json')));
- if(meta.sourceVersion!=='2.13.0'||meta.sourceTag!=='v2.13.0'||!meta.sourceResolved.endsWith('#f8baf189099b517cacfe8a0b385d140932923b17'))fail('BUILD_SOURCE_MISMATCH',meta.sourceResolved);
+ if(meta.sourceVersion!=='2.14.0'||meta.sourceTag!=='v2.14.0'||!meta.sourceResolved.endsWith('#39781da25e28738e5243e6379e2cad0e03e03b3f'))fail('BUILD_SOURCE_MISMATCH',meta.sourceResolved);
  for(const [path,expected] of Object.entries(meta.sha256)) {
   local(path,'build manifest'); const hash=createHash('sha256').update(readFileSync(join(root,path))).digest('hex');
   if(hash!==expected)fail('ARTIFACT_DIGEST_MISMATCH',path);

@@ -1,3 +1,4 @@
+import { transportPolicy, validateTransportSettings } from './transport-policy.mjs';
 import { placementInvariants, ContractError, schemaBundle } from '#contracts';
 import { createLocalWorldPort } from './local-world-port.mjs';
 import { createLocalRuntime } from './local-runtime.mjs';
@@ -13,7 +14,7 @@ function publicFailures(fn) {
   const convert = error => {
     if (error instanceof ContractError) throw error;
     const code = schemaBundle.definitions.ErrorCode.enum.includes(error?.code ?? error?.message) ? (error.code ?? error.message) : 'CAPABILITY_UNAVAILABLE';
-    throw Object.assign(new ContractError(code, 'validate', code === 'SCHEMA_INVALID' ? 'INVALID_SHAPE' : 'REQUIRED_FACT_UNKNOWN'),
+    throw Object.assign(new ContractError(code, 'validate', code === 'SCHEMA_INVALID' ? 'INVALID_SHAPE' : 'REQUIRED_FACT_UNKNOWN', error.source ? {source:error.source} : {}),
       typeof error?.detail === 'string' ? { detail: error.detail } : {});
   };
   return (...args) => {
@@ -22,14 +23,15 @@ function publicFailures(fn) {
   };
 }
 export function apply(ctx, config = {}) {
+  const transportSettings = validateTransportSettings(config.transportSettings === undefined ? {} : config.transportSettings);
   const get = n => ctx.get?.(n);
   let local;
-  const runtime = createLocalRuntime({ ctx, homePath: get('dshHomePath'),
+  const runtime = createLocalRuntime({ ctx, transportSettings, homePath: get('dshHomePath'),
     resolveCanvas: () => get('hanaworldsCanvasV5'), resolveRegistry: () => get('hanaworldsCanvasFootprintRegistry'),
     resolveHistory: () => get('hanaworldsCanvasHistoryFacts'), resolveOracle: () => get('hanaworldsWorldRevisionOracle'),
     resolveInspection: () => get('hanaworldsWorldInspectionContext'),
     inspectConnection: ref => local.inspectConnection(ref) });
-  local = createLocalWorldPort({ roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
+  local = createLocalWorldPort({ transportSettings, roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
     creationRoot: config.localCreationRoot, gameId: config.localGameId,
     resolveControl: () => get('hanaworldsNativeEngineControl'), resolveCanvas: () => get('hanaworldsCanvasV5'), runtime });
   let unregister, closing;
@@ -40,6 +42,7 @@ export function apply(ctx, config = {}) {
       return closing ??= (async () => { await local.close(); await runtime.close(); })().catch(error => { closing = undefined; throw error; });
     },
     status: () => ({ adapterId: ADAPTER_ID, version: ADAPTER_VERSION, payloadVersion: PAYLOAD_VERSION,
+      transportPolicy: transportPolicy(transportSettings),
       invariants: placementInvariants.filter(x => x.owner.includes('world-source')) }),
   };
   ctx.effect(() => () => service.close());

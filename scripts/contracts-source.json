@@ -1,15 +1,15 @@
 {
-  "tag": "v2.13.0",
-  "tagObject": "e4826d650256aab88f2b40b39d095a58b5934e19",
-  "commit": "f8baf189099b517cacfe8a0b385d140932923b17",
+  "tag": "v2.14.0",
+  "tagObject": "cc76aac0e82ba54276993a233e9ef934320617d3",
+  "commit": "39781da25e28738e5243e6379e2cad0e03e03b3f",
   "repository": "https://github.com/yzsnstotz/hanaworlds-contracts.git",
   "sha256": {
-    "dist/errors.mjs": "526edf675f87bbe0f95837f8c76bd88c434bd780604b2dc78b365f291779e580",
+    "dist/errors.mjs": "14bd6db96257577f6c4da01af1b119f81778ab3a96b743ca79dd4b2c258c0b88",
     "dist/geometry.mjs": "87ba4e8e3c77b50608b4c38a3ad30baa51d1b9a881e6b00e58a009e2127f4322",
     "dist/local/build-proposal.mjs": "7df7b04ec670e5b19337ebc165be81d2fb98daac31308e85b5b21cc27c7f26f0",
     "dist/local/config-engine-facts.mjs": "a155a10f52bbb0741432dab336f22db99cc784326495318c35f56f5988337ac5",
-    "dist/local/domain.mjs": "81daf0f92280f827d97ffb8898919a805cd05d8ddea0bc87b98578f5228bc2e1",
-    "dist/local/generated/contracts.mjs": "99443c2c3bd48ae6b017dffad08b01685f2e6d25e1a7bcd65f5e9fc103907133",
+    "dist/local/domain.mjs": "9b55b9e7e273470da9f5705d99398446ed9c63047231506c36fca2cf5a781ece",
+    "dist/local/generated/contracts.mjs": "8567e0950cc494cebe10add464cdc0e0cd3e3f1a4c1b2285f589d6da30cebdfa",
     "dist/local/history-receipt.mjs": "4bd8cf075a64ace07a9e27fde8c1837e9acdfd343a67501cd6e0cc2988cee44a",
     "dist/local/index.mjs": "c05cd5826548d94094a27ee45beadfabb4b11fa58c04c0ae0de3b4b2c03c460f",
     "dist/local/local-world-source.mjs": "21f807797e9edf8e796d6699ae79029df345e2cfc9c78e0875df3d838895886a",
@@ -34,12 +34,12 @@
     "dist/local/write-path.mjs": "4248ca651e6d7b5f602a4bdcbab2ef3b3488c18040eb42ddccac5413e5de213a",
     "dist/names.mjs": "56c760fa438181a44f37588dc33914ad9076175bc69b4fdf1354ede02a027dad",
     "dist/strict-json.mjs": "d774f8119b2932af815df666059b4a5e90d65ec2cf181c0ca8803099f15a4c31",
-    "types/local/contracts.d.ts": "ec725547a64b5bcbcb80bc66ca123c31b739f91b45cb3f89dad5fbfd8f93ba72",
+    "types/local/contracts.d.ts": "d1c2da09127c506b8f281715f2a6ba266aebe8e08e3decf90b0bbf898366df44",
     "types/local/index.d.ts": "66f9d8defd2f7e5aa02ebd1d1ab02fde46a634ebc96b2eef16f5408f21ff4d1e",
-    "schemas/local/building-skill.json": "e00e4af8f70838cd24161b355e42fb81147b78aa04e62eeba8f906c78fc20bad",
-    "schemas/local/contracts.schema.json": "a13ef9e767842fc8c6c1d7eb3a242c52c6a47126a37c5d49cbf663453c17392c",
-    "schemas/local/profile.json": "6de2164540d9eb7d805e131d45f3bd3f22fb86514712f8a86778d35487a76da9",
-    "schemas/local/tools.json": "00aae583ec1a53cb80337524775273847b2e0ee4e703ac3fa54c83431fb58846",
+    "schemas/local/building-skill.json": "d5c5364792749325177873b6d259d8e94eddf1903efd26cc8aeef77bcdc38858",
+    "schemas/local/contracts.schema.json": "f81ca8d20efa38b35d52acc9829fb277e9204fcfe39acdab4edc93a08b4ce19e",
+    "schemas/local/profile.json": "95573361928ec0c639c7337e95b059432ed82d5d04a316fac8efa1561b468a83",
+    "schemas/local/tools.json": "598e827a4cf98ec31a0e632945cd4c50474efe6e2481336f375beb74d3610c85",
     "fixtures/local/brush-placement.json": "ed90b49c6fa91b5d024db164b5976f56f50ade922e63f2e01e53f1cbbcea5c1c",
     "fixtures/local/config-engine-facts.json": "6356780352e25d8f91b720d42b424e9419bf156489d5d35fb0e6ca2a258b3b10",
     "fixtures/local/confirmed-placement.json": "d0c26ef8026c845226ecc3a8982a9146e2c43dafbb9496c258409d9a4ac27b93",
@@ -63,6 +63,7 @@
     "fixtures/local/world-source-facts.json": "2b02602d7d225c5d6dc3b1b59ec697011b578925d40514021cea60528b8f259b",
     "LICENSE": "921940ddfcb1c9915b4d55942203a52ca8abf2e71354df85a8464f589d17c548",
     "NOTICE": "eb379fc4d7055a01aec0e0064ac5ad884aa662f1a7d16ce13ff14c609126f591",
-    "package.json": "23fd781c1765d365382f6b7d4814d31490de246a9e1b41bbb01127e0bcb8319e"
+    "package.json": "3c5c5c203240fc75dfca83dac8ce98e03d450b5ce3dcccf1de78d0a355a78a5e",
+    "fixtures/local/resource-policy.json": "7f395b38ebe698cf35316cc55a40175ae4e9afb1edf0baad8c5fbf9d0e1eda23"
   }
 }

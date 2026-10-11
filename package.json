@@ -48,6 +48,7 @@
     "payload/hanaworlds_adapter/init.lua",
     "payload/hanaworlds_adapter/engine.lua",
     "payload/hanaworlds_adapter/transport.lua",
+    "payload/hanaworlds_adapter/transport-policy.lua",
     "payload/hanaworlds_adapter/region.lua",
     "payload/hanaworlds_adapter/facts.lua",
     "payload/hanaworlds_adapter/voxel.lua",
@@ -78,7 +79,7 @@
   },
   "scripts": {
     "build": "npm run build:artifacts && npm run test:package-boundary",
-    "test": "node scripts/sync-public-fixtures.mjs --check && node --conditions=development --test test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/migration-cleanup.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua && npm run test:package-boundary && npm run test:guards && npm run test:flat && npm run test:switch && npm run test:delete && npm run test:readback",
+    "test": "node scripts/sync-public-fixtures.mjs --check && node --conditions=development --test test/visible-policy.test.mjs test/real-courier-policy.test.mjs test/native-readiness.test.mjs test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/world-source-facts.test.mjs test/contracts-v2-archive.test.mjs test/migration-cleanup.test.mjs test/local-world-source.test.mjs test/stage1-facts.test.mjs test/inspection-context-consumer.test.mjs && lua test/visible-policy.lua && lua test/contracts-v2-state.lua && lua test/world-source-facts.lua && lua test/stage1-facts.lua && npm run test:package-boundary && npm run test:guards && npm run test:flat && npm run test:switch && npm run test:delete && npm run test:readback",
     "test:lua": "lua test/facts.lua && lua test/engine-native.lua && lua test/stage1-facts.lua && lua test/local-world-region.lua && lua test/engine-guards.lua",
     "verify:contracts": "node scripts/verify-contracts-range.mjs",
     "test:catalogue": "node --conditions=development --test test/local-catalogue.test.mjs",
@@ -101,7 +102,7 @@
     "pretest:contracts": "npm run build:contracts && node scripts/build-runtime.mjs",
     "prepack": "node scripts/prepack.mjs",
     "prepare": "npm run build:contracts && node scripts/build-runtime.mjs",
-    "build:artifacts": "npm run build:contracts && node scripts/build-runtime.mjs && node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/world-source-facts.mjs && node --check src/world-source-facts-mock.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/source-startup.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "build:artifacts": "npm run build:contracts && node scripts/build-runtime.mjs && node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/world-source-facts.mjs && node --check src/world-source-facts-mock.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/source-startup.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua && luac -p payload/hanaworlds_adapter/transport-policy.lua",
     "test:package-boundary": "node --conditions=development --test --test-concurrency=1 test/package-boundary.test.mjs test/production-package.test.mjs",
     "test:migration": "node --conditions=development --test test/migration-cleanup.test.mjs test/contracts-v2-archive.test.mjs"
   },
@@ -112,8 +113,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "esbuild": "0.28.2",
-    "hanaworlds-contracts": "git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.13.0",
-    "typescript": "5.8.3",
-    "pnpm": "11.28.5"
+    "hanaworlds-contracts": "git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.14.0",
+    "pnpm": "11.28.5",
+    "typescript": "5.8.3"
   }
 }

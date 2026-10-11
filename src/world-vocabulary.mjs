@@ -117,6 +117,7 @@ export class NeutralEngine {
   writeBackend() {return this.native.writeBackend();}
   sourceDeclaration() {return this.native.sourceDeclaration();}
   capacity(n) {return this.native.capacity(n);}
+  transportPolicy() {return this.native.transportPolicy?.();}
   regionLimits() {return this.native.regionLimits();}
   regionEmerge(...args) {return this.native.regionEmerge(...args);}
   regionRead(value) {return this.native.regionRead(value);}

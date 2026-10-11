@@ -1,3 +1,4 @@
+import { transportPolicy } from '../src/transport-policy.mjs';
 // SOURCE/FIXTURE: shipped handlers and Lua facts; the native engine is a fixture.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,7 +31,7 @@ async function fixture(t) {
   let ready = true, globals = [], drift = false, reads = 0, live = true;
   let declarationDrift=false, declarationReads=0, boundsDrift=false, boundsReads=0, invalidMethods=false;
   const native = { closed:false, engineGuards:ENGINE_GUARDS, connectionIncarnationRef:connection.connectionIncarnationRef,
-    handshake:async()=>{}, profile:async()=>({}), close:async()=>{native.closed=true;},
+    transportPolicy:()=>transportPolicy({courierBodyBytes:131072}), handshake:async()=>{}, profile:async()=>({}), close:async()=>{native.closed=true;},
     catalogue:async()=>{const c=plain(raw.catalogue); if(drift && ++reads>1)c.gameRevision='changed'; return c;},
     regionLimits:async()=>({mapblockSize:16,mapgenLimit:boundsDrift&&++boundsReads>1?30000:31000}),
     sourceDeclaration:async()=>({ready:declarationDrift&&++declarationReads>1?false:ready,
@@ -154,4 +155,10 @@ test('capabilities preserve common schema errors and closed reads return a named
   const f=await fixture(t);f.setInvalidMethods();
   assert.equal((await f.caps()).error?.code,'SCHEMA_INVALID');
   await f.runtime.close();assert.equal((await f.caps()).error?.code,'ADAPTER_UNAVAILABLE');
+});
+
+test('all public capability/config/engine reads carry the same current resource declarations',async t=>{
+ const f=await fixture(t),policy=transportPolicy({courierBodyBytes:131072});
+ for(const operation of ['ReadEngineFacts','ReadWriteProfile'])assert.deepEqual(plain((await f.read(operation)).result.transportPolicy),policy);
+ assert.deepEqual(plain((await f.caps()).result.transportPolicy),policy);
 });

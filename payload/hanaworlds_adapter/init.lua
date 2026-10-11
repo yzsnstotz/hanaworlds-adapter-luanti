@@ -1,12 +1,14 @@
 -- Current local-world payload. No user permission, grant or account source.
 local path = minetest.get_modpath(minetest.get_current_modname())
 local function read(name)
-  local f = io.open(path .. '/' .. name, 'rb')
-  if not f then return nil end
-  local bytes = f:read('*a'); f:close(); return bytes
+  local f, message, errno = io.open(path .. '/' .. name, 'rb')
+  if not f then minetest.log('error', 'HanaWorlds payload-read ' .. name .. ' errno=' .. tostring(errno)); return nil end
+  local bytes, read_error, read_errno = f:read('*a'); local closed, close_error, close_errno = f:close()
+  if not bytes or not closed then minetest.log('error','HanaWorlds payload-read ' .. name .. ' IO errno=' .. tostring(read_errno or close_errno)); return nil end
+  return bytes
 end
 local manifest = assert(minetest.parse_json(assert(read('payload.json'))))
-local files = {'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'region.lua', 'facts.lua', 'voxel.lua'}
+local files = {'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'transport-policy.lua', 'region.lua', 'facts.lua', 'voxel.lua'}
 local bytes = ''
 for _, name in ipairs(files) do bytes = bytes .. name .. '\n' .. assert(read(name)) end
 local digest = minetest.sha256(bytes)
@@ -20,6 +22,7 @@ _G.hanaworlds_adapter = {record_pick=function(ref,session,world,node,yaw)
   return region:record_pick(ref,session,world,node,yaw)
 end}
 local transport = dofile(path .. '/transport.lua')
+local policy = dofile(path .. '/transport-policy.lua')
 local function capabilities()
   return {worldRef=manifest.worldRef,payloadVersion=manifest.payloadVersion,
     loadedSourceDigest=digest,manifestDigest=manifest.payloadDigest,
@@ -29,4 +32,4 @@ end
 local was_ready=false
 transport.start(minetest.request_http_api(), engine, manifest, read,
   function(ready) if ready and not was_ready then minetest.log('action','HanaWorlds local courier ready') end; was_ready=ready end,
-  capabilities, nil, region, facts, voxel)
+  capabilities, nil, region, facts, voxel, policy)
