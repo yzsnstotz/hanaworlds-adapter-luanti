@@ -1,0 +1,154 @@
+{
+  "evidence": "SOURCE/FIXTURE only; Luanti-shaped locators for two same-name worlds and every declared refusal; no real world, runtime or UI",
+  "worlds": [
+    {
+      "worldRef": "luanti:fixture-a",
+      "displayName": "Same world"
+    },
+    {
+      "worldRef": "luanti:fixture-b",
+      "displayName": "Same world"
+    }
+  ],
+  "exchanges": [
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-a",
+        "worldRef": "luanti:fixture-a"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-a",
+        "error": null,
+        "result": {
+          "worldRef": "luanti:fixture-a",
+          "sourceLocator": {
+            "locatorVersion": "hanaworlds-luanti-source-locator/v1",
+            "worldRef": "luanti:fixture-a",
+            "connectionRef": "local:fixture-a",
+            "worldPath": "/fixture/luanti/worlds/Same world",
+            "worldRoot": "/fixture/luanti/worlds",
+            "userPath": "/fixture/luanti",
+            "directory": {
+              "device": "16777234",
+              "inode": "1001"
+            },
+            "gameId": "mineclone2",
+            "payload": {
+              "status": "INSTALLED_UNVERIFIED",
+              "payloadVersion": "fixture-payload",
+              "payloadDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-b",
+        "worldRef": "luanti:fixture-b"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-b",
+        "error": null,
+        "result": {
+          "worldRef": "luanti:fixture-b",
+          "sourceLocator": {
+            "locatorVersion": "hanaworlds-luanti-source-locator/v1",
+            "worldRef": "luanti:fixture-b",
+            "connectionRef": "local:fixture-b",
+            "worldPath": "/fixture/more-worlds/Same world",
+            "worldRoot": "/fixture/more-worlds",
+            "userPath": "/fixture/luanti",
+            "directory": {
+              "device": "16777234",
+              "inode": "2002"
+            },
+            "gameId": "mineclone2",
+            "payload": {
+              "status": "INSTALLED_UNVERIFIED",
+              "payloadVersion": "fixture-payload",
+              "payloadDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-missing",
+        "worldRef": "luanti:fixture-missing"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-missing",
+        "result": null,
+        "error": {
+          "code": "WORLD_NOT_FOUND",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-unavailable",
+        "worldRef": "luanti:fixture-a"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-unavailable",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    },
+    {
+      "wire": "local-worlds/v2",
+      "operation": "describeSourceWorld",
+      "request": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-mismatch",
+        "worldRef": "luanti:fixture-a"
+      },
+      "response": {
+        "contractVersion": "local-worlds/v2",
+        "requestId": "fixture:source-mismatch",
+        "result": null,
+        "error": {
+          "code": "CURRENT_WORLD_MISMATCH",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      }
+    }
+  ]
+}
