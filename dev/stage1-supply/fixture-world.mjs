@@ -5,7 +5,7 @@
 //       (players, collision boxes, loaded mods, WorldEdit global) from a scenario.
 // No Luanti process, real World, player or WorldEdit is started or read.
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -27,7 +27,10 @@ const lua = value => {
 /** One fixture World behind the real Adapter public path. */
 export async function openFixtureWorld({ runRoot, scenario }) {
   await mkdir(runRoot, { recursive: true, mode: 0o700 });
-  const root = await mkdtemp(join(runRoot, 'fixture-world-'));
+  // Resolve only the directory this fixture just created. Production setRoots still
+  // rejects aliases; runRoot remains the caller's preparation location, never an
+  // authorization to normalize an externally supplied world.
+  const root = await realpath(await mkdtemp(join(runRoot, 'fixture-world-')));
   const world = join(root, 'world'); await mkdir(world);
   await writeFile(join(world, 'world.mt'), 'gameid = fixture_game\n');
   const scenarioFile = join(root, 'scenario.lua');
@@ -51,11 +54,19 @@ export async function openFixtureWorld({ runRoot, scenario }) {
     webServer: { register() { return () => {}; } } }, { serviceName: 'fixture:stage1-supply' });
   const port = provided.get('hanaworldsLuantiLocalWorlds');
   const facts = provided.get('hanaworldsLuantiNativeFacts');
-  await port.setRoots({ roots: [root] });
-  const [found] = await port.discover();
-  const base = { connectionRef: found.connectionRef, requesterRef: 'fixture:requester', userPath: root };
+  let base, installed;
   const q = lease => ({ leaseRef: lease.leaseRef, requesterRef: base.requesterRef, connectionRef: base.connectionRef });
-  const installed = await port.provision(q(await port.acquire({ ...base, action: 'PROVISION_PAYLOAD' })));
+  try {
+    await port.setRoots({ roots: [root] });
+    const [found] = await port.discover();
+    base = { connectionRef: found.connectionRef, requesterRef: 'fixture:requester', userPath: root };
+    installed = await port.provision(q(await port.acquire({ ...base, action: 'PROVISION_PAYLOAD' })));
+  } catch (error) {
+    // Only this fixture's Adapter and model records are owned here. Preserve the
+    // failed tree and the caller's parent for diagnosis; never delete runRoot.
+    try { await adapter.close(); } finally { records.clear(); }
+    throw error;
+  }
 
   let courier = null, lease = null;
   async function startCourier() {
@@ -88,16 +99,23 @@ export async function openFixtureWorld({ runRoot, scenario }) {
   }
   async function connect() {
     lease = await port.acquire({ ...base, action: 'BIND_RUNNING_WORLD' });
-    courier = await startCourier();
-    try { return await port.pair(q(lease)); }
-    catch (error) { courier.alive = false; await courier.loop; courier = null; lease = null; throw error; }
+    try {
+      courier = await startCourier();
+      return await port.pair(q(lease));
+    } catch (error) { await stopCourier(); lease = null; throw error; }
+  }
+  async function stopCourier() {
+    const active = courier; courier = null;
+    if (active) { active.alive = false; await active.loop; }
   }
   async function disconnect() {
-    if (!lease) return;
-    await port.stopWorld({ requesterRef: base.requesterRef, connectionRef: base.connectionRef, worldRef: installed.worldRef });
-    if (courier) { courier.alive = false; await courier.loop; courier = null; }
-    lease = null;
+    try {
+      if (lease) await port.stopWorld({ requesterRef: base.requesterRef, connectionRef: base.connectionRef, worldRef: installed.worldRef });
+    } finally { lease = null; await stopCourier(); }
   }
   return { root, worldRef: installed.worldRef, facts, port, setScenario, scenario: () => current, connect, disconnect,
-    async close() { await disconnect(); await adapter.close(); } };
+    async close() {
+      try { await disconnect(); }
+      finally { try { await adapter.close(); } finally { records.clear(); } }
+    } };
 }
