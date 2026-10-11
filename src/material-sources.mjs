@@ -60,13 +60,13 @@ export async function resolveMaterialSources(metadata,connection){
   const unresolved=groups.some(g=>g.unresolved)||typeof metadata.texturePath!=='string'||metadata.texturePath!==''||
     groups[1].entries.some(f=>f.name==='override.txt');
   const materials=[],blobs=new Map();
-  for(const nodeName of Object.keys(catalogue.nodes).sort()){
-    const node=catalogue.nodes[nodeName],appearance=metadata.appearance?.[nodeName];
+  for(const materialRef of Object.keys(catalogue.materials).sort()){
+    const node=catalogue.materials[materialRef],appearance=metadata.appearance?.[materialRef];
     // For uniform colour-invariant cubes, one actual legal representative is
     // sufficient. Unknown legal domain stays null, never an implied zero.
-    const param2=node.allowedParam2?.[0]??null;
-    const unknown=reason=>materials.push({nodeName,param2,definitionRevision:node.definitionRevision,availability:'UNKNOWN',texture:null,reason});
-    if(node.allowedParam2===null||param2===null){unknown('UNKNOWN_PARAM2');continue;}
+    const orientation=node.orientations?.[0]??null;
+    const unknown=reason=>materials.push({materialRef,orientation,definitionRevision:node.definitionRevision,availability:'UNKNOWN',texture:null,reason});
+    if(node.orientations===null||orientation===null){unknown('UNKNOWN_ORIENTATION');continue;}
     if(node.definitionRevision===null){unknown('UNKNOWN_DEFINITION');continue;}
     const ext=/^[-a-zA-Z0-9_.]+\.([a-z]+)$/.exec(appearance?.textureName??'')?.[1];
     if(appearance?.supported!==true||!Object.hasOwn(MEDIA_TYPES,ext??'')){unknown('UNSUPPORTED_APPEARANCE');continue;}
@@ -80,12 +80,12 @@ export async function resolveMaterialSources(metadata,connection){
     try{bytes=await bytesOf(chosen.path,chosen.canonicalPath);}catch(e){if(e.message==='CURRENT_WORLD_MISMATCH')throw e;unknown('UNRESOLVED_SOURCE');continue;}
     if(!bytes.length||bytes.length>MEDIA_MAX){unknown('UNRESOLVED_SOURCE');continue;}
     const bytesDigest=sha(bytes);
-    const sourceRef=group.kind==='GAME'?`game:${catalogue.gameId}/textures/${chosen.relative}`:`mod:${group.mod}/${group.dir}/${chosen.relative}`;
-    materials.push({nodeName,param2,definitionRevision:node.definitionRevision,availability:'KNOWN',texture:{
+    const sourceRef=group.kind==='GAME'?`game:${catalogue.engineRevisions.registry}/textures/${chosen.relative}`:`mod:${group.mod}/${group.dir}/${chosen.relative}`;
+    materials.push({materialRef,orientation,definitionRevision:node.definitionRevision,availability:'KNOWN',texture:{
       textureName,sourceKind:group.kind,sourceRef,interpretation:'SIMPLE_UNIFORM_NODE_TILES',mediaType:MEDIA_TYPES[ext],bytesDigest,byteLength:bytes.length}});
     blobs.set(bytesDigest,{bytesDigest,bytes});
   }
-  const projection={profileVersion:'material-sources/v1',connection,catalogueDigest:digestValue('catalogue',catalogue).sha256,
-    gameId:catalogue.gameId,gameRevision:catalogue.gameRevision,sourceBasis:'SERVER_ASSET_ONLY',materials};
+  const projection={profileVersion:'material-sources/v2',connection,catalogueDigest:digestValue('catalogue',catalogue).sha256,
+    engineRevisions:catalogue.engineRevisions,sourceBasis:'WORLD_SOURCE_ASSET_ONLY',materials};
   return validateMaterialSources({snapshot:{...projection,sourceRevision:digestValue('material-sources',projection).sha256},textures:[...blobs.values()]},catalogue,connection);
 }

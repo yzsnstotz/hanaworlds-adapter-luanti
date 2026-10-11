@@ -8,8 +8,8 @@ function control(resolveCanvas) {
   const current = () => { if (original(resolveCanvas()) !== original(provider)) fail('CURRENT_WORLD_MISMATCH'); };
   async function call(name, value) {
     current();
-    const q = validateBoundRequest('canvas/v6',name,{contractVersion:'canvas/v6',requestId:randomUUID(),...value});
-    const r = validateBoundResponse('canvas/v6',name,q,await provider.call(name,q));
+    const q = validateBoundRequest('canvas/v7',name,{contractVersion:'canvas/v7',requestId:randomUUID(),...value});
+    const r = validateBoundResponse('canvas/v7',name,q,await provider.call(name,q));
     current();if(r.error)fail(r.error.code);if(!r.result)fail('REQUIRED_FACT_UNKNOWN');return r.result;
   }
   return {call,current};

@@ -1,3 +1,19 @@
+# adapter-01 · 0.15.0 dependency and base record (2026-10-11)
+
+- hanaworlds-contracts · 2.0.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.0.0 · published Git SDK/schema, source 3377ea81513d9a9446dccd4b626b4bfc183dc711; installed LICENSE/NOTICE retained.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · existing deterministic JSON dependency.
+- Luanti · 5.17 APIs (existing base; no real engine run for this card) · LGPL-2.1-or-later · https://github.com/luanti-org/luanti · D-7 external runtime, no engine source bundled or copied.
+- VoxeLibre · existing 0.92.3 base (no game run for this card) · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content, no game source bundled or copied.
+- WorldEdit · existing 62ffafe base (no engine run for this card) · AGPL-3.0 · https://github.com/Uberi/Minetest-WorldEdit · existing external per-cell runtime API, replacement deferred by PM to adapter-06/07; never bundled.
+- Node.js · 24.13.1 · MIT with bundled third-party notices · https://nodejs.org/dist/v24.13.1/ · isolated card test runner; official archive checked against published SHA256, retained outside the npm artifact.
+
+The neutral vocabulary wrapper, v2 adaptations and fixtures are original MIT adapter code.
+D-19 files are byte-preserved historical source under archive/d19, excluded from package files.
+
+---
+
+Historical records follow.
+
 # Current dependency declaration · Adapter 0.7.5 (2026-10-08)
 
 - hanaworlds-contracts · 0.5.3 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v0.5.3 (Git tag; no registry release claimed) · strict public schema/runtime validation. Annotated tag b3983bc5cde7791266758842a017458386d14283, peeled revision 3457493da209178f815d6950e323e1dc462e8d6c; formal pack 146045 bytes / SHA256 7f2b088b300426ea2536e08904780dc5df94eaf5e341e83cbff0cc3a42362241. Installed tag dependency, no vendor implementation; its own LICENSE and NOTICE remain in the installed dependency.

@@ -8,7 +8,9 @@ const D = (kind, value) => digestValue(kind, value).sha256;
 const same = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const fail = code => { throw new Error(code); };
 export const cellDigest = (profile, record) => createHash('sha256')
-  .update('HanaWorlds|contracts@0.4.0|adapter-scoped-cell/v1\n').update(canonicalJSON({ profile, record })).digest('hex');
+  .update('HanaWorlds|contracts@2.0.0|adapter-scoped-cell/v2\n').update(canonicalJSON({ profile, record:{...record,state:Object.fromEntries(Object.entries(record.state).filter(([k])=>!profile.derivedFields.includes(k)))} })).digest('hex');
+const comparable = image => ({ ...view(image), records:image.records.map(r=>({...r,state:Object.fromEntries(Object.entries(r.state).filter(([k])=>!image.stateProfile.derivedFields.includes(k)))})) });
+const stateMatches = (a,b) => same(comparable(a),comparable(b));
 const view = image => ({ worldRef: image.worldRef, coveredPositions: image.coveredPositions,
   records: image.records, stateProfile: image.stateProfile });
 export const readbackView = view;
@@ -29,6 +31,7 @@ export class LocalTransactions {
       r.scope.worldRef !== r.worldRef || r.operations.worldRef !== r.worldRef ||
       r.scope.operationDigest !== r.operationDigest || D('operations', r.operations) !== r.operationDigest ||
       D('scoped-world', r.scope) !== r.scopeDigest || !same(r.scope.stateProfile, this.stateProfile)) fail('REPLAY_MISMATCH');
+    if (D('catalogue', await this.engine.catalogue()) !== r.operations.catalogueDigest) fail('CATALOGUE_MISMATCH');
     const cells=r.scope.cells.map(x=>x.position);
     const covered=new Map([...r.scope.checkedPositions,...r.scope.objects.flatMap(x=>x.positions)].map(p=>[canonicalJSON(p),p]));
     if(!same(cells,[...covered.values()].sort(comparePosition)) ||
@@ -41,7 +44,7 @@ export class LocalTransactions {
     const capacity = await this.engine.capacity(cells.length);
     if (capacity?.allowed !== true) fail('LIMIT_EXCEEDED');
     await this.engine.prepareCheck(r.operations.effects.map(x => x.position),
-      r.operations.effects.map(x => ({ position: x.position, nodeName: x.nodeName })));
+      r.operations.effects);
     const before = await this.snapshot(cells);
     if (before.worldRef !== r.worldRef || before.records.some((x, i) => cellDigest(this.stateProfile, x) !== r.scope.cells[i].stateDigest)) fail('TRANSACTION_CONFLICT');
     return before;
@@ -64,14 +67,14 @@ export class LocalTransactions {
         other.before.coveredPositions.some(p => before.coveredPositions.some(q => same(p, q)))) fail('TRANSACTION_CONFLICT');
     }
     const beforeImageDigest = D('before-image', before);
-    const payload = { contractVersion: 'world-adapter/v7', transactionId: r.transactionId,
+    const payload = { contractVersion: 'world-adapter/v8', transactionId: r.transactionId,
       worldRef: r.worldRef, operationDigest: r.operationDigest, scopeDigest: r.scopeDigest,
       beforeImageDigest, localContext: r.localContext };
     const record = { transactionId: r.transactionId, request: r, before, beforeImageDigest,
       operationDigest: r.operationDigest, payload, transactionPayloadDigest: D('scoped-transaction-payload', payload), status: 'PREPARED' };
     await this.store.put(record); return this.prepared(record);
   }
-  /** Why the write failed (contracts 1.0 FailureDetail): a guard refusal at its stage, else the step's code. */
+  /** Why the write failed (published FailureDetail): a guard refusal at its stage, else the step's code. */
   applyFailure(record) {
     return refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId }) ??
       { error: { code: record.failureCode ?? 'APPLY_FAILED', phase: 'apply', retryability: 'NEVER', mutationState: 'UNKNOWN',
@@ -93,7 +96,7 @@ export class LocalTransactions {
       : refusalDetail(record.failureStage, record.failureDetail, { transactionRef: record.transactionId })
       ?? (record.failureCode ? { error: { code: record.failureCode, phase: 'apply', retryability: 'AFTER_NEW_FACTS', mutationState: 'ROLLED_BACK',
         transactionRef: record.transactionId, causeCode: null, reason: ROLLBACK_REASON[record.failureCode] ?? 'APPLY_ERROR' }, guardRefusal: null } : null);
-    return validateType('ReceiptProjection', { contractVersion: 'canvas/v6', transactionId: record.transactionId,
+    return validateType('ReceiptProjection', { contractVersion: 'canvas/v7', transactionId: record.transactionId,
       operationDigest: record.operationDigest, transactionPayloadDigest: record.transactionPayloadDigest,
       status: record.status === 'APPLYING' ? 'RECOVERY_PENDING' : ['PREPARED','ABORTED_PREPARED'].includes(record.status) ? 'REJECTED' : record.status, previousWorldRevision: record.before.worldRevision,
       observedWorldRevision: record.after?.worldRevision ?? null,
@@ -114,7 +117,7 @@ export class LocalTransactions {
       !same(r.preparedTransaction, Object.fromEntries(Object.entries(this.prepared(saved)).filter(([k]) => k !== 'beforeStateReadbackDigest')))) fail('REPLAY_MISMATCH');
     if (['VERIFIED','ROLLED_BACK'].includes(saved.status)) return this.receipt(saved);
     if (saved.status !== 'PREPARED') fail('RECOVERY_PENDING');
-    const before = await this.scopeNow(r); if (!same(before, saved.before)) fail('TRANSACTION_CONFLICT');
+    const before = await this.scopeNow(r); if (!stateMatches(before, saved.before)) fail('TRANSACTION_CONFLICT');
     const selected = new Set(r.operations.effects.map(x => canonicalJSON(x.position)));
     const writeBefore = { ...saved.before, records: saved.before.records.filter(x => selected.has(canonicalJSON(x.position))),
       coveredPositions: saved.before.coveredPositions.filter(x => selected.has(canonicalJSON(x))) };
@@ -125,11 +128,12 @@ export class LocalTransactions {
       const after = await this.snapshot(saved.before.coveredPositions);
       const expected = saved.before.records.map(x => {
         const e = r.operations.effects.find(e => same(e.position, x.position));
-        // param1 is derived lighting: the native engine repaired it and this exact
-        // observed byte is persisted with the after image for same-origin Undo.
-        return e ? { ...x, nodeName: e.nodeName, param2: e.param2, param1: after.records.find(a=>same(a.position,x.position)).param1 } : x;
+        const actual = after.records.find(a=>same(a.position,x.position));
+        const state = Object.fromEntries(this.stateProfile.preservedFields.filter(k=>Object.hasOwn(x.state,k)).map(k=>[k,x.state[k]]));
+        for (const k of this.stateProfile.derivedFields) if(Object.hasOwn(actual.state,k)) state[k]=actual.state[k];
+        return e ? { ...e, state } : x;
       });
-      if (!same(after.records, expected)) fail('READBACK_MISMATCH');
+      if (!stateMatches(after,{...after,records:expected})) fail('READBACK_MISMATCH');
       saved = { ...saved, after, status: 'VERIFIED' }; await this.store.put(saved); return this.receipt(saved);
     } catch (error) {
       saved.failureCode=schemaBundle.definitions.ErrorCode.enum.includes(error.message)?error.message:'APPLY_FAILED';
@@ -144,7 +148,7 @@ export class LocalTransactions {
       const restored = await this.engine.restore(saved.before, saved.transactionId);
       if (restored?.status !== 'ROLLED_BACK') fail('RESTORE_FAILED');
       const actual = await this.snapshot(saved.before.coveredPositions);
-      if (!same(view(actual), view(saved.before))) fail('RESTORE_FAILED');
+      if (!stateMatches(actual, saved.before)) fail('RESTORE_FAILED');
       saved.status = 'ROLLED_BACK'; saved.after = actual; await this.store.put(saved); return this.receipt(saved);
     } catch (error) {
       // Recovery stays pending; keep which engine guard or step refused the restore.
@@ -172,11 +176,13 @@ export class LocalTransactions {
     if (D('history-operation', projection) !== r.historyOperationDigest) fail('REPLAY_MISMATCH');
     const target = r.direction === 'UNDO' ? origin.before : origin.after;
     const before = await this.snapshot(origin.before.coveredPositions);
-    if (D('readback', view(before)) !== r.expectedCurrentStateDigest || D('readback', view(target)) !== r.targetStateDigest) fail('UNDO_CONFLICT');
+    const expectedCurrent = r.direction === 'UNDO' ? origin.after : origin.before;
+    if (D('readback', view(expectedCurrent)) !== r.expectedCurrentStateDigest || !stateMatches(before, expectedCurrent) ||
+      D('readback', view(target)) !== r.targetStateDigest) fail('UNDO_CONFLICT');
     const existing = this.store.get(r.transactionId);
     if (existing) { if (!same(existing.request, r)) fail('REPLAY_MISMATCH'); return existing.prepared; }
     const beforeImageDigest = D('before-image', before);
-    const transactionPayloadDigest = createHash('sha256').update('HanaWorlds|contracts@0.4.0|history-transport\n').update(canonicalJSON({ projection, beforeImageDigest })).digest('hex');
+    const transactionPayloadDigest = createHash('sha256').update('HanaWorlds|contracts@2.0.0|history-transport\n').update(canonicalJSON({ projection, beforeImageDigest })).digest('hex');
     const prepared = validateType('PreparedHistoryTransaction', { originTransactionId: r.originTransactionId,
       transactionId: r.transactionId, direction: r.direction, historyOperationDigest: r.historyOperationDigest,
       transactionPayloadDigest, beforeImageDigest, targetStateDigest: r.targetStateDigest,
@@ -194,15 +200,15 @@ export class LocalTransactions {
     await this.historyNow({ ...saved.request, requestId: r.requestId, localContext: r.localContext });
     if (r.expectedWorldRevision !== saved.request.expectedWorldRevision || !same(r.expectedObjectRevisions, saved.request.expectedObjectRevisions)) fail('UNDO_CONFLICT');
     await this.engine.prepareCheck(saved.target.coveredPositions,
-      saved.target.records.map(x => ({ position: x.position, nodeName: x.nodeName })));
+      saved.target.records, true);
     const before = await this.snapshot(saved.before.coveredPositions);
-    if (!same(view(before), view(saved.before))) fail('UNDO_CONFLICT');
+    if (!stateMatches(before, saved.before)) fail('UNDO_CONFLICT');
     await this.current(r); saved.status = 'APPLYING'; await this.store.put(saved);
     try {
       const result = await this.engine.applyState(saved.target, saved.before, saved.operationDigest);
       if (result?.status !== 'APPLIED_PENDING_READBACK') fail('APPLY_FAILED');
       const after = await this.snapshot(saved.target.coveredPositions);
-      if (!same(view(after), view(saved.target))) fail('READBACK_MISMATCH');
+      if (!stateMatches(after, saved.target)) fail('READBACK_MISMATCH');
       saved.status = 'VERIFIED'; saved.after = after; await this.store.put(saved); return this.receipt(saved);
     } catch (error) {
       saved.failureCode = schemaBundle.definitions.ErrorCode.enum.includes(error.message) ? error.message : 'APPLY_FAILED';

@@ -1,4 +1,4 @@
-// SOURCE/FIXTURE: world-adapter-region/v2 host logic against an in-memory engine
+// SOURCE/FIXTURE: world-adapter-region/v3 host logic against an in-memory engine
 // double. Engine semantics (VoxelManip/emerge/light/metadata) are exercised only
 // by test/real-region-io.mjs against real Luanti.
 import test from 'node:test';
@@ -8,7 +8,10 @@ import { batches, blocksPerBatch } from '../src/region-batches.mjs';
 import { validateRegionRead, validateRegionWrite, requireKnownRegion, expectedRegionState, encodeRegionBlock,
   checkProtocolCompatibility, protocolRequirement, validateRequest, digestValue } from '#contracts';
 
-const W = 'world-adapter-region/v2', world = 'luanti:fixture';
+import { WorldVocabulary, WORLD_GEOMETRY } from '../src/world-vocabulary.mjs';
+const node = name => ({walkable:name !== 'air',liquidType:'none',damagePerSecond:0,lightSource:0,allowedParam2:[0],hasCallbacks:false,hasPersistentState:false,definitionRevision:'definition',unknownFields:[]});
+const vocabulary = new WorldVocabulary({profileVersion:'catalogue/v2',gameRevision:'registry',modRevisions:{base:'mod'},nodes:Object.fromEntries(['air','base:stone','base:dirt'].map(n=>[n,node(n)]))});
+const W = 'world-adapter-region/v3', world = 'luanti:fixture';
 const localContext = { connectionRef: 'c', connectionIncarnationRef: 'i', worldRef: world, selectionRevision: 's' };
 const key = p => p.join(',');
 const blk = (x, y, z) => [x, y, z].map(v => Math.floor(v / 16)).join(',');
@@ -23,7 +26,7 @@ function engine({ unknown = new Set(), failWriteAt = null, guardRefuse = null } 
     return JSON.stringify(t);
   };
   let writes = 0;
-  return { cells, meta, log, get writes() { return writes; },
+  return { catalogue:async()=>vocabulary.catalogue,material:(...a)=>vocabulary.material(...a),nativeMaterial:(...a)=>vocabulary.nativeMaterial(...a), cells, meta, log, get writes() { return writes; },
     async regionLimits() { return { mapblockSize: 16, maxBodyBytes: 265000, registeredNodes: 4, longestNodeName: 10, mapgenLimit: 31000 }; },
     async regionEmerge(min, max) {
       log.push('emerge'); const blocks = [];
@@ -73,21 +76,21 @@ function engine({ unknown = new Set(), failWriteAt = null, guardRefuse = null } 
 
 const box = { min: [-3, -2, -1], max: [36, 2, 2] }; // 4 x 2 x 2 mapblocks
 const readReq = (requestId = 'r') => validateRequest(W, 'ReadRegion', { contractVersion: W, sessionRef: 's', requestId,
-  worldRef: world, box, purpose: 'BEFORE_IMAGE', localContext });
+  worldRef: world, box, partition:WORLD_GEOMETRY.partition, purpose: 'BEFORE_IMAGE', localContext });
 async function read(e, id) {
   const r = readReq(id), out = await readRegion(e, r);
   return validateRegionRead(r, { contractVersion: W, requestId: r.requestId, result: out.result, error: null }).result;
 }
 function opsFor(chunk, rule) {
   const { min, max } = chunk.box, size = max.map((v, i) => v - min[i] + 1);
-  const palette = [{ nodeName: 'base:stone', param2: 0 }, { nodeName: 'air', param2: 0 }];
+  const palette = [vocabulary.material('base:stone',0), vocabulary.material('air',0)];
   const indices = new Int32Array(size[0] * size[1] * size[2]); let i = 0;
   for (let z = min[2]; z <= max[2]; z++) for (let y = min[1]; y <= max[1]; y++) for (let x = min[0]; x <= max[0]; x++) indices[i++] = rule(x, y, z);
   return encodeRegionBlock({ origin: min, size, palette, indices });
 }
 const fillDig = (x, y) => y === 1 ? 0 : y === -1 ? 1 : -1;
 const writeReq = (purpose, writes, id) => validateRequest(W, 'WriteRegion', { contractVersion: W, sessionRef: 's', requestId: id,
-  worldRef: world, transactionId: `tx-${id}`, purpose, writes, localContext });
+  worldRef: world, transactionId: `tx-${id}`, purpose, partition:WORLD_GEOMETRY.partition, writes, localContext });
 async function write(e, purpose, writes, id = 'w') {
   const r = writeReq(purpose, writes, id), out = await writeRegion(e, r);
   return { ...validateRegionWrite(r, { contractVersion: W, requestId: r.requestId, result: out.result, error: null, guardRefusal: null }), facts: out.facts };
@@ -95,13 +98,13 @@ async function write(e, purpose, writes, id = 'w') {
 const applyWrites = before => before.chunks.map(c => ({ chunkPos: c.chunkPos, expectedCurrentDigest: c.stateDigest,
   ops: opsFor(c, fillDig), state: null }));
 
-test('protocol handshake: same major + capabilities consumed; v3 requirement and v3 wire rejected', () => {
-  const caps = ['world-adapter-region/v2:chunked-read', 'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
-    'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'];
+test('protocol handshake: same major + capabilities consumed; v4 requirement and v4 wire rejected', () => {
+  const caps = ['world-adapter-region/v3:chunked-read', 'world-adapter-region/v3:chunked-write', 'world-adapter-region/v3:lighting-complete',
+    'world-adapter-region/v3:load-then-know', 'world-adapter-region/v3:restore-state'];
   assert.equal(checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, caps)]).result, 'PROTOCOL_COMPATIBLE');
-  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement('world-adapter-region/v3', caps)]), /UNSUPPORTED_VERSION/);
-  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, ['world-adapter-region/v2:teleport'])]), /CAPABILITY_UNAVAILABLE/);
-  assert.throws(() => validateRequest('world-adapter-region/v3', 'ReadRegion', { ...readReq(), contractVersion: 'world-adapter-region/v3' }), /UNSUPPORTED_VERSION/);
+  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement('world-adapter-region/v4', caps)]), /UNSUPPORTED_VERSION/);
+  assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, ['world-adapter-region/v3:teleport'])]), /CAPABILITY_UNAVAILABLE/);
+  assert.throws(() => validateRequest('world-adapter-region/v4', 'ReadRegion', { ...readReq(), contractVersion: 'world-adapter-region/v4' }), /UNSUPPORTED_VERSION/);
   assert.ok(blocksPerBatch({ maxBodyBytes: 4 * 1024 * 1024, registeredNodes: 50, longestNodeName: 20 }) >= 30);
   assert.deepEqual(batches([-5, 0, 0], [40, 3, 3], 2).map(b => [b.min, b.max]), [[[-5, 0, 0], [15, 3, 3]], [[16, 0, 0], [40, 3, 3]]]);
 });
@@ -190,3 +193,9 @@ test('guard refusals on WriteRegion: REGION_APPLY and REGION_RESTORE answer with
     assert.equal(/collisionbox|player|body|passRuns/.test(JSON.stringify(c.enclosure)), false);
   }
  });
+
+test('partition mismatch is CAPABILITY_GAP before engine reads or writes', async () => {
+ const e=engine();
+ await assert.rejects(readRegion(e,{...readReq(),partition:{edge:[8,16,16]}}),error=>error.message==='CAPABILITY_GAP');
+ assert.equal(e.log.length,0);
+});

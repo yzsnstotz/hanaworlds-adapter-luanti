@@ -2,18 +2,11 @@ import { createHash } from 'node:crypto';
 import { validateType, canonicalJSON, digestValue, ContractError } from '#contracts';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
-/** Stage 1 engine facts for Canvas configuration. Read-only, in memory only.
- *
- * - config-engine-facts/v1 (shape of the contracts ^0.5.6 port
- *   ConfigEngineFactsPort.readConfigEngineFacts): the write backend the loaded payload
- *   declares, and the avatar envelope, which is always UNAVAILABLE: actual collision
- *   boxes and their pose-dependent sizes are used only inside the engine
- *   (INV-POSE-STAYS-IN-ENGINE; Prepare body recheck unchanged). No design size or
- *   default is produced.
- * - adapter-worldedit-runtime/v1: what WorldEdit the running engine actually loaded.
- *
- * A missing fact is a named refusal or UNAVAILABLE; no package version or default stands in. */
-export const CONFIG_ENGINE_FACTS_VERSION = 'config-engine-facts/v1';
+/** Loaded-world config-engine-facts/v2, checked against one neutral Catalogue snapshot.
+ * Backend identity is read from the payload declaration. Player geometry stays engine-only;
+ * the released AvatarEnvelopeFact permits UNAVAILABLE/NO_PUBLIC_SOURCE only.
+ * Historical WorldEdit diagnostics remain read-only adapter facts until native writers replace it. */
+export const CONFIG_ENGINE_FACTS_VERSION = 'config-engine-facts/v2';
 export const WORLDEDIT_FACTS_VERSION = 'adapter-worldedit-runtime/v1';
 // The exact candidate permits only this avatar form; no public geometry source.
 export const AVATAR_UNAVAILABLE_REASON = 'NO_PUBLIC_SOURCE';
@@ -73,12 +66,12 @@ export function createStage1Facts() {
     const before = validateType('Catalogue', await engine.catalogue());
     const value = await read();
     const after = validateType('Catalogue', await engine.catalogue());
-    if (before.gameRevision !== after.gameRevision) throw refusal('CURRENT_WORLD_MISMATCH', 'REVISION_CHANGED', 'CATALOGUE_CHANGED_DURING_READ');
+    if (canonicalJSON(before.engineRevisions) !== canonicalJSON(after.engineRevisions)) throw refusal('CURRENT_WORLD_MISMATCH', 'REVISION_CHANGED', 'CATALOGUE_CHANGED_DURING_READ');
     return { catalogue: after, value };
   }
 
   return {
-    /** config-engine-facts/v1 for the exact paired world (candidate port shape). */
+    /** config-engine-facts/v2 for the exact paired world (published port shape). */
     async configEngineFacts(row, engine) {
       const list = ledger(row.worldRef).config, domain = domainOf(row);
       const { catalogue, value: raw } = await stableCatalogue(engine, async () => {
@@ -87,23 +80,21 @@ export function createStage1Facts() {
       });
       let writeBackend;
       if (raw?.notDeclared) writeBackend = { availability: 'UNAVAILABLE', reason: 'NOT_DECLARED_BY_PAYLOAD' };
-      else if (typeof raw?.backendProfileId !== 'string' || !raw.backendProfileId || typeof raw.ready !== 'boolean')
+      else if (typeof raw?.writeBackend?.profileId !== 'string' || !raw.writeBackend.profileId || typeof raw?.writeBackend?.revision !== 'string' || !raw.writeBackend.revision || typeof raw.ready !== 'boolean')
         writeBackend = { availability: 'UNAVAILABLE', reason: 'ENGINE_FACT_UNREADABLE' };
-      else if (raw.nodeWriteSemantics !== 'explicit-nodeName-param2-static-v2')
-        throw refusal('CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'WRITE_BACKEND_SEMANTICS_UNSUPPORTED');
       else if (!raw.ready) writeBackend = { availability: 'UNAVAILABLE', reason: 'ENGINE_FACT_UNREADABLE' };
       else writeBackend = { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
-        backendProfileId: validateType('Ref', raw.backendProfileId), nodeWriteSemantics: raw.nodeWriteSemantics };
+        writeBackend:validateType('WriteBackendRef',raw.writeBackend) };
       const projection = { profileVersion: CONFIG_ENGINE_FACTS_VERSION,
         connection: { worldRef: domain.worldRef, connectionRef: domain.connectionRef, connectionIncarnationRef: domain.connectionIncarnationRef },
         catalogueDigest: digestValue('catalogue', catalogue).sha256,
         avatarEnvelope: { availability: 'UNAVAILABLE', reason: AVATAR_UNAVAILABLE_REASON },
         writeBackend };
       const record = validateType('ConfigEngineFacts', { ...projection, sourceRevision: configEngineFactsRevision(projection) });
-      const meta = { domain, gameRevision: catalogue.gameRevision, writeBackend };
+      const meta = { domain, engineRevisions: catalogue.engineRevisions, writeBackend };
       return publish(list, record.sourceRevision, meta, record, (a, b) => {
         const out = domainChanges(a, b);
-        if (a.gameRevision !== b.gameRevision) out.push('CATALOGUE_CHANGED');
+        if (canonicalJSON(a.engineRevisions) !== canonicalJSON(b.engineRevisions)) out.push('CATALOGUE_CHANGED');
         if (canonicalJSON(a.writeBackend) !== canonicalJSON(b.writeBackend)) out.push('WRITE_BACKEND_CHANGED');
         return out;
       }).record;
@@ -113,7 +104,7 @@ export function createStage1Facts() {
       const { catalogue: after, value: runtime } = await stableCatalogue(engine, () => engine.worldEditRuntime());
       if (typeof runtime?.modListed !== 'boolean' || typeof runtime?.apiTable !== 'boolean')
         throw refusal('CAPABILITY_UNAVAILABLE', 'REQUIRED_FACT_UNKNOWN', 'WORLDEDIT_RUNTIME_UNREADABLE');
-      const modRevision = Object.hasOwn(after.modRevisions, 'worldedit') ? after.modRevisions.worldedit : null;
+      const modRevision = after.engineRevisions[`source:${createHash('sha256').update('worldedit').digest('hex')}`] ?? null;
       const listed = runtime.modListed && modRevision !== null;
       // The loaded-mod list, the Catalogue and the runtime API must agree; otherwise UNKNOWN.
       const loadState = listed && runtime.apiTable ? 'LOADED'
@@ -126,16 +117,16 @@ export function createStage1Facts() {
           source: 'loaded mod runtime: worldedit.version_string / worldedit.version' }
         : { status: 'UNKNOWN', reason: 'VERSION_NOT_EXPOSED_BY_LOADED_MOD' };
       const body = { profileVersion: WORLDEDIT_FACTS_VERSION, loadState, version,
-        catalogue: { gameId: after.gameId, gameRevision: after.gameRevision, worldeditModRevision: modRevision,
+        catalogue: { gameId:null, gameRevision:after.engineRevisions.registry, worldeditModRevision: modRevision,
           meaning: 'loaded-registry fingerprint (sha256(mod|gameRevision)), not a Git/package revision' },
         domain };
       const record = { ...body, revision: `worldedit-runtime-${sha(body)}`,
         source: { kind: 'ENGINE_FACT', producer: `${ADAPTER_ID}@${ADAPTER_VERSION}`,
           engineRead: 'core.get_modnames(); rawget(_G, "worldedit"); Catalogue read before and after' },
         lifetime: { validWhile: ['same connection incarnation', 'same Catalogue gameRevision'] } };
-      const out = publish(list, record.revision, { domain, gameRevision: after.gameRevision, loadState, version }, record, (a, b) => {
+      const out = publish(list, record.revision, { domain, engineRevisions:after.engineRevisions, loadState, version }, record, (a, b) => {
         const r = domainChanges(a, b);
-        if (a.gameRevision !== b.gameRevision) r.push('CATALOGUE_CHANGED');
+        if (canonicalJSON(a.engineRevisions) !== canonicalJSON(b.engineRevisions)) r.push('CATALOGUE_CHANGED');
         if (a.loadState !== b.loadState || canonicalJSON(a.version) !== canonicalJSON(b.version)) r.push('WORLDEDIT_CHANGED');
         return r;
       });

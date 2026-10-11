@@ -6,7 +6,7 @@ local M = {}
 -- effect cell, then a light refresh of the covered cells. Changing that write
 -- path requires a new backendProfileId.
 M.WRITE_BACKEND = {backendProfileId = 'hanaworlds-luanti-worldedit-cell-write/v1',
-  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2'}
+  nodeWriteSemantics = 'explicit-nodeName-param2-static-v2', revision = 'cell-write/1'}
 local Engine = {}
 Engine.__index = Engine
 
@@ -60,6 +60,15 @@ local function equal(a, b)
   if type(a) ~= 'table' then return a == b end
   for k, v in pairs(a) do if not equal(v, b[k]) then return false end end
   for k in pairs(b) do if a[k] == nil then return false end end
+  return true
+end
+
+-- StateProfile declares lighting derived: the engine may recompute param1.
+-- Node identity, orientation, metadata, inventory and timers remain exact.
+local function equal_record(a, b)
+  if type(a) ~= 'table' or type(b) ~= 'table' then return false end
+  for k, v in pairs(a) do if k ~= 'param1' and not equal(v, b[k]) then return false end end
+  for k in pairs(b) do if k ~= 'param1' and a[k] == nil then return false end end
   return true
 end
 
@@ -167,7 +176,7 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
     or #before_image.coveredPositions ~= #effects then
     return nil, 'SCHEMA_INVALID'
   end
-  -- A v5 writer carries the entire fsynced inspected scope. Check it in the
+  -- The scoped writer carries the entire fsynced inspected scope. Check it in the
   -- game immediately before mutation, including cells it will not write.
   if scope_before_image ~= nil then
     if type(scope_before_image) ~= 'table' or
@@ -182,7 +191,7 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
         then return nil, 'SCHEMA_INVALID' end
       local current, code = public_record(cell)
       if not current then return nil, code end
-      if not equal(current, scope_before_image.records[i]) then
+      if not equal_record(current, scope_before_image.records[i]) then
         return nil, 'TRANSACTION_CONFLICT' end
       scope_cells[table.concat(cell, ',')] = true
     end
@@ -204,7 +213,7 @@ function Engine:apply(effects, before_image, prepared, scope_before_image)
       or effect.param2 ~= math.floor(effect.param2) then return nil, 'SCHEMA_INVALID' end
     local current, code = public_record(effect.position)
     if not current then return nil, code end
-    if not equal(current, before_image.records[i]) then
+    if not equal_record(current, before_image.records[i]) then
       return nil, 'TRANSACTION_CONFLICT'
     end
   end
@@ -246,7 +255,7 @@ function Engine:apply_state(target_image, before_image, prepared)
   if type(editing) ~= 'table' or type(editing.set) ~= 'function'
     or type(editing.set_param2) ~= 'function' or not light_capable() then
     return nil, 'CAPABILITY_UNAVAILABLE' end
-  -- Check every cell and exact current state before the first write.
+  -- Check every cell and non-derived current state before the first write.
   for i, target in ipairs(target_image.records) do
     local prior = before_image.records[i]
     local cell = target_image.coveredPositions[i]
@@ -277,7 +286,7 @@ function Engine:apply_state(target_image, before_image, prepared)
     end
     local current, code = public_record(cell)
     if not current then return nil, code end
-    if not equal(current, prior) then return nil, 'TRANSACTION_CONFLICT' end
+    if not equal_record(current, prior) then return nil, 'TRANSACTION_CONFLICT' end
   end
   local count = 0
   for _, target in ipairs(target_image.records) do
@@ -301,7 +310,7 @@ function Engine:apply_state(target_image, before_image, prepared)
   if not refresh_light(target_image.coveredPositions) then return nil, 'APPLY_FAILED' end
   for _, target in ipairs(target_image.records) do
     local current = public_record(target.position)
-    if not current or not equal(current, target) then return nil, 'READBACK_MISMATCH' end
+    if not current or not equal_record(current, target) then return nil, 'READBACK_MISMATCH' end
   end
   return {status = 'APPLIED_PENDING_READBACK', writtenCells = count}
 end
@@ -349,7 +358,7 @@ function Engine:restore(before_image, recovery)
   if not refresh_light(before_image.coveredPositions) then return nil, 'RESTORE_FAILED' end
   for _, record in ipairs(before_image.records) do
     local current = public_record(record.position)
-    if not current or not equal(current, record) then return nil, 'RESTORE_FAILED' end
+    if not current or not equal_record(current, record) then return nil, 'RESTORE_FAILED' end
   end
   return {status = 'ROLLED_BACK'}
 end

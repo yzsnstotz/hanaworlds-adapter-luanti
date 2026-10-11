@@ -17,7 +17,7 @@ const base = (players, worldedit = { version_string: '1.3', version: { major: 1,
 
 async function world(t, scenario) {
   const w = await openFixtureWorld({ runRoot, scenario });
-  t.after(async () => { await w.close(); await rm(w.root, { recursive: true, force: true }); });
+  t.after(async () => { await w.close(); });
   return w;
 }
 
@@ -26,10 +26,10 @@ test('config engine facts: payload-declared backend KNOWN, avatar always UNAVAIL
   const paired = await w.connect();
   const f = await w.facts.readConfigEngineFacts(w.worldRef);
   assert.deepEqual(Object.keys(f).sort(), ['avatarEnvelope', 'catalogueDigest', 'connection', 'profileVersion', 'sourceRevision', 'writeBackend']);
-  assert.equal(f.profileVersion, 'config-engine-facts/v1');
+  assert.equal(f.profileVersion, 'config-engine-facts/v2');
   assert.deepEqual({ ...f.connection }, { worldRef: w.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef });
-  assert.deepEqual({ ...f.writeBackend }, { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
-    backendProfileId: 'hanaworlds-luanti-worldedit-cell-write/v1', nodeWriteSemantics: 'explicit-nodeName-param2-static-v2' });
+  assert.deepEqual(JSON.parse(JSON.stringify(f.writeBackend)), { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
+    writeBackend: {profileId:'hanaworlds-luanti-worldedit-cell-write/v1',revision:'cell-write/1'} });
   assert.deepEqual({ ...f.avatarEnvelope }, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
   assert.equal(f.catalogueDigest, digestValue('catalogue', await w.facts.readCatalogue(w.worldRef)).sha256);
   const { sourceRevision, ...projection } = f;
@@ -52,7 +52,7 @@ test('config engine facts: a payload without a declaration is UNAVAILABLE, never
   const w = await world(t, base([], undefined, false));
   await w.connect();
   const f = await w.facts.readConfigEngineFacts(w.worldRef);
-  assert.deepEqual({ ...f.writeBackend }, { availability: 'UNAVAILABLE', reason: 'NOT_DECLARED_BY_PAYLOAD' });
+  assert.deepEqual(JSON.parse(JSON.stringify(f.writeBackend)), { availability: 'UNAVAILABLE', reason: 'NOT_DECLARED_BY_PAYLOAD' });
   await w.setScenario(base([]));
   const g = await w.facts.readConfigEngineFacts(w.worldRef);
   assert.equal(g.writeBackend.availability, 'KNOWN');

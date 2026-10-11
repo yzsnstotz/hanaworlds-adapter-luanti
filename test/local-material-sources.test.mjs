@@ -18,8 +18,8 @@ async function setup(run){
   const game=join(dir,'game'),mod=join(game,'mods','native'),user=join(dir,'user');
   for(const d of [join(game,'textures'),join(mod,'textures'),user])await mkdir(d,{recursive:true});
   await writeFile(join(mod,'textures','native.png'),png);
-  const node={walkable:true,collisionBoxes:null,liquidType:'none',damagePerSecond:0,lightSource:0,param2Type:'none',allowedParam2:[0,1],hasCallbacks:false,hasPersistentState:null,definitionRevision:hash('definition'),unknownFields:['collisionBoxes','hasPersistentState']};
-  const metadata={catalogue:{profileVersion:'catalogue/v2',engineProfile:'fixture-engine',gameId:'fixture-game',gameRevision:hash('game'),modRevisions:{native:hash('mod')},nodes:{'native:stone':node}},
+  const node={passable:false,liquid:false,hazardPerSecond:0,emitsLight:false,placeable:null,orientations:[0,1],definitionRevision:hash('definition'),unknownFields:['placeable'],extension:{}};
+  const metadata={catalogue:{profileVersion:'catalogue/v3',engineRevisions:{registry:hash('game')},emptyMaterialRef:'native:stone',materials:{'native:stone':node}},
    gamePath:game,userPath:user,texturePath:'',mods:[{name:'native',path:mod}],appearance:{'native:stone':{textureName:'native.png',supported:true}}};
   await run(metadata,{game,mod,user});
  }finally{await rm(dir,{recursive:true,force:true});}
@@ -40,17 +40,17 @@ test('public readonly supplier exists and rejects unbound, invalid and closed wo
 test('actual mod bytes and game priority bind to legal node and fresh contract facts',()=>setup(async(m,{game})=>{
  const resolve=await resolver();let result=await resolve(m,connection);
  const row=result.snapshot.materials[0];assert.equal(row.availability,'KNOWN');assert.equal(row.texture.sourceKind,'MOD');
- assert.equal(row.param2,0);assert.equal(row.texture.bytesDigest,hash(png));assert.deepEqual(Buffer.from(result.textures[0].bytes),png);
- assert.equal(m.catalogue.nodes['native:stone'].hasPersistentState,null);
+ assert.equal(row.orientation,0);assert.equal(row.texture.bytesDigest,hash(png));assert.deepEqual(Buffer.from(result.textures[0].bytes),png);
+ assert.equal(m.catalogue.materials['native:stone'].placeable,null);
  C.validateMaterialSources(result,m.catalogue,connection);
  await writeFile(join(game,'textures','native.png'),Buffer.concat([png,Buffer.from('game-specific fixture bytes')]));
  result=await resolve(m,connection);assert.equal(result.snapshot.materials[0].texture.sourceKind,'GAME');
  assert.notEqual(result.snapshot.sourceRevision,row.texture.bytesDigest);
 }));
 test('unresolved legality remains null with no fake texture; static unknowns stay unknown',()=>setup(async m=>{
- m.catalogue.nodes['native:stone'].allowedParam2=null;m.catalogue.nodes['native:stone'].unknownFields.push('allowedParam2');m.catalogue.nodes['native:stone'].unknownFields.sort();
- const result=await(await resolver())(m,connection);assert.equal(result.snapshot.materials[0].reason,'UNKNOWN_PARAM2');
- assert.equal(result.snapshot.materials[0].param2,null);assert.equal(result.snapshot.materials[0].texture,null);assert.equal(result.textures.length,0);
+ m.catalogue.materials['native:stone'].orientations=null;m.catalogue.materials['native:stone'].unknownFields.push('orientations');m.catalogue.materials['native:stone'].unknownFields.sort();
+ const result=await(await resolver())(m,connection);assert.equal(result.snapshot.materials[0].reason,'UNKNOWN_ORIENTATION');
+ assert.equal(result.snapshot.materials[0].orientation,null);assert.equal(result.snapshot.materials[0].texture,null);assert.equal(result.textures.length,0);
 }));
 test('unsupported appearance and server override are explicitly UNKNOWN',()=>setup(async(m,{game})=>{
  const resolve=await resolver();m.appearance['native:stone'].supported=false;
@@ -62,7 +62,7 @@ test('fresh byte changes alter sourceRevision without forging game revision',()=
  const resolve=await resolver(),a=await resolve(m,connection);
  await writeFile(join(mod,'textures','native.png'),Buffer.concat([png,Buffer.from('changed fixture bytes')]));
  const b=await resolve(m,connection);assert.notEqual(a.snapshot.sourceRevision,b.snapshot.sourceRevision);
- assert.equal(a.snapshot.gameRevision,b.snapshot.gameRevision);assert.notEqual(a.textures[0].bytesDigest,b.textures[0].bytesDigest);
+ assert.equal(a.snapshot.engineRevisions.registry,b.snapshot.engineRevisions.registry);assert.notEqual(a.textures[0].bytesDigest,b.textures[0].bytesDigest);
 }));
 test('missing file is never guessed; Luanti 5.17 reverse load order resolves cross-mod names',()=>setup(async(m,{mod,game})=>{
  const resolve=await resolver();await rm(join(mod,'textures','native.png'));

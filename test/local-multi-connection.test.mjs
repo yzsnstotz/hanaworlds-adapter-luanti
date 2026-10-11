@@ -5,6 +5,9 @@ import { mkdir, mkdtemp, realpath, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLocalWorldPort } from '../src/local-world-port.mjs';
 import { createLocalRuntime } from '../src/local-runtime.mjs';
+import {execFileSync} from 'node:child_process';
+import {ENGINE_GUARDS} from '../src/safety-capabilities.mjs';
+const nativeCatalogue=JSON.parse(execFileSync('lua',['test/support/material-facts.lua','glass'],{encoding:'utf8'})).catalogue;
 import { LocalCourier } from '../src/local-courier.mjs';
 
 const base = process.env.HW_BIND_TEST_ROOT;
@@ -19,7 +22,7 @@ async function setup(t) {
   const records = new Map(), stopped = [], engines = new Map(), handshakeFailures = new Set(), inspectionFailuresOnLoad = new Set(), rejectedInspections = new Set();
   let local;
   t.mock.method(LocalCourier,'open', async world => {
-    const engine = {connectionIncarnationRef:`incarnation:${world.worldRef}`,closed:false,
+    const engine = {engineGuards:ENGINE_GUARDS,catalogue:async()=>nativeCatalogue,regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000}),connectionIncarnationRef:`incarnation:${world.worldRef}`,closed:false,
       handshake:async()=>{if(handshakeFailures.has(world.worldRef)) throw Error('PAYLOAD_VERSION_MISMATCH');},
       profile:async()=>{if(inspectionFailuresOnLoad.has(world.worldPath)) rejectedInspections.add(world.worldPath);return profile;}, close:async()=>{engine.closed=true;}};
     engines.set(world.connectionRef,engine); return engine;
@@ -36,7 +39,7 @@ async function setup(t) {
   const acquire=w=>local.port.acquire({requesterRef:'host',userPath:root,connectionRef:w.connectionRef,action:'BIND_RUNNING_WORLD'});
   const query=l=>({requesterRef:'host',connectionRef:l.connectionRef,leaseRef:l.leaseRef});
   const pair=async w=>{const lease=await acquire(w);return {lease,paired:await local.port.pair(query(lease))};};
-  const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v7',sessionRef:'fixture:S1',requestId:'inventory',adapterId:'hanaworlds-adapter-luanti'});
+  const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v8',sessionRef:'fixture:S1',requestId:'inventory',adapterId:'hanaworlds-adapter-luanti'});
   return {root,local,runtime,records,stopped,engines,handshakeFailures,inspectionFailuresOnLoad,make,acquire,query,pair,inventory};
 }
 

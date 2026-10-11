@@ -1,3 +1,42 @@
+# HanaWorlds Luanti Adapter 0.15.0 · contracts 2.0.0
+
+The world source uses the exact published dependency
+`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.0.0`.
+The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/v8`),
+`hanaworldsWorldAdapterRegionV1` (wire `world-adapter-region/v3`), and
+`hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
+`ReadLocalConnection.capabilities.worldGeometry` declares `voxel-grid/v1`,
+`partition.edge=[16,16,16]`, and `postWriteLighting=REQUIRED`.
+
+Materials have opaque refs bound to their orientation translation tables and neutral tags. Orientation is an index in the world's
+material vocabulary; the private adapter translates it to/from the loaded node's legal
+param2 domain. The empty material is identified by `emptyMaterialRef`. Native definitions
+stay in opaque extensions; consumers must not interpret them. State records carry
+`geometryProfile`, `materialRef`, `orientation`, and opaque state. The adapter's state
+profile declares derived lighting and cleared metadata/inventory/timer fields. Native
+snapshots and restores retain native orientation bytes through the private translation.
+A changed translation table invalidates older refs before any restore write; lighting
+is recomputed by the engine and excluded from state comparisons.
+
+Config facts carry the loaded payload's opaque backend identity and the released
+`UNAVAILABLE/NO_PUBLIC_SOURCE` avatar fact. New named fact operations, display names/colors,
+public player envelopes and replacement of the existing WorldEdit per-cell writer belong
+to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added here.
+
+Fresh installs use payload 0.10.3 and contracts 2 durable records. Older payloads/records
+are refused; no migration or compatibility path is provided. D-19 authority/grant and
+unreferenced historical protocol source is preserved under [archive/d19](archive/d19/README.md),
+excluded from the installed package and current execution paths.
+
+Run with Node >=24.13.1 <25: `npm ci`, `npm run verify:contracts`, `npm test`, `npm run build`.
+The default test suite covers published-contract admission, catalogue/geometry facts,
+neutral/native conversion, scoped prepare/apply/readback/restore/history and region batches.
+These tests use explicit engine/peer fixtures and do not claim real Luanti or product acceptance.
+
+---
+
+The following release notes are historical and name the versions of their time.
+
 # HanaWorlds Luanti Adapter 0.7.5 (flat-world creation + write-path facts + read-only region state, payload 0.6.0)
 
 Local, fresh-install `world-adapter/v6` transport, pinned to the root entry of

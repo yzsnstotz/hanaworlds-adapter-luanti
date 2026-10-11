@@ -1,3 +1,4 @@
+import { WORLD_GEOMETRY, STATE_PROFILE } from './world-vocabulary.mjs';
 import { refusalDetail } from './safety-capabilities.mjs';
 import { validateType, digestValue, encodeRegionBlock, expandRegionBlock, regionBlockBox,
   regionChunksOfBox, comparePosition } from '#contracts';
@@ -5,7 +6,7 @@ import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns, BLOCK } fro
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /*
- * world-adapter-region/v2 transport over the paired Luanti engine. The Adapter
+ * world-adapter-region/v3 transport over the paired Luanti engine. The Adapter
  * reports per-chunk engine facts only: it never decides or claims a commit.
  * Canvas compares summaries and restores its own snapshot (purpose RESTORE).
  */
@@ -22,27 +23,27 @@ export class RegionFault extends Error {
 
 export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter-region', major: 2, minor: 0 }],
+  protocols: [{ protocol: 'world-adapter-region', major: 3, minor: 0 }],
   // callback-free-write: region writes and restores are VoxelManip node data (voxel.lua).
-  capabilities: ['world-adapter-region/v2:callback-free-write', 'world-adapter-region/v2:chunked-read',
-    'world-adapter-region/v2:chunked-write', 'world-adapter-region/v2:lighting-complete',
-    'world-adapter-region/v2:load-then-know', 'world-adapter-region/v2:restore-state'],
+  capabilities: ['world-adapter-region/v3:callback-free-write', 'world-adapter-region/v3:chunked-read',
+    'world-adapter-region/v3:chunked-write', 'world-adapter-region/v3:lighting-complete',
+    'world-adapter-region/v3:load-then-know', 'world-adapter-region/v3:restore-state'],
   // Provenance is a record only; an installed package cannot know its own tar digest.
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
-/** world-adapter/v7 runtime protocol (minor 0; contracts 1.0 reset minors): per-cell writes and
+/** world-adapter/v8 runtime protocol (published contracts 2.0.0): per-cell writes and
  * restores are WorldEdit set/set_param2 (VoxelManip) plus swap_node, and the Catalogue
- * publishes hasCallbacks/hasPersistentState under that scope. */
+ * publishes neutral placeable tags under that scope. */
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter', major: 7, minor: 0 }],
-  capabilities: ['world-adapter/v7:callback-free-write', 'world-adapter/v7:write-path-state-facts'],
+  protocols: [{ protocol: 'world-adapter', major: 8, minor: 0 }],
+  capabilities: ['world-adapter/v8:callback-free-write', 'world-adapter/v8:write-path-state-facts'],
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 
 /** RegionState of one box from an expanded engine read (all cells specified). */
-function stateOf(worldRef, read, box) {
+function stateOf(engine, worldRef, read, box) {
   const size = box.max.map((v, i) => v - box.min[i] + 1);
   const palette = [], index = new Map();
   const indices = new Int32Array(size[0] * size[1] * size[2]);
@@ -53,16 +54,17 @@ function stateOf(worldRef, read, box) {
         const j = read.at(x, y, z), nodeName = read.names[read.name[j]], param2 = read.param2[j];
         const k = `${nodeName}\t${param2}`;
         let p = index.get(k);
-        if (p === undefined) { p = palette.length; palette.push({ nodeName, param2 }); index.set(k, p); }
+        if (p === undefined) { p = palette.length; palette.push(engine.material(nodeName,param2)); index.set(k, p); }
         indices[i++] = p;
       }
   const inside = p => p.every((v, a) => v >= box.min[a] && v <= box.max[a]);
   const extras = read.extras.filter(e => inside(e.position))
-    .map(e => ({ position: e.position, metadata: e.fields ?? {}, inventory: e.inventory ?? {}, timer: e.timer ?? null }))
-    .filter(e => Object.keys(e.metadata).length > 0 || Object.keys(e.inventory).length > 0 || e.timer !== null)
+    .map(e => ({ position:e.position, state:{...(Object.keys(e.fields ?? {}).length ? {metadata:e.fields} : {}),
+      ...(Object.keys(e.inventory ?? {}).length ? {inventory:e.inventory} : {}),...(e.timer ? {timer:e.timer} : {})} }))
+    .filter(e => Object.keys(e.state).length > 0)
     .sort((a, b) => comparePosition(a.position, b.position));
-  return validateType('RegionState', { profileVersion: 'region-state/v1', worldRef,
-    block: encodeRegionBlock({ origin: box.min, size, palette, indices }), extras, derivedLightMode: 'recompute-with-readback' });
+  return validateType('RegionState', { profileVersion: 'region-state/v2', worldRef,
+    block: encodeRegionBlock({ origin: box.min, size, palette, indices }), extras, stateProfile: STATE_PROFILE });
 }
 
 function unknownReason(action, box, limits) {
@@ -102,10 +104,10 @@ async function loadAndRead(engine, worldRef, groups, limits) {
         // Luanti also reports CANCELLED for a queued block that another queued
         // block's mapchunk generated, so CANCELLED is a fact, not a verdict.
         const known = g.ignoreCells === 0 && KNOWN_ACTIONS.has(action);
-        const state = known ? stateOf(worldRef, read, item.box) : null;
+        const state = known ? stateOf(engine, worldRef, read, item.box) : null;
         out.set(key(item.box.min), { action, loadedBefore: preloaded.get(key(blockOf(item.box))), guard: g.guard, chunk: { chunkPos: blockOf(item.box), box: item.box,
           availability: known ? 'KNOWN' : 'UNKNOWN',
-          loadMethod: known ? (preloaded.get(key(blockOf(item.box))) ? 'ALREADY_LOADED' : 'LOADED_BY_EMERGE') : null,
+          loadMethod: known ? (preloaded.get(key(blockOf(item.box))) ? 'ALREADY_LOADED' : 'LOADED_ON_DEMAND') : null,
           unknownReason: known ? null : unknownReason(action, item.box, limits),
           state, stateDigest: state ? sha('region-state', state) : null } });
       });
@@ -114,15 +116,20 @@ async function loadAndRead(engine, worldRef, groups, limits) {
   return out;
 }
 
+function checkPartition(request) {
+  if(JSON.stringify(request.partition)!==JSON.stringify(WORLD_GEOMETRY.partition)) throw new RegionFault('CAPABILITY_GAP','GEOMETRY_PROFILE_UNSUPPORTED');
+}
 export async function readRegion(engine, request) {
+  checkPartition(request);
+  await engine.catalogue();
   const limits = await engine.regionLimits();
   const perBatch = blocksPerBatch(limits);
-  const chunks = regionChunksOfBox(request.box);
+  const chunks = regionChunksOfBox(request.box, request.partition);
   const items = chunks.map(c => ({ box: { min: [...c.box.min], max: [...c.box.max] } }));
   const groups = batches(request.box.min, request.box.max, perBatch).map(b => ({ box: b,
     items: items.filter(i => i.box.min.every((v, a) => v >= b.min[a]) && i.box.max.every((v, a) => v <= b.max[a])) }));
   const read = await loadAndRead(engine, request.worldRef, groups, limits);
-  return { result: { worldRef: request.worldRef, box: request.box,
+  return { result: { worldRef: request.worldRef, box: request.box, partition:request.partition,
     chunks: chunks.map(c => read.get(key(c.box.min)).chunk), localContext: request.localContext },
     facts: { batches: groups.length, emerge: [...read.values()].map(v => v.action),
       loadedBefore: [...read.values()].map(v => v.loadedBefore) } };
@@ -135,6 +142,8 @@ export async function readRegion(engine, request) {
  * chunk carries its own WRITTEN / NOT_WRITTEN / UNKNOWN fact.
  */
 export async function writeRegion(engine, request) {
+  checkPartition(request);
+  await engine.catalogue();
   const limits = await engine.regionLimits();
   const perBatch = blocksPerBatch(limits);
   const apply = request.purpose === 'APPLY';
@@ -149,8 +158,8 @@ export async function writeRegion(engine, request) {
     if (seen.chunk.availability !== 'KNOWN') throw new RegionFault('TARGET_FACTS_INCOMPLETE', 'REQUIRED_FACT_UNKNOWN');
     if (seen.chunk.stateDigest !== item.write.expectedCurrentDigest) throw new RegionFault('TRANSACTION_CONFLICT', 'EXTERNAL_EDIT_CONFLICT');
     const block = expandRegionBlock(apply ? item.write.ops : item.write.state.block);
-    item.command = { ...writeRuns(item.box, block.indices, block.palette, -1), guard: seen.guard,
-      ...(apply ? {} : { extras: item.write.state.extras }) };
+    item.command = { ...writeRuns(item.box, block.indices, block.palette.map(m=>engine.nativeMaterial(m,!apply)), -1), guard: seen.guard,
+      ...(apply ? {} : { extras: item.write.state.extras.map(e=>({position:e.position,metadata:e.state.metadata ?? {},inventory:e.state.inventory ?? {},timer:e.state.timer ?? null})) }) };
   }
   // Compressed planned WORLD geometry only. The engine resolves passability and reads real
   // bodies at every check and write batch. The entire plan detects cross-chunk enclosure.
@@ -198,7 +207,7 @@ export async function writeRegion(engine, request) {
       const reply = await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: done.map(i => i.box) });
       const read = expandRead(reply);
       done.forEach((item, i) => {
-        if (reply.boxes[i].ignoreCells === 0) readback.set(key(item.box.min), sha('region-state', stateOf(request.worldRef, read, item.box)));
+        if (reply.boxes[i].ignoreCells === 0) readback.set(key(item.box.min), sha('region-state', stateOf(engine, request.worldRef, read, item.box)));
       });
     } catch (error) { facts.push({ readbackError: error?.message ?? 'CAPABILITY_UNAVAILABLE' }); }
   }
@@ -211,6 +220,6 @@ export async function writeRegion(engine, request) {
   const lightBox = items.reduce((b, i) => ({ min: b.min.map((v, a) => Math.min(v, i.box.min[a])),
     max: b.max.map((v, a) => Math.max(v, i.box.max[a])) }), { min: [...items[0].box.min], max: [...items[0].box.max] });
   return { result: { transactionId: request.transactionId, worldRef: request.worldRef, purpose: request.purpose, chunks,
-    lighting: { status: anyWritten && lightComplete ? 'COMPLETE' : 'NOT_COMPLETE', box: lightBox, method: LIGHT_METHOD },
+    postWriteLighting:WORLD_GEOMETRY.postWriteLighting, lighting: { status: anyWritten && lightComplete ? 'COMPLETE' : 'NOT_COMPLETE', box: lightBox, method: LIGHT_METHOD },
     localContext: request.localContext }, facts: { batches: facts, failure } };
 }

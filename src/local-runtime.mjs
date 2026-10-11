@@ -1,13 +1,14 @@
 import { engineGuardDeclaration, refusalDetail, GUARDED_OPERATIONS } from './safety-capabilities.mjs';
-// contracts 1.0-rc.2: guarded responses always carry guardRefusal (null unless a guard refused).
+// Published guarded responses carry guardRefusal (null unless a guard refused).
 const shaped = (name, v) => GUARDED_OPERATIONS.has(name) ? { guardRefusal: null, ...v } : v;
-// Public engine-guard stage of a world-adapter/v7 operation that can be refused before writing.
+// Public engine-guard stage of a world-adapter/v8 operation that can be refused before writing.
 const STAGE = { PrepareRecoverableTransaction: 'PREPARE_RECOVERABLE', ApplyCompiledTransaction: 'APPLY_COMPILED', ApplyHistoryTransaction: 'APPLY_HISTORY' };
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
 import { LocalCourier } from './local-courier.mjs';
+import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
 import { LocalRecords } from './local-records.mjs';
 import { LocalTransactions, cellDigest, readbackView } from './local-transactions.mjs';
 import { nativeJournalDirectory, readJournalActivity } from './native-storage.mjs';
@@ -15,7 +16,7 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 import { resolveMaterialSources } from './material-sources.mjs';
 import { createStage1Facts } from './stage1-facts.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
-const WIRE = 'world-adapter/v7';
+const WIRE = 'world-adapter/v8';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
   'PrepareHistoryTransaction','ApplyHistoryTransaction','AbortPreparedTransaction','AbortPreparedHistoryTransaction']);
 const fail = code => { throw new Error(code); };
@@ -52,11 +53,17 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       const engine = await LocalCourier.open(world);
       try {
         await engine.handshake();
-        const profile = validateType('StateProfile', await engine.profile());
+        const neutral = new NeutralEngine(engine);
+        await neutral.catalogue();
+        const profile = validateType('StateProfile', await neutral.profile());
+        const limits = await neutral.regionLimits();
+        if (limits.mapblockSize !== 16) fail('CAPABILITY_GAP');
+        const bound = limits.mapgenLimit;
+        const engineBounds = Number.isSafeInteger(bound) && bound > 0 ? {min:[-bound,-bound,-bound],max:[bound,bound,bound]} : null;
         const store = await LocalRecords.open(await nativeJournalDirectory(homePath, world.worldRef), world.worldRef);
-        const row = { ...world, engine, profile, store, incarnation: engine.connectionIncarnationRef };
+        const row = { ...world, engine:neutral, profile, store, engineBounds, incarnation: engine.connectionIncarnationRef };
         const revision = `${ADAPTER_ID}@${ADAPTER_VERSION}+${world.payloadDigest}`;
-        row.backend = new LocalTransactions({ store, engine, stateProfile: profile,
+        row.backend = new LocalTransactions({ store, engine:neutral, stateProfile: profile,
           current: request => current(request, row), registry: resolveRegistry, historyFacts: resolveHistory, revision });
         rows.set(world.connectionRef, row);
         return { connectionRef: world.connectionRef, worldRef: world.worldRef,
@@ -94,8 +101,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         if(row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
         const raw=await row.engine.writePath();
         const catalogue=validateType('Catalogue',raw?.catalogue);
-        const nodes=[...(raw?.evidence?.nodes??[])].sort((a,b)=>a.nodeName<b.nodeName?-1:a.nodeName>b.nodeName?1:0);
-        const evidence=validateType('WritePathEvidence',{...raw?.evidence,nodes,catalogueDigest:digestValue('catalogue',catalogue).sha256});
+        const materials=[...(raw?.evidence?.materials??[])].sort((a,b)=>a.materialRef<b.materialRef?-1:a.materialRef>b.materialRef?1:0);
+        const evidence=validateType('WritePathEvidence',{...raw?.evidence,materials,catalogueDigest:digestValue('catalogue',catalogue).sha256});
         const check=validateCatalogueWritePathFacts(catalogue,evidence);
         await inspectConnection(row.connectionRef);
         if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
@@ -148,7 +155,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const row=matches[0];
         await inspectConnection(row.connectionRef);
         if(row.engine.closed) fail('CURRENT_WORLD_MISMATCH');
-        const out=await readRegion(row.engine,{worldRef,box:target,localContext:null});
+        const out=await readRegion(row.engine,{worldRef,box:target,partition:WORLD_GEOMETRY.partition,localContext:null});
         const chunks=out.result.chunks.map(c=>validateType('RegionChunkRead',c));
         for(const c of chunks) if(c.state && digestValue('region-state',c.state).sha256!==c.stateDigest) fail('CURRENT_WORLD_MISMATCH');
         await inspectConnection(row.connectionRef);
@@ -197,8 +204,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     if (row.engine.closed || request.worldRef !== row.worldRef || request.localContext.connectionRef !== row.connectionRef ||
       request.localContext.connectionIncarnationRef !== row.incarnation || request.localContext.worldRef !== row.worldRef) fail('CURRENT_WORLD_MISMATCH');
     const canvas = resolveCanvas(); if (typeof canvas?.call !== 'function') fail('CAPABILITY_UNAVAILABLE');
-    const input={contractVersion:'canvas/v6',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
-    const reply=validateBoundResponse('canvas/v6','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
+    const input={contractVersion:'canvas/v7',requestId:`${request.requestId}:current-selection`,sessionRef:request.sessionRef,worldRef:request.worldRef};
+    const reply=validateBoundResponse('canvas/v7','ReadWorldSelectionContext',input,await canvas.call('ReadWorldSelectionContext',input));
     const selection=reply.result?.selection;
     if ((resolveCanvas()?.[Symbol.for('cordis.original')] ?? resolveCanvas()) !== (canvas[Symbol.for('cordis.original')] ?? canvas) ||
       reply.error || selection?.status !== 'BOUND' || selection.connectionRef !== row.connectionRef ||
@@ -214,7 +221,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   }
   function capabilities(row) {
     return { providerRef: ADAPTER_ID, capabilityRevision: `adapter:${ADAPTER_VERSION}:${row.payloadDigest}`,
-      worldRef: row.worldRef, engineBounds: null, limits: [], recoveryGuarantee: 'RECOVERABLE_VERIFIED',
+      worldRef: row.worldRef, engineBounds: row.engineBounds, worldGeometry: WORLD_GEOMETRY, limits: [], recoveryGuarantee: 'RECOVERABLE_VERIFIED',
       // What this world's loaded payload actually checks, per guard and stage.
       engineGuards: engineGuardDeclaration(row.engine.engineGuards),
       stateProfile: row.profile, sessionDeleteSupported: true, imageMediaTypes: [], model: null };
@@ -280,23 +287,22 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     const catalogue = validateType('Catalogue', await row.engine.catalogue());
     const frame = { profileVersion:'frame/v2', frameId:`luanti-world-grid:${r.worldRef}`,
       origin:[0,0,0], axes:['+X','+Y','+Z'], handedness:'left',
-      gridUnit:{name:'node',metersPerGridUnit:null},transformRevision:row.backend.revision };
+      gridUnit:{name:'cell',metersPerGridUnit:null},transformRevision:row.backend.revision };
     let raw, bounds, positions, source, selection, checkInspection = () => {};
     if (name === 'InspectRegion') {
       const fp=r.footprint, st=r.placementSettings;
       const count=BigInt(fp.widthCells)*BigInt(fp.depthCells)*BigInt(fp.heightCells+1);
       if(count>BigInt(Number.MAX_SAFE_INTEGER) || (await row.engine.capacity(Number(count)))?.allowed !== true) fail('LIMIT_EXCEEDED');
-      raw=await row.engine.inspectRegion({sessionRef:r.sessionRef,anchor:r.anchor,footprint:fp,settings:st,
-        walkable:Object.fromEntries(Object.entries(catalogue.nodes).map(([n,v])=>[n,v.walkable]))});
+      raw=await row.engine.inspectRegion({sessionRef:r.sessionRef,anchor:r.anchor,footprint:fp,settings:st });
       checkOracle();
       if(raw.kind==='CHOICE') return {outcome:'PLACEMENT_CHOICE_REQUIRED',choice:{anchorKind:r.anchor.kind,
         reasons:[...new Set(raw.reasons)].sort(),options:['PICK_WORLD_POINT'],placementSettings:st,observedWorldRevision:observed}};
-      // world-adapter/v7: no body geometry crosses; the engine refused body cells itself.
+      // world-adapter/v8: no body geometry crosses; the engine refused body cells itself.
       if(raw.kind!=='REGION' || !Array.isArray(raw.cells) || !raw.cells.length || 'body' in raw) fail('INSPECTION_FAILED');
       positions=raw.cells.map(c=>c.position).sort(comparePosition);
       bounds={min:[0,1,2].map(i=>Math.min(...positions.map(p=>p[i]))),max:[0,1,2].map(i=>Math.max(...positions.map(p=>p[i])))};
       source='REGION_INSPECTED';
-      raw={...raw,occupiedCells:raw.cells.filter(c=>c.state==='OCCUPIED').map(c=>({position:c.position,nodeName:c.nodeName,param2:c.param2})),
+      raw={...raw,occupiedCells:raw.cells.filter(c=>c.state==='OCCUPIED').map(c=>({position:c.position,...row.engine.material(c.nodeName,c.param2)})),
         knownEmptyCells:raw.cells.filter(c=>c.state==='AIR').map(c=>c.position),unknownCells:[]};
     } else {
       const provider=resolveInspection(); if(typeof provider?.read!=='function') fail('CAPABILITY_UNAVAILABLE');
@@ -312,12 +318,12 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       for(let x=bounds.min[0];x<=bounds.max[0];x++) for(let y=bounds.min[1];y<=bounds.max[1];y++) for(let z=bounds.min[2];z<=bounds.max[2];z++) positions.push([x,y,z]);
       raw=await row.engine.inspect(positions); source='INSPECTED';
     }
-    const targetFacts=validateType('TargetFacts',{profileVersion:'target-facts/v4',source,worldRef:r.worldRef,
+    const targetFacts=validateType('TargetFacts',{profileVersion:'target-facts/v5',geometryProfile:GEOMETRY_PROFILE,source,worldRef:r.worldRef,
       objectRef:selection?.objectRef??null,worldRevision:observed,objectRevision:selection?.objectRevision??null,buildDigest:null,planRevision:null,
       catalogueDigest:D('catalogue',catalogue),frameDigest:D('frame',frame),sampledBounds:bounds,
       coverageDigest:D('coverage',{profileVersion:'coverage/v2',sampledBounds:bounds,sampledPositions:positions}),
       occupiedCells:raw.occupiedCells.sort((a,b)=>comparePosition(a.position,b.position)),knownEmptyCells:raw.knownEmptyCells.sort(comparePosition),
-      unknownCells:raw.unknownCells,portals:[],usableVolume:raw.unknownCells.length?null:{emptyCellCount:raw.knownEmptyCells.length,physicalVolume:null,standingArea:null,unit:'node'}});
+      unknownCells:raw.unknownCells,portals:[],usableVolume:raw.unknownCells.length?null:{emptyCellCount:raw.knownEmptyCells.length,physicalVolume:null,standingArea:null,unit:'cell'}});
     checkOracle(); checkInspection();
     if(await oracle.read(r.worldRef)!==observed) fail('STALE_REVISION');
     checkOracle(); checkInspection();
@@ -326,9 +332,9 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       targetFactsDigest:D('target-facts',targetFacts),frame,evidence:{providerRef:ADAPTER_ID,sourceRevision:row.backend.revision,worldRef:r.worldRef,worldRevision:observed},
       entranceFacing:raw.entranceFacing,placementSettings:r.placementSettings}};
   }
-  // world-adapter-region/v2 for the Canvas transaction owner: current paired
+  // world-adapter-region/v3 for the Canvas transaction owner: current paired
   // world/selection only, serialized with every other courier use.
-  const REGION_WIRE = 'world-adapter-region/v2';
+  const REGION_WIRE = 'world-adapter-region/v3';
   let regionFacts = null;
   const regionIO = {
     ctx,
@@ -339,7 +345,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     lastFacts: () => regionFacts,
     call(name, raw) {
       const caller = this.ctx;
-      // A different wire (e.g. world-adapter-region/v2) is UNSUPPORTED_VERSION
+      // A different wire (e.g. world-adapter-region/v3) is UNSUPPORTED_VERSION
       // before any engine dispatch.
       const wire = typeof raw?.contractVersion === 'string' ? raw.contractVersion : REGION_WIRE;
       const r = validateRequest(wire, name, raw);

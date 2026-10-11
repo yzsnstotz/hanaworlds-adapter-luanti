@@ -11,10 +11,10 @@ export class LocalRecords {
       const stat = await lstat(file);
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('SAVED_RESOURCE_UNAVAILABLE');
       data = JSON.parse(await readFile(file, 'utf8'));
-      if (data.version !== '0.4.0' || data.worldRef !== worldRef) throw new Error('CURRENT_WORLD_MISMATCH');
+      if (data.version !== 'contracts@2.0.0' || data.worldRef !== worldRef) throw new Error('CURRENT_WORLD_MISMATCH');
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
-      data = { version: '0.4.0', worldRef, transactions: {}, requests: {} };
+      data = { version: 'contracts@2.0.0', worldRef, transactions: {}, requests: {} };
     }
     return new LocalRecords(directory, data);
   }

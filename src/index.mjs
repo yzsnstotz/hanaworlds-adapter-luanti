@@ -8,7 +8,7 @@ export const inject = ['webServer'];
 /** Read-only native facts fail with the contract's own public Error shape: the internal code is
  * kept (unknown codes become CAPABILITY_UNAVAILABLE), phase validate, nothing mutated; a malformed
  * input is SCHEMA_INVALID/INVALID_SHAPE, every other refusal REQUIRED_FACT_UNKNOWN (as the
- * world-adapter/v7 port already answers). A ContractError passes through unchanged. */
+ * world-adapter/v8 port already answers). A ContractError passes through unchanged. */
 function publicFailures(fn) {
   const convert = error => {
     if (error instanceof ContractError) throw error;
@@ -39,7 +39,7 @@ export function apply(ctx, config = {}) {
       return closing ??= (async () => { await local.close(); await runtime.close(); })().catch(error => { closing = undefined; throw error; });
     },
     status: () => ({ adapterId: ADAPTER_ID, version: ADAPTER_VERSION, payloadVersion: PAYLOAD_VERSION,
-      invariants: placementInvariants.filter(x => x.owner.includes(ADAPTER_ID)) }),
+      invariants: placementInvariants.filter(x => x.owner.includes('world-source')) }),
   };
   ctx.effect(() => () => service.close());
   ctx.provide('hanaworldsWorldAdapterV6', runtime.port);

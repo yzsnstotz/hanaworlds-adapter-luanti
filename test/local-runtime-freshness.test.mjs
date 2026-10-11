@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import * as C from '#contracts';
+import {execFileSync} from 'node:child_process';
+const nativeCatalogue=JSON.parse(execFileSync('lua',['test/support/material-facts.lua','glass'],{encoding:'utf8'})).catalogue;
 import {LocalCourier} from '../src/local-courier.mjs';
 import {ENGINE_GUARDS} from '../src/safety-capabilities.mjs';
 import {createLocalRuntime} from '../src/local-runtime.mjs';
@@ -15,13 +17,13 @@ async function setup(t){
  const goodOracle={async read(){afterOracle();return 'world-rev:1';}};
  const goodInspection={async read(){await afterInspection();return {current:true,worldRef:'A',worldRevision:'world-rev:1',objectRef:'obj',objectRevision:'object-rev:1'};}};
  oracle=goodOracle;inspection=goodInspection;
- t.mock.method(LocalCourier,'open',async w=>({closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:'inc:'+w.worldRef,handshake:async()=>{},profile:async()=>profile,close:async()=>{},catalogue:async()=>({profileVersion:'catalogue/v2',engineProfile:'fixture',gameId:'fixture',gameRevision:'fixture:1',modRevisions:{},nodes:{}}),capacity:async()=>({allowed:true}),inspect:async positions=>{afterSample();return {occupiedCells:[],knownEmptyCells:positions,unknownCells:[]};}}));
- const canvas={async call(name,q){await beforeCanvas();return C.validateBoundResponse('canvas/v6',name,q,{contractVersion:'canvas/v6',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'fixture',connections:[]},selection:{status:'BOUND',connectionRef:context.localContext.connectionRef,context}},error:null});}};
+ t.mock.method(LocalCourier,'open',async w=>({closed:false,engineGuards:ENGINE_GUARDS,connectionIncarnationRef:'inc:'+w.worldRef,handshake:async()=>{},profile:async()=>profile,close:async()=>{},catalogue:async()=>nativeCatalogue,regionLimits:async()=>({mapblockSize:16,mapgenLimit:31000}),capacity:async()=>({allowed:true}),inspect:async positions=>{afterSample();return {occupiedCells:[],knownEmptyCells:positions,unknownCells:[]};}}));
+ const canvas={async call(name,q){await beforeCanvas();return C.validateBoundResponse('canvas/v7',name,q,{contractVersion:'canvas/v7',requestId:q.requestId,result:{sessionRef:q.sessionRef,worldRef:q.worldRef,inventory:{capabilityRevision:'fixture',connections:[]},selection:{status:'BOUND',connectionRef:context.localContext.connectionRef,context}},error:null});}};
  const runtime=createLocalRuntime({ctx:{},homePath:(...parts)=>join(root,...parts),resolveOracle:()=>oracle,resolveInspection:()=>inspection,resolveCanvas:()=>canvas,inspectConnection:async ref=>{if(exits.has(ref))throw Error('CURRENT_WORLD_MISMATCH');return {state:'CURRENT'};}});
  const pair=async worldRef=>runtime.pairLocal({worldRef,worldPath:join(root,worldRef),connectionRef:'c:'+worldRef,payloadVersion:'0.6.0',payloadDigest:'0'.repeat(64),gameId:'fixture'});
  await pair('A');context={currentSession:'S1',activeWorldRef:'A',orderedSelectedObjectRefs:['obj'],sessionRevision:'session:1',selectionRevision:'selection:1',localContext:{connectionRef:'c:A',worldRef:'A',connectionIncarnationRef:'inc:A',selectionRevision:'selection:1'}};
- const inspect=()=>runtime.port.call('InspectWorld',{contractVersion:'world-adapter/v7',requestId:Math.random().toString(),sessionRef:'S1',worldRef:'A',expectedWorldRevision:'world-rev:1',sampledBounds:{min:[0,0,0],max:[0,0,0]},localContext:context.localContext});
- const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v7',requestId:Math.random().toString(),sessionRef:'S1',adapterId:'hanaworlds-adapter-luanti'});
+ const inspect=()=>runtime.port.call('InspectWorld',{contractVersion:'world-adapter/v8',requestId:Math.random().toString(),sessionRef:'S1',worldRef:'A',expectedWorldRevision:'world-rev:1',sampledBounds:{min:[0,0,0],max:[0,0,0]},localContext:context.localContext});
+ const inventory=()=>runtime.port.call('DiscoverConnections',{contractVersion:'world-adapter/v8',requestId:Math.random().toString(),sessionRef:'S1',adapterId:'hanaworlds-adapter-luanti'});
  t.after(async()=>{await runtime.close();await rm(root,{recursive:true});});
  return {runtime,pair,exits,inventory,inspect,replaceOracle:()=>{oracle={...goodOracle};},replaceInspection:()=>{inspection={...goodInspection};},onOracle:f=>afterOracle=f,onInspection:f=>afterInspection=f,onSample:f=>afterSample=f,onCanvas:f=>beforeCanvas=f};
 }

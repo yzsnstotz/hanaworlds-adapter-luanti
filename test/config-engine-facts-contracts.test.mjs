@@ -14,8 +14,8 @@ test('provider valid and invalid public fixtures', () => {
 });
 test('consumer known backend, unavailable backend and avatar refusal', () => {
   for (const x of fx.consumer.assemble) {
-    if (typeof x.backendProfileId === 'object') assert.throws(() => c.requireKnownWriteBackend(x.facts), e => named(e, x.backendProfileId));
-    else assert.equal(c.requireKnownWriteBackend(x.facts), x.backendProfileId);
+    if (x.facts.writeBackend.availability !== 'KNOWN') assert.throws(() => c.requireKnownWriteBackend(x.facts), e => named(e, x.writeBackend));
+    else assert.deepEqual({...c.requireKnownWriteBackend(x.facts)}, x.writeBackend);
   }
   for (const x of fx.provider.valid) assert.throws(() => c.requireKnownAvatarEnvelope(x.facts), e => named(e, fx.consumer.avatarDimensions.refusal));
   for (const x of fx.consumer.lifecycle) {
@@ -35,8 +35,7 @@ test('Adapter provider records satisfy contracts and existing typed refusals sur
     assert.equal(f.writeBackend.availability, raw.ready === true ? 'KNOWN' : 'UNAVAILABLE');
     assert.throws(() => c.requireKnownAvatarEnvelope(f), e => named(e, fx.consumer.avatarDimensions.refusal));
   }
-  await assert.rejects(producer.configEngineFacts(row, engine({ ...declaration, ready: true, nodeWriteSemantics: 'unsupported' })), e => named(e, { code: 'CAPABILITY_UNAVAILABLE', reason: 'REQUIRED_FACT_UNKNOWN' }));
-  const changed = structuredClone(catalogue); changed.gameRevision = 'changed-revision';
+  const changed = structuredClone(catalogue); changed.engineRevisions.registry = 'changed-revision';
   let reads = 0;
   await assert.rejects(producer.configEngineFacts(row, { catalogue: async () => ++reads === 1 ? catalogue : changed, writeBackend: async () => ({ ...declaration, ready: true }) }), e => named(e, { code: 'CURRENT_WORLD_MISMATCH', reason: 'REVISION_CHANGED' }));
 });

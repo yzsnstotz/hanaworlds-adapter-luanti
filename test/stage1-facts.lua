@@ -11,8 +11,8 @@ assert(F.avatar_envelope == nil)
 -- The declaration is the loaded engine module's own.
 assert(E.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-worldedit-cell-write/v1')
 local w = assert(F.write_backend(core, E.WRITE_BACKEND, we))
-assert(w.backendProfileId == E.WRITE_BACKEND.backendProfileId and w.nodeWriteSemantics == 'explicit-nodeName-param2-static-v2' and w.ready == true)
-for k in pairs(w) do assert(k == 'backendProfileId' or k == 'nodeWriteSemantics' or k == 'ready', k) end
+assert(w.writeBackend.profileId == E.WRITE_BACKEND.backendProfileId and w.writeBackend.revision == E.WRITE_BACKEND.revision and w.ready == true)
+for k in pairs(w) do assert(k == 'writeBackend' or k == 'ready', k) end
 assert(F.write_backend(core, E.WRITE_BACKEND, nil).ready == false)
 assert(F.write_backend({}, E.WRITE_BACKEND, we).ready == false)
 assert(select(2, F.write_backend(core, nil, we)) == 'NOT_DECLARED_BY_PAYLOAD')
