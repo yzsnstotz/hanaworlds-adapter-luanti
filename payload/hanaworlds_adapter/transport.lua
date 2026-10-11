@@ -99,7 +99,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
       or command.operation == 'region_read' or command.operation == 'region_write' then
       if type(voxel) ~= 'table' then code = 'CAPABILITY_UNAVAILABLE'
       elseif command.operation == 'region_limits' then result, code = voxel.limits(minetest, MAX_BODY_BYTES)
-      elseif command.operation == 'region_emerge' then result, code = voxel.emerge(minetest, command.min, command.max)
+      elseif command.operation == 'region_emerge' then result, code = voxel.emerge(minetest, command.min, command.max, command)
       elseif command.operation == 'region_read' then result, code = voxel.read(minetest, command)
       else result, code, detail = voxel.write(minetest, command, function(enc) return region:region_enclosure(enc) end) end
     elseif command.operation == 'snapshot' then

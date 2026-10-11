@@ -235,14 +235,20 @@ try {
  step('J3_NATIVE_HOUSE_RESTART_UNDO',{cells:effects.length,receipt,query:{response:queried,writtenContext:historical.writtenContext,currentContext:historical.currentContext,sameIncarnation:historical.sameIncarnation},undo,countersBefore:h0,countersAfter:h1});
  }
  if(!process.env.HW_NATIVE_PATH || process.env.HW_NATIVE_PATH==='ALL' || process.env.HW_NATIVE_PATH==='J5'){
- // J5 adapter path: cross-partition 48x4x48 fill/excavation + exact restore.
- const lakeBox={min:[-24,96,-24],max:[23,99,23]},lakeBefore=await read(lakeBox);
+ // J5 adapter path: 49 partitions force multiple native batches even with the
+ // largest possible courier budget. Negative and positive boundaries are both crossed.
+ const lakeBox={min:[-48,96,-48],max:[63,99,63]},lakeBefore=await read(lakeBox);
+ assert.equal(lakeBefore.chunks.length,49);
+ assert.ok(lakeBefore.chunks.every(c=>c.state.block.geometryProfile==='voxel-grid/v1'));
  const lakeOps=writesFor(lakeBefore,[stone,air],(x,y,z)=>y===96?0:1),l0=await counts(),lake=await write('APPLY',lakeOps,'lake'),lakeAfter=await read(lakeBox),l1=await counts();
  for(let i=0;i<lakeBefore.chunks.length;i++)assert.equal(lakeAfter.chunks[i].stateDigest,D('region-state',C.expectedRegionState(lakeBefore.chunks[i].state,lakeOps[i].ops)));
  assert.equal(l1.swap_node,l0.swap_node);assert.equal(l1.vm_write-l0.vm_write,lake.facts.batches.length);
+ assert.ok(lake.facts.batches.length>1,'J5 must cross multiple native batches');
+ assert.equal(lake.response.result.lighting.status,'COMPLETE');
  await stop();await start();const persisted=await read(lakeBox);assert.deepEqual(digests(persisted),digests(lakeAfter));
  const restored=await write('RESTORE',restoreWrites(persisted,lakeBefore),'lake-restore');assert.deepEqual(digests(await read(lakeBox)),digests(lakeBefore));
- step('J5_NATIVE_BATCH_RESTART_RESTORE',{cells:48*4*48,chunks:lakeBefore.chunks.length,apply:lake.response.result,restore:restored.response.result,countersBefore:l0,countersAfter:l1});
+ assert.equal(restored.response.result.lighting.status,'COMPLETE');
+ step('J5_NATIVE_BATCH_RESTART_RESTORE',{cells:112*4*112,chunks:lakeBefore.chunks.length,partition:WORLD_GEOMETRY.partition,geometryProfile:'voxel-grid/v1',applyBatches:lake.facts.batches.length,restoreBatches:restored.facts.batches.length,apply:lake.response.result,restore:restored.response.result,countersBefore:l0,countersAfter:l1});
  }
  assert.equal((await counts()).worldeditAbsent,true);assert.ok(!(await readdir(join(profile,'games',gameId,'mods'))).includes('worldedit'));
  const required=['NATIVE_PAIR_AND_FACTS','CALLBACK_AND_PROTECTION_ZERO_WRITE','REGION_IO_NATIVE',...(['ALL','J3'].includes(selectedPath)?['STATE_PROFILE_NATIVE_CLEAR_READBACK_RESTORE','J3_NATIVE_HOUSE_RESTART_UNDO']:[]),...(['ALL','J5'].includes(selectedPath)?['J5_NATIVE_BATCH_RESTART_RESTORE']:[])];

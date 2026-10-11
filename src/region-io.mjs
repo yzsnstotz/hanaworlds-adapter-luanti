@@ -1,8 +1,8 @@
-import { WORLD_GEOMETRY, STATE_PROFILE } from './world-vocabulary.mjs';
+import { WORLD_GEOMETRY, STATE_PROFILE, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
 import { refusalDetail } from './safety-capabilities.mjs';
 import { validateType, digestValue, encodeRegionBlock, expandRegionBlock, regionBlockBox,
-  regionChunksOfBox, comparePosition } from '#contracts';
-import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns, BLOCK } from './region-batches.mjs';
+  regionChunksOfBox, comparePosition, chunkOf } from '#contracts';
+import { blocksPerBatch, batches, groupBoxes, expandRead, writeRuns } from './region-batches.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 
 /*
@@ -15,8 +15,8 @@ const KNOWN_ACTIONS = new Set(['FROM_MEMORY', 'FROM_DISK', 'GENERATED', 'CANCELL
 const LOST = new Set(['RECOVERY_PENDING', 'ENGINE_RESPONSE_UNKNOWN', 'ADAPTER_UNAVAILABLE']);
 const key = p => p.join(',');
 const sha = (kind, v) => digestValue(kind, v).sha256;
-const floorBlock = n => Math.floor(n / BLOCK);
-const blockOf = box => box.min.map(floorBlock);
+const blockOf = (box, partition) => chunkOf(box.min, partition);
+const layout = partition => ({ geometryProfile: GEOMETRY_PROFILE, partition });
 export class RegionFault extends Error {
   constructor(code, reason, refusal = null) { super(code); this.reason = reason; this.refusal = refusal; }
 }
@@ -77,37 +77,37 @@ function unknownReason(action, box, limits) {
 
 /** Load (emerge) then read boxes: per box a contract chunk read plus the engine
  * guard used for the later same-step write check. */
-async function loadAndRead(engine, worldRef, groups, limits) {
+async function loadAndRead(engine, worldRef, groups, limits, partition) {
   const out = new Map();
   for (const group of groups) {
-    const emerged = await engine.regionEmerge(group.box.min, group.box.max);
+    const emerged = await engine.regionEmerge(group.box.min, group.box.max, layout(partition));
     const actions = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.action]));
     const preloaded = new Map((emerged?.blocks ?? []).map(b => [key(b.blockPos), b.loadedBefore === true]));
     let parts = [{ items: group.items }], replies;
     try {
-      replies = [await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: group.items.map(i => i.box) })];
+      replies = [await engine.regionRead({ ...layout(partition), min: group.box.min, max: group.box.max, boxes: group.items.map(i => i.box) })];
     } catch (error) {
       if (error?.message !== 'LIMIT_EXCEEDED' || group.items.length === 1) throw error;
       // Metadata made this batch's reply exceed the courier body: read each box alone.
       parts = []; replies = [];
       for (const item of group.items) {
         parts.push({ items: [item] });
-        replies.push(await engine.regionRead({ min: item.box.min, max: item.box.max, boxes: [item.box] }));
+        replies.push(await engine.regionRead({ ...layout(partition), min: item.box.min, max: item.box.max, boxes: [item.box] }));
       }
     }
     replies.forEach((reply, r) => {
       const read = expandRead(reply);
       parts[r].items.forEach((item, i) => {
         const g = reply.boxes[i];
-        const action = actions.get(key(blockOf(item.box))) ?? 'NOT_REPORTED';
+        const action = actions.get(key(blockOf(item.box, partition))) ?? 'NOT_REPORTED';
         // The engine readback decides: KNOWN only when no cell reads as 'ignore'.
         // Luanti also reports CANCELLED for a queued block that another queued
         // block's mapchunk generated, so CANCELLED is a fact, not a verdict.
         const known = g.ignoreCells === 0 && KNOWN_ACTIONS.has(action);
         const state = known ? stateOf(engine, worldRef, read, item.box) : null;
-        out.set(key(item.box.min), { action, loadedBefore: preloaded.get(key(blockOf(item.box))), guard: g.guard, chunk: { chunkPos: blockOf(item.box), box: item.box,
+        out.set(key(item.box.min), { action, loadedBefore: preloaded.get(key(blockOf(item.box, partition))), guard: g.guard, chunk: { chunkPos: blockOf(item.box, partition), box: item.box,
           availability: known ? 'KNOWN' : 'UNKNOWN',
-          loadMethod: known ? (preloaded.get(key(blockOf(item.box))) ? 'ALREADY_LOADED' : 'LOADED_ON_DEMAND') : null,
+          loadMethod: known ? (preloaded.get(key(blockOf(item.box, partition))) ? 'ALREADY_LOADED' : 'LOADED_ON_DEMAND') : null,
           unknownReason: known ? null : unknownReason(action, item.box, limits),
           state, stateDigest: state ? sha('region-state', state) : null } });
       });
@@ -119,16 +119,21 @@ async function loadAndRead(engine, worldRef, groups, limits) {
 function checkPartition(request) {
   if(JSON.stringify(request.partition)!==JSON.stringify(WORLD_GEOMETRY.partition)) throw new RegionFault('CAPABILITY_GAP','GEOMETRY_PROFILE_UNSUPPORTED');
 }
+function checkNativePartition(limits, partition) {
+  if (!partition.edge.every(edge => edge === limits?.mapblockSize))
+    throw new RegionFault('CAPABILITY_GAP', 'GEOMETRY_PROFILE_UNSUPPORTED');
+}
 export async function readRegion(engine, request) {
   checkPartition(request);
   await engine.catalogue();
   const limits = await engine.regionLimits();
-  const perBatch = blocksPerBatch(limits);
+  checkNativePartition(limits, request.partition);
+  const perBatch = blocksPerBatch(limits, request.partition);
   const chunks = regionChunksOfBox(request.box, request.partition);
   const items = chunks.map(c => ({ box: { min: [...c.box.min], max: [...c.box.max] } }));
-  const groups = batches(request.box.min, request.box.max, perBatch).map(b => ({ box: b,
+  const groups = batches(request.box.min, request.box.max, perBatch, request.partition).map(b => ({ box: b,
     items: items.filter(i => i.box.min.every((v, a) => v >= b.min[a]) && i.box.max.every((v, a) => v <= b.max[a])) }));
-  const read = await loadAndRead(engine, request.worldRef, groups, limits);
+  const read = await loadAndRead(engine, request.worldRef, groups, limits, request.partition);
   return { result: { worldRef: request.worldRef, box: request.box, partition:request.partition,
     chunks: chunks.map(c => read.get(key(c.box.min)).chunk), localContext: request.localContext },
     facts: { batches: groups.length, emerge: [...read.values()].map(v => v.action),
@@ -143,16 +148,21 @@ export async function readRegion(engine, request) {
  */
 export async function writeRegion(engine, request) {
   checkPartition(request);
+  const apply = request.purpose === 'APPLY';
+  // The published v3 wire carries geometryProfile on each operation/state block.
+  // Check the entire request before any native registry, load or map access.
+  if (request.writes.some(w => !WORLD_GEOMETRY.geometryProfiles.includes((apply ? w.ops : w.state?.block)?.geometryProfile)))
+    throw new RegionFault('CAPABILITY_GAP', 'GEOMETRY_PROFILE_UNSUPPORTED');
   await engine.catalogue();
   const limits = await engine.regionLimits();
-  const perBatch = blocksPerBatch(limits);
-  const apply = request.purpose === 'APPLY';
+  checkNativePartition(limits, request.partition);
+  const perBatch = blocksPerBatch(limits, request.partition);
   const items = request.writes.map(w => {
     const box = regionBlockBox(apply ? w.ops : w.state.block);
     return { write: w, box: { min: [...box.min], max: [...box.max] } };
   });
-  const groups = groupBoxes(items, i => i.box, perBatch);
-  const before = await loadAndRead(engine, request.worldRef, groups, limits);
+  const groups = groupBoxes(items, i => i.box, perBatch, request.partition);
+  const before = await loadAndRead(engine, request.worldRef, groups, limits, request.partition);
   for (const item of items) {
     const seen = before.get(key(item.box.min));
     if (seen.chunk.availability !== 'KNOWN') throw new RegionFault('TARGET_FACTS_INCOMPLETE', 'REQUIRED_FACT_UNKNOWN');
@@ -165,7 +175,7 @@ export async function writeRegion(engine, request) {
   // bodies at every check and write batch. The entire plan detects cross-chunk enclosure.
   const enclosure = { chunks: items.map(i => ({ min: i.command.min, max: i.command.max,
     palette: i.command.palette, contentRuns: i.command.contentRuns })) };
-  const command = (group, checkOnly) => ({ purpose: request.purpose, min: group.box.min, max: group.box.max,
+  const command = (group, checkOnly) => ({ ...layout(request.partition), purpose: request.purpose, min: group.box.min, max: group.box.max,
     chunks: group.items.map(i => i.command), checkOnly, enclosure });
   for (const group of groups) {
     try { await engine.regionWrite(command(group, true)); }
@@ -204,7 +214,7 @@ export async function writeRegion(engine, request) {
     const done = group.items.filter(i => status.get(key(i.box.min)) === 'WRITTEN');
     if (!done.length) continue;
     try {
-      const reply = await engine.regionRead({ min: group.box.min, max: group.box.max, boxes: done.map(i => i.box) });
+      const reply = await engine.regionRead({ ...layout(request.partition), min: group.box.min, max: group.box.max, boxes: done.map(i => i.box) });
       const read = expandRead(reply);
       done.forEach((item, i) => {
         if (reply.boxes[i].ignoreCells === 0) readback.set(key(item.box.min), sha('region-state', stateOf(engine, request.worldRef, read, item.box)));

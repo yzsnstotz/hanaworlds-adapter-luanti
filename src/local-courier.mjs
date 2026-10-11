@@ -89,7 +89,7 @@ export class LocalCourier {
   worldEditRuntime() { return this.dispatch('fact_worldedit_runtime'); }
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
   regionLimits() { return this.dispatch('region_limits'); }
-  regionEmerge(min, max) { return this.dispatch('region_emerge', { min, max }); }
+  regionEmerge(min, max, geometry) { return this.dispatch('region_emerge', { min, max, ...geometry }); }
   regionRead(args) { return this.dispatch('region_read', args); }
   regionWrite(batch) { return this.dispatch('region_write', batch); }
   apply(effects, beforeImage, scopeBeforeImage, operationDigest) {

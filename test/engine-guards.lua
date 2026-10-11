@@ -34,6 +34,7 @@ _G.VoxelArea = function(e1, e2)
 end
 local core
 core = {
+  MAP_BLOCKSIZE = 16,
   registered_nodes = {air = {}, ['test:stone'] = {}, ['test:flower'] = {walkable = false}},
   parse_json = function(raw) return raw end,
   write_json = function(v) return encode(v) end,
@@ -99,6 +100,11 @@ _G.worldedit = nil
 local region_module = dofile('payload/hanaworlds_adapter/region.lua')
 local region = region_module.new({core = core})
 local voxel = dofile('payload/hanaworlds_adapter/voxel.lua')
+local function geometry(args)
+  args.geometryProfile = 'voxel-grid/v1'; args.partition = {edge = {16,16,16}}
+  return args
+end
+local function read_voxel(core, args) return voxel.read(core, geometry(args)) end
 dofile('test/support/engine-c.lua')(core.swap_node) -- FIXTURE engine function
 local engine_module = dofile('payload/hanaworlds_adapter/engine.lua')
 local transport = dofile('payload/hanaworlds_adapter/transport.lua')
@@ -120,6 +126,7 @@ assert(transport.start(http, engine_module, {worldRef = 'w'},
   function() return {worldRef = 'w', port = 30000, token = string.rep('a', 64)} end,
   function() end, capabilities, nil, region, {}, voxel))
 local function call(command)
+  if command.operation:find('region_',1,true)==1 then geometry(command) end
   command.id = 'c' .. (#replies + 1); command.worldRef = 'w'
   queue[#queue + 1] = command
   local before = #replies
@@ -184,7 +191,7 @@ for _, purpose in ipairs({'APPLY', 'RESTORE'}) do
     local chunks = {}
     for _, e in ipairs(ring(3)) do
       local b = {min = e.position, max = e.position}
-      local read = voxel.read(core, b)
+      local read = read_voxel(core, b)
       chunks[#chunks + 1] = {min = b.min, max = b.max, palette = {'test:stone'}, contentRuns = {0, 1},
         param2Runs = {0, 1}, guard = read.boxes[1].guard, extras = {}}
     end
@@ -200,7 +207,7 @@ for _, purpose in ipairs({'APPLY', 'RESTORE'}) do
     reset(); players = mode == 'far' and {{30, 0.5, 30}} or {{0, 0.5, 0}}
     local chunks = {}
     for _, e in ipairs(ring(3, mode == 'gap')) do
-      local rd = voxel.read(core, {min = e.position, max = e.position})
+      local rd = read_voxel(core, {min = e.position, max = e.position})
       chunks[#chunks + 1] = {min = e.position, max = e.position,
         palette = {mode == 'flower' and e.position[1] == 1 and e.position[3] == 0 and 'test:flower' or 'test:stone'},
         contentRuns = {0, 1}, param2Runs = {0, 1}, guard = rd.boxes[1].guard, extras = {}}
@@ -241,7 +248,7 @@ for _, op in ipairs({'prepare_check', 'apply', 'apply_state', 'restore', 'region
   elseif op == 'apply_state' then cmd = apply_state_cmd({state('test:stone', {4, 1, 0}), state('test:stone', {5, 1, 0})})
   elseif op == 'restore' then cmd = restore_cmd({state('test:stone', {4, 1, 0}), state('test:stone', {5, 1, 0})})
   else
-    local read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+    local read = read_voxel(core, {min = {4, 1, 0}, max = {5, 1, 0}})
     cmd = {operation = op, purpose = 'APPLY', min = {4, 1, 0}, max = {5, 1, 0}, chunks = {{
       min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
       param2Runs = {0, 2}, guard = read.boxes[1].guard}}}
@@ -252,7 +259,7 @@ for _, op in ipairs({'prepare_check', 'apply', 'apply_state', 'restore', 'region
 end
 -- Unprotected region write goes through (the guard is per cell, not a ban).
 reset(); protected['9,1,0'] = true
-local read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+local read = read_voxel(core, {min = {4, 1, 0}, max = {5, 1, 0}})
 r = call({operation = 'region_write', purpose = 'APPLY', min = {4, 1, 0}, max = {5, 1, 0}, chunks = {{
   min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
   param2Runs = {0, 2}, guard = read.boxes[1].guard}}})
@@ -261,7 +268,7 @@ assert(r:find('"written":true', 1, true) and r:find('"error":null', 1, true), r)
 -- G1 on region restores (world-adapter-region/v2:restore-body-recheck): the check-only pass
 -- refuses a RESTORE that would put a solid node into a real body; nothing is written.
 reset(); players = {{4, 0.5, 0}}
-read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+read = read_voxel(core, {min = {4, 1, 0}, max = {5, 1, 0}})
 r = call({operation = 'region_write', purpose = 'RESTORE', min = {4, 1, 0}, max = {5, 1, 0}, checkOnly = true, chunks = {{
   min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
   param2Runs = {0, 2}, guard = read.boxes[1].guard, extras = {}}}})
@@ -269,7 +276,7 @@ assert(refused(r, 'SAFETY_INVARIANT_FAILED', 'BODY_OCCUPIED') and writes == 0, r
 
 -- G2 on region restores (REGION_RESTORE): a protected cell refuses the RESTORE check-only pass.
 reset(); protected['5,1,0'] = true; nodes['4,1,0'] = {name = 'air', param1 = 0, param2 = 0}
-read = voxel.read(core, {min = {4, 1, 0}, max = {5, 1, 0}})
+read = read_voxel(core, {min = {4, 1, 0}, max = {5, 1, 0}})
 r = call({operation = 'region_write', purpose = 'RESTORE', min = {4, 1, 0}, max = {5, 1, 0}, checkOnly = true, chunks = {{
   min = {4, 1, 0}, max = {5, 1, 0}, palette = {'test:stone'}, contentRuns = {0, 2},
   param2Runs = {0, 2}, guard = read.boxes[1].guard, extras = {}}}})

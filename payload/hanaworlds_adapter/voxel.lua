@@ -1,11 +1,23 @@
--- world-adapter-region/v1 engine side, on Luanti's own bulk primitives:
+-- world-adapter-region/v3 engine side, on Luanti's own bulk primitives:
 -- emerge_area (load or generate), VoxelManip read_from_map / set_data /
 -- write_to_map(light) and fix_light. One command handles one batch inside a
 -- single server step. No transaction decision is made here: the host compares
 -- the caller's expectedCurrentDigest and Canvas owns commit and rollback.
 local M = {}
 
-local BLOCK = 16
+-- Only the world source interprets this native partition. No independent size default.
+local function native_edge(core)
+  local edge = core.MAP_BLOCKSIZE
+  if type(edge) == 'number' and edge > 0 and edge == math.floor(edge) then return edge end
+end
+local function geometry_edge(core, args)
+  local edge = native_edge(core)
+  if not edge or type(args) ~= 'table' or args.geometryProfile ~= 'voxel-grid/v1'
+    or type(args.partition) ~= 'table' or type(args.partition.edge) ~= 'table'
+    or #args.partition.edge ~= 3 then return nil end
+  for i = 1, 3 do if args.partition.edge[i] ~= edge then return nil end end
+  return edge
+end
 local GUARD_FORMAT = 'hw-region-guard/1'
 
 local forbidden_callbacks = {
@@ -27,7 +39,7 @@ local function within(p, b) -- p {x,y,z} table, b {min={}, max={}}
   return p.x >= b.min[1] and p.x <= b.max[1] and p.y >= b.min[2] and p.y <= b.max[2]
     and p.z >= b.min[3] and p.z <= b.max[3]
 end
-local function floor_block(n) return math.floor(n / BLOCK) end
+local function floor_block(n, edge) return math.floor(n / edge) end
 
 local function names_of(core)
   local cache = {}
@@ -133,12 +145,12 @@ local function guard(core, area, data, p2data, name_of, extras, b)
   return core.sha256(table.concat(parts, '\n') .. '\n'), ignore
 end
 
-local function box_list(boxes, p1, p2)
+local function box_list(boxes, p1, p2, BLOCK)
   if boxes == nil then
     local out = {}
-    for bz = floor_block(p1.z), floor_block(p2.z) do
-      for by = floor_block(p1.y), floor_block(p2.y) do
-        for bx = floor_block(p1.x), floor_block(p2.x) do
+    for bz = floor_block(p1.z, BLOCK), floor_block(p2.z, BLOCK) do
+      for by = floor_block(p1.y, BLOCK), floor_block(p2.y, BLOCK) do
+        for bx = floor_block(p1.x, BLOCK), floor_block(p2.x, BLOCK) do
           out[#out + 1] = {min = {math.max(p1.x, bx * BLOCK), math.max(p1.y, by * BLOCK), math.max(p1.z, bz * BLOCK)},
             max = {math.min(p2.x, bx * BLOCK + BLOCK - 1), math.min(p2.y, by * BLOCK + BLOCK - 1),
               math.min(p2.z, bz * BLOCK + BLOCK - 1)}}
@@ -158,6 +170,8 @@ local function box_list(boxes, p1, p2)
 end
 
 function M.limits(core, body_bytes)
+  local BLOCK = native_edge(core)
+  if not BLOCK then return nil, 'CAPABILITY_UNAVAILABLE' end
   if type(core.registered_nodes) ~= 'table' or type(core.get_voxel_manip) ~= 'function'
     or type(core.emerge_area) ~= 'function' or type(core.fix_light) ~= 'function'
     or type(core.find_nodes_with_meta) ~= 'function' or type(core.sha256) ~= 'function' then
@@ -174,7 +188,9 @@ function M.limits(core, body_bytes)
 end
 
 -- Asynchronous: the courier replies once the engine reported every block.
-function M.emerge(core, minp, maxp)
+function M.emerge(core, minp, maxp, geometry)
+  local BLOCK = geometry_edge(core, geometry)
+  if not BLOCK then return nil, 'CAPABILITY_GAP' end
   local p1, p2 = vbox(minp, maxp)
   if not p1 then return nil, 'SCHEMA_INVALID' end
   local names = {
@@ -187,9 +203,9 @@ function M.emerge(core, minp, maxp)
   -- reported FROM_MEMORY by the same emerge).
   local before = {}
   if type(core.compare_block_status) == 'function' then
-    for bz = floor_block(p1.z), floor_block(p2.z) do
-      for by = floor_block(p1.y), floor_block(p2.y) do
-        for bx = floor_block(p1.x), floor_block(p2.x) do
+    for bz = floor_block(p1.z, BLOCK), floor_block(p2.z, BLOCK) do
+      for by = floor_block(p1.y, BLOCK), floor_block(p2.y, BLOCK) do
+        for bx = floor_block(p1.x, BLOCK), floor_block(p2.x, BLOCK) do
           before[bx .. ',' .. by .. ',' .. bz] = core.compare_block_status(
             {x = bx * BLOCK, y = by * BLOCK, z = bz * BLOCK}, 'loaded') == true
         end
@@ -210,9 +226,11 @@ end
 -- Bulk read of a box: run-length node names and param2 in x-fastest, then y,
 -- then z order, extras, and a guard plus ignore count per listed box.
 function M.read(core, args)
+  local BLOCK = geometry_edge(core, args)
+  if not BLOCK then return nil, 'CAPABILITY_GAP' end
   local p1, p2 = vbox(args.min, args.max)
   if not p1 then return nil, 'SCHEMA_INVALID' end
-  local boxes = box_list(args.boxes, p1, p2)
+  local boxes = box_list(args.boxes, p1, p2, BLOCK)
   if not boxes then return nil, 'SCHEMA_INVALID' end
   local _, area, data, p2data = read_vm(core, p1, p2)
   local name_of = names_of(core)
@@ -284,6 +302,8 @@ end
 -- [{min, max, palette (names), contentRuns ([index | -1, count]...; -1 is
 -- UNSPECIFIED, APPLY only), param2Runs, guard, extras (RESTORE)}], checkOnly.
 function M.write(core, args, enclosure)
+  local BLOCK = geometry_edge(core, args)
+  if not BLOCK then return nil, 'CAPABILITY_GAP' end
   local p1, p2 = vbox(args.min, args.max)
   if not p1 or type(args.chunks) ~= 'table' or #args.chunks == 0
     or (args.purpose ~= 'APPLY' and args.purpose ~= 'RESTORE') then return nil, 'SCHEMA_INVALID' end
@@ -404,13 +424,12 @@ function M.write(core, args, enclosure)
     end
     if type(s.timer) == 'table' then core.get_node_timer(s.pos):set(s.timer.timeout, s.timer.elapsed) end
   end
-  local b1 = {x = floor_block(p1.x) * BLOCK, y = floor_block(p1.y) * BLOCK, z = floor_block(p1.z) * BLOCK}
-  local b2 = {x = floor_block(p2.x) * BLOCK + BLOCK - 1, y = floor_block(p2.y) * BLOCK + BLOCK - 1,
-    z = floor_block(p2.z) * BLOCK + BLOCK - 1}
+  local b1 = {x = floor_block(p1.x, BLOCK) * BLOCK, y = floor_block(p1.y, BLOCK) * BLOCK, z = floor_block(p1.z, BLOCK) * BLOCK}
+  local b2 = {x = floor_block(p2.x, BLOCK) * BLOCK + BLOCK - 1, y = floor_block(p2.y, BLOCK) * BLOCK + BLOCK - 1,
+    z = floor_block(p2.z, BLOCK) * BLOCK + BLOCK - 1}
   local light = core.fix_light(b1, b2) == true
   return {written = true, changedCells = changed, extrasCleared = #clears, extrasSet = #sets,
     lightComplete = light, lightBox = {min = {b1.x, b1.y, b1.z}, max = {b2.x, b2.y, b2.z}}}
 end
 
-M.BLOCK = BLOCK
 return M
