@@ -22,19 +22,20 @@ const dependency = spec => dir => {
   edit('package.json', v => { v.dependencies['hanaworlds-contracts'] = spec; })(dir);
   edit('package-lock.json', v => { v.packages[''].dependencies['hanaworlds-contracts'] = spec; })(dir);
 };
-test('contracts come from the contract source git semver range and the installed version satisfies it', () => {
+test('contracts come from the contract source release tag and the installed version is that tag', () => {
   const r = verify(); assert.equal(r.exit, 0, JSON.stringify(r)); assert.equal(r.ok, true);
-  assert.match(r.range, /^\^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
+  assert.match(r.tag, /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
 });
 for (const [name, mutate] of [
-  ['exact tag tarball', dependency('https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v0.5.6')],
-  ['commit pin', dependency(`${SOURCE}#f84974eb07e30b683f4c1b1712145b756d5671ed`)],
+  ['exact tag tarball', dependency('https://codeload.github.com/yzsnstotz/hanaworlds-contracts/tar.gz/refs/tags/v2.0.0')],
+  ['commit pin', dependency(`${SOURCE}#3377ea81513d9a9446dccd4b626b4bfc183dc711`)],
   ['workspace link', dependency('file:../hanaworlds-contracts')],
   ['vendor copy', dir => mkdirSync(join(dir, 'vendor/hanaworlds-contracts'), { recursive: true })],
-  // Installed is the formal 1.0.0: a later release bound, the next major, the old major and
-  // a different X.Y.Z prerelease lower bound must all refuse it.
-  ['installed below a later release', dependency(`${SOURCE}#semver:^1.0.1`)],
-  ['installed below the next major', dependency(`${SOURCE}#semver:^2.0.0`)],
-  ['installed outside the old major', dependency(`${SOURCE}#semver:^0.5.6`)],
-  ['prerelease of another X.Y.Z', dependency(`${SOURCE}#semver:^0.9.0-rc.1`)],
-]) test(`range verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });
+  // The #semver: range form is no longer accepted: the dependency is the published tag.
+  ['semver range of the installed major', dependency(`${SOURCE}#semver:^2.0.0`)],
+  ['github shorthand of the same tag', dependency('github:yzsnstotz/hanaworlds-contracts#v2.0.0')],
+  // Installed is the formal 2.0.0: any other tag must refuse it.
+  ['a later release tag', dependency(`${SOURCE}#v2.0.1`)],
+  ['the old major tag', dependency(`${SOURCE}#v1.0.0`)],
+  ['a prerelease tag of the same X.Y.Z', dependency(`${SOURCE}#v2.0.0-rc.3`)],
+]) test(`tag verification refuses ${name}`, () => { const r = verify(mutate); assert.equal(r.exit, 1); assert.equal(r.ok, false); });
