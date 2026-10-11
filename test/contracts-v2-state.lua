@@ -5,7 +5,7 @@ local corrupt = false
 minetest = {
   registered_nodes={air={}, stone={}},
   get_node_or_nil=function() return {name=node.name,param1=node.param1,param2=node.param2} end,
-  swap_node=function(_, value) node=value end,
+  swap_node=function(_, value) node=value; return true end,
   get_meta=function() return {
     to_table=function() return {fields=metadata,inventory=inventory} end,
     from_table=function(_, value) metadata=value.fields; inventory=value.inventory; return true end,
@@ -17,10 +17,7 @@ minetest = {
   fix_light=function() node.param1=15; if corrupt then node.param2=9 end; return true end,
   get_node_light=function() return 15 end,
 }
-worldedit = {
-  set=function(_,_,name) node.name=name; return 1 end,
-  set_param2=function(_,_,value) node.param2=value; return 1 end,
-}
+worldedit = nil
 local engine=dofile('payload/hanaworlds_adapter/engine.lua').new({
   verifyPrepared=function() return true end, verifyRestore=function() return true end,
   restoreGuard=function() return true end,

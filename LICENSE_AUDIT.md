@@ -1,3 +1,19 @@
+# adapter-06 native cell writer record (2026-10-11)
+
+- Luanti · existing 5.17.0 API base · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external runtime; use the documented native swap_node API for cell writes, preserving the existing fix_light/readback path. No engine source copied or bundled. Return-value handling checked against src/script/lua_api/l_env.cpp at that tag.
+- VoxeLibre · existing 0.92.3 base · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content; unchanged use, no game run or bundled content in this card.
+- hanaworlds-contracts · 2.3.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.3.0 · unchanged published schemas/SDK and existing examples/mocks. Installed LICENSE/NOTICE retained.
+- canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged deterministic JSON dependency.
+- Node.js · 24.13.1 · MIT with bundled third-party notices · https://nodejs.org/dist/v24.13.1/ · test runner.
+- Lua · 5.5.1 · MIT · https://www.lua.org/ · existing fixture runner and payload syntax check; no interpreter bundled.
+
+Writer replacement and regression fixtures are original MIT Adapter code. The
+apply/apply_state/restore cell writers no longer call WorldEdit. This bounded
+card does not claim removal of remaining WorldEdit references in StateProfile,
+runtime facts, optional mod declarations or historical test tools.
+
+---
+
 # adapter-04 dependency and base record (2026-10-11)
 
 - hanaworlds-contracts · 2.3.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.3.0 · unchanged published local-worlds/v2 and world-adapter/v8 schemas/SDK; pair/readback examples adapted from its published fixture. LICENSE/NOTICE retained in dependency.
