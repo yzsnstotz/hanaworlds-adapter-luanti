@@ -18,6 +18,7 @@ minetest = {
   get_node_light=function() return 15 end,
 }
 worldedit = nil
+dofile('test/support/engine-c.lua')(minetest.swap_node) -- FIXTURE engine function
 local engine=dofile('payload/hanaworlds_adapter/engine.lua').new({
   verifyPrepared=function() return true end, verifyRestore=function() return true end,
   restoreGuard=function() return true end,

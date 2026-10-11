@@ -18,7 +18,8 @@ local core = {
   end,
 }
 worldedit = nil
-local profile, code = facts.state_profile(core)
+local bound = function() return true end
+local profile, code = facts.state_profile(core, bound)
 assert(code == nil and profile.profileVersion == 'state-profile/v2')
 assert(profile.derivedLightMode == 'recompute-with-readback')
 local capacity = facts.capacity(core, 1, 4194304)
@@ -32,11 +33,12 @@ assert(catalogue.raw_json:find('"hasPersistentState":null', 1, true),
 assert(facts.world_revision(core) == nil, 'world revision has no native source')
 assert(facts.object_revisions(core, {'building:one'}) == nil,
   'object revisions have no native object registry')
-core.swap_node = nil
 assert(select(2, facts.state_profile(core)) == 'CAPABILITY_UNAVAILABLE',
-  'missing native writer fails closed even if WorldEdit exists')
-core.swap_node = function() return true end
+  'an unknown native writer binding fails closed')
+local _, unbound_code, unbound_reason = facts.state_profile(core, function() return false, 'NATIVE_WRITER_REPLACED_BEFORE_LOAD' end)
+assert(unbound_code == 'CAPABILITY_UNAVAILABLE' and unbound_reason == 'NATIVE_WRITER_REPLACED_BEFORE_LOAD',
+  'a game-replaced writer is not the native writer and is named')
 core.fix_light = nil
-assert(facts.state_profile(core) == nil,
+assert(facts.state_profile(core, bound) == nil,
   'missing light recomputation fails closed')
 print('facts.lua: PASS')

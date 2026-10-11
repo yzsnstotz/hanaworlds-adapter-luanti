@@ -1,6 +1,9 @@
 -- SOURCE/FIXTURE: exercise the shipped writer without any WorldEdit API.
 local cells = {{0, 0, 0}, {2, 0, 0}}
 local nodes, states, writes, lights, failure
+-- FIXTURE map residency: an unloaded cell reads nil until load_area loads it
+-- from "disk"; an ungenerated cell stays absent after loading.
+local unloaded, ungenerated, loads = {}, {}, 0
 local function key(p) return p.x .. ',' .. p.y .. ',' .. p.z end
 local function reset()
   nodes, states, writes, lights, failure = {}, {}, 0, 0, nil
@@ -12,7 +15,9 @@ end
 reset()
 minetest = {
   registered_nodes = {air = {}, stone = {}, brick = {}, callback = {on_construct = function() end}},
+  load_area = function(p) loads = loads + 1; if not ungenerated[key(p)] then unloaded[key(p)] = nil end end,
   get_node_or_nil = function(p)
+    if unloaded[key(p)] or ungenerated[key(p)] then return nil end
     local n = nodes[key(p)]
     return {name = n.name, param1 = n.param1, param2 = n.param2}
   end,
@@ -45,7 +50,10 @@ minetest = {
   get_node_light = function() return 15 end,
 }
 worldedit = nil
+local engine_c = dofile('test/support/engine-c.lua')
+local native_swap = engine_c(minetest.swap_node)
 local module = dofile('payload/hanaworlds_adapter/engine.lua')
+assert(module.native_writer() == true)
 local engine = module.new({verifyPrepared = function() return true end,
   verifyRestore = function() return true end, restoreGuard = function() return true end})
 local prepared, recovery = {status = 'PREPARED'}, {status = 'RESTORING'}
@@ -96,12 +104,35 @@ for op, run in pairs(operations) do
     assert(not result and code == (op == 'restore' and 'RESTORE_FAILED' or 'APPLY_FAILED'), op .. ' ' .. mode)
     if mode ~= 'light' then assert(writes == 0 and lights == 0) end
   end
-  reset(); before = assert(engine:snapshot(cells))
-  local native = minetest.swap_node; minetest.swap_node = nil
-  result, code = run(before)
-  assert(not result and code == 'CAPABILITY_UNAVAILABLE' and writes == 0, op .. ' unavailable native API')
-  minetest.swap_node = native
 end
+-- A game that replaces swap_node after load (VoxeLibre mcl_observers: runs observer
+-- code, returns nothing) is never written through: the bound engine function is used.
+local wrapper_calls = 0
+minetest.swap_node = function(p, n) wrapper_calls = wrapper_calls + 1; native_swap(p, n) end
+for op, run in pairs(operations) do
+  reset(); before = assert(engine:snapshot(cells))
+  result, code = run(before)
+  assert(result and wrapper_calls == 0 and writes == 2, op .. ' writes through the bound native writer: ' .. tostring(code))
+end
+-- Replaced before the payload loaded, or missing: nothing is bound, nothing is written, the reason is named.
+for _, case in ipairs({{swap = function(p, n) return native_swap(p, n) end, reason = 'NATIVE_WRITER_REPLACED_BEFORE_LOAD'},
+  {swap = nil, reason = 'NATIVE_WRITER_MISSING'}}) do
+  minetest.swap_node = case.swap
+  local late = dofile('payload/hanaworlds_adapter/engine.lua')
+  local bound, why = late.native_writer()
+  assert(bound == false and why == case.reason, case.reason)
+  local unbound = late.new({verifyPrepared = function() return true end,
+    verifyRestore = function() return true end, restoreGuard = function() return true end})
+  for op, run in pairs({apply = function(b) return unbound:apply(effects, b, prepared) end,
+    apply_state = function(b) return unbound:apply_state(target(), b, prepared) end,
+    restore = function(b) return unbound:restore(b, recovery) end}) do
+    reset(); before = assert(engine:snapshot(cells))
+    local detail
+    result, code, detail = run(before)
+    assert(not result and code == 'CAPABILITY_UNAVAILABLE' and detail == case.reason and writes == 0, op .. ' ' .. case.reason)
+  end
+end
+minetest.swap_node = native_swap
 -- Every cell is checked before writes, including a later conflict or unsafe node.
 for _, op in ipairs({'apply', 'apply_state'}) do
   reset(); before = assert(engine:snapshot(cells)); nodes['2,0,0'].param2 = 1
@@ -118,6 +149,14 @@ local guarded = module.new({verifyRestore = function() return true end,
 local detail
 result, code, detail = guarded:restore(before, recovery)
 assert(not result and code == 'RESTORE_FAILED' and detail == 'BODY_OCCUPIED' and writes == 0)
+-- Transaction reads load before reading: a block the engine unloaded is loaded
+-- again in the same command; an ungenerated cell is reported, not invented.
+reset(); unloaded['2,0,0'] = true; loads = 0
+assert(engine:snapshot(cells) and loads == 1 and unloaded['2,0,0'] == nil, 'unloaded block is loaded then read')
+reset(); ungenerated['2,0,0'] = true
+result, code = engine:snapshot(cells)
+assert(not result and code == 'TARGET_FACTS_INCOMPLETE', 'ungenerated cell stays unknown')
+ungenerated['2,0,0'] = nil
 assert(module.WRITE_BACKEND.backendProfileId == 'hanaworlds-luanti-native-cell-write/v1')
-assert(module.WRITE_BACKEND.revision == 'native-cell-write/1')
+assert(module.WRITE_BACKEND.revision == 'native-cell-write/2')
 print('Native cell writer SOURCE/FIXTURE PASS')

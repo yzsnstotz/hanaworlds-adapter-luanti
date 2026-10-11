@@ -4,11 +4,16 @@ local M = {}
 
 local function available(core, name) return type(core[name]) == 'function' end
 
-function M.state_profile(core)
+-- native_writer is the payload engine's binding of the engine's own swap_node
+-- (engine.lua M.native_writer): a game-replaced global is not the native writer.
+function M.state_profile(core, native_writer)
   for _, name in ipairs({'get_node_or_nil', 'get_meta', 'get_node_timer',
-    'get_node_light', 'fix_light', 'swap_node'}) do
+    'get_node_light', 'fix_light'}) do
     if not available(core, name) then return nil, 'CAPABILITY_UNAVAILABLE' end
   end
+  if type(native_writer) ~= 'function' then return nil, 'CAPABILITY_UNAVAILABLE', 'NATIVE_WRITER_UNKNOWN' end
+  local bound, reason = native_writer()
+  if not bound then return nil, 'CAPABILITY_UNAVAILABLE', reason end
   return {profileVersion = 'state-profile/v2',
     nodeFields = {'nodeName', 'param1', 'param2'}, metadataMode = 'exact',
     inventoryMode = 'exact', timerMode = 'exact',
@@ -315,13 +320,13 @@ end
 -- declaration comes only from the loaded payload, never from Adapter/package
 -- identity or a default. Player bodies stay engine-only (INV-POSE-STAYS-IN-ENGINE):
 -- no collision box, size, position or yaw is produced here.
-function M.write_backend(core, declaration)
+function M.write_backend(core, declaration, native_writer)
   if type(declaration) ~= 'table' or type(declaration.backendProfileId) ~= 'string'
     or declaration.backendProfileId == '' or type(declaration.revision) ~= 'string' or declaration.revision == '' then
     return nil, 'NOT_DECLARED_BY_PAYLOAD'
   end
-  local ready = available(core, 'swap_node') and available(core, 'fix_light')
-    and available(core, 'get_node_light')
+  local bound = type(native_writer) == 'function' and native_writer() == true
+  local ready = bound and available(core, 'fix_light') and available(core, 'get_node_light')
   return {writeBackend = {profileId = declaration.backendProfileId, revision = declaration.revision}, ready = ready}
 end
 

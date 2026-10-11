@@ -58,7 +58,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     elseif command.operation == 'fact_profile' then
       if type(facts) ~= 'table' or type(facts.state_profile) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
-      else result, code = facts.state_profile(minetest) end
+      else result, code, detail = facts.state_profile(minetest, engine_module.native_writer) end
     elseif command.operation == 'fact_capacity' then
       if type(facts) ~= 'table' or type(facts.capacity) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
@@ -78,7 +78,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     elseif command.operation == 'fact_write_backend' then
       if type(facts) ~= 'table' or type(facts.write_backend) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
-      else result, code = facts.write_backend(minetest, engine_module.WRITE_BACKEND) end
+      else result, code = facts.write_backend(minetest, engine_module.WRITE_BACKEND, engine_module.native_writer) end
     elseif command.operation == 'fact_worldedit_runtime' then
       if type(facts) ~= 'table' or type(facts.worldedit_runtime) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'

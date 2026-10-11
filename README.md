@@ -22,6 +22,14 @@ Config facts carry the loaded payload's opaque backend identity and the released
 `UNAVAILABLE/NO_PUBLIC_SOURCE` avatar fact. New named fact operations, display names/colors,
 public player envelopes belong to later cards (adapter-08/10). Cell writes use native
 `swap_node` (adapter-06); WorldEdit is neither a dependency nor a readiness prerequisite (adapter-07).
+The payload binds the engine's own (C) `swap_node` when it loads and writes only through it
+(write backend revision `native-cell-write/2`): a game that later replaces the global — VoxeLibre
+0.92.3 `mcl_observers` wraps it, runs observer code and returns nothing — is never written through.
+If the global was already replaced before the payload loaded, the StateProfile is
+`CAPABILITY_UNAVAILABLE` with detail `NATIVE_WRITER_REPLACED_BEFORE_LOAD` (or
+`NATIVE_WRITER_MISSING` / `NATIVE_WRITER_UNVERIFIABLE`) and the write backend is not ready.
+Transaction cell reads load before reading (`core.load_area`): with no player keeping a block
+active, Luanti unloads it once its usage timer passes `server_unload_unused_data_timeout`.
 
 `QueryTransaction` answers with the durable receipt exactly as it was issued, with its stored
 receipt digest and the current request context (`currentLocalContext`, contracts 2.8.0

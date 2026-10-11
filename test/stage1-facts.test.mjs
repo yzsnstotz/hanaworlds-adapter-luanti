@@ -29,7 +29,7 @@ test('config engine facts: payload-declared backend KNOWN, avatar always UNAVAIL
   assert.equal(f.profileVersion, 'config-engine-facts/v2');
   assert.deepEqual({ ...f.connection }, { worldRef: w.worldRef, connectionRef: paired.connectionRef, connectionIncarnationRef: paired.connectionIncarnationRef });
   assert.deepEqual(JSON.parse(JSON.stringify(f.writeBackend)), { availability: 'KNOWN', basis: 'LOADED_PAYLOAD_DECLARATION',
-    writeBackend: {profileId:'hanaworlds-luanti-native-cell-write/v1',revision:'native-cell-write/1'} });
+    writeBackend: {profileId:'hanaworlds-luanti-native-cell-write/v1',revision:'native-cell-write/2'} });
   assert.deepEqual({ ...f.avatarEnvelope }, { availability: 'UNAVAILABLE', reason: 'NO_PUBLIC_SOURCE' });
   assert.equal(f.catalogueDigest, digestValue('catalogue', await w.facts.readCatalogue(w.worldRef)).sha256);
   const { sourceRevision, ...projection } = f;

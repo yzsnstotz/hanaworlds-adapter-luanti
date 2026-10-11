@@ -1,8 +1,8 @@
 # adapter-07 native readiness + historical receipt record (2026-10-11)
 
 - hanaworlds-contracts · 2.8.0 · MIT · https://github.com/yzsnstotz/hanaworlds-contracts/tree/v2.8.0 · published world-adapter/v8 QueryTransaction historical receipt pair (historicalReceiptResponse / readHistoricalReceipt); peeled source 5af62be25dcab110fcbb8502183922010f078f04. Installed LICENSE/NOTICE retained.
-- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external headless runtime for the real gate; not bundled.
-- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content for the real gate; not bundled.
+- Luanti · 5.17.0 · LGPL-2.1-or-later · https://github.com/luanti-org/luanti/tree/5.17.0 · D-7 external headless runtime for the real gate; not bundled. Behaviour checked (not copied) against src/map.cpp Map::timerUpdate, src/serverenvironment.cpp activateBlock, src/servermap.cpp emergeBlock and src/script/lua_api/l_env.cpp l_load_area; uses the documented core.load_area and debug.getinfo.
+- VoxeLibre · 0.92.3 · GPL-3.0-or-later code / CC-BY-SA-4.0 media · https://content.luanti.org/packages/Wuzzy/mineclone2/ · D-8 external game content for the real gate; not bundled. Its mods/ITEMS/REDSTONE/mcl_observers/init.lua replacement of minetest.swap_node was read to find the J3 APPLY_FAILED cause; nothing copied.
 - canonicalize · 5.1.0 · Apache-2.0 · https://www.npmjs.com/package/canonicalize/v/5.1.0 · unchanged.
 - No new dependency. WorldEdit is no longer referenced by mod.conf or readiness.
 
