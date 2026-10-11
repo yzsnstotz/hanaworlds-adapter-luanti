@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readRegion, writeRegion, protocolHandshake, RegionFault } from '../src/region-io.mjs';
-import { batches, blocksPerBatch } from '../src/region-batches.mjs';
+import { batches, blocksPerBatch, groupBoxes } from '../src/region-batches.mjs';
 import { validateRegionRead, validateRegionWrite, requireKnownRegion, expectedRegionState, encodeRegionBlock,
   checkProtocolCompatibility, protocolRequirement, validateRequest, digestValue } from '#contracts';
 
@@ -105,8 +105,8 @@ test('protocol handshake: same major + capabilities consumed; v4 requirement and
   assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement('world-adapter-region/v4', caps)]), /UNSUPPORTED_VERSION/);
   assert.throws(() => checkProtocolCompatibility(protocolHandshake, [protocolRequirement(W, ['world-adapter-region/v3:teleport'])]), /CAPABILITY_UNAVAILABLE/);
   assert.throws(() => validateRequest('world-adapter-region/v4', 'ReadRegion', { ...readReq(), contractVersion: 'world-adapter-region/v4' }), /UNSUPPORTED_VERSION/);
-  assert.ok(blocksPerBatch({ maxBodyBytes: 4 * 1024 * 1024, registeredNodes: 50, longestNodeName: 20 }) >= 30);
-  assert.deepEqual(batches([-5, 0, 0], [40, 3, 3], 2).map(b => [b.min, b.max]), [[[-5, 0, 0], [15, 3, 3]], [[16, 0, 0], [40, 3, 3]]]);
+  assert.ok(blocksPerBatch({ maxBodyBytes: 4 * 1024 * 1024, registeredNodes: 50, longestNodeName: 20 }, WORLD_GEOMETRY.partition) >= 30);
+  assert.deepEqual(batches([-5, 0, 0], [40, 3, 3], 2, WORLD_GEOMETRY.partition).map(b => [b.min, b.max]), [[[-5, 0, 0], [15, 3, 3]], [[16, 0, 0], [40, 3, 3]]]);
 });
 
 test('cross-chunk read with extras; APPLY fill + air dig keeps unspecified and clears overwritten extras', async () => {
@@ -198,4 +198,58 @@ test('partition mismatch is CAPABILITY_GAP before engine reads or writes', async
  const e=engine();
  await assert.rejects(readRegion(e,{...readReq(),partition:{edge:[8,16,16]}}),error=>error.message==='CAPABILITY_GAP');
  assert.equal(e.log.length,0);
+});
+
+test('batch planning uses each declared partition edge across negative boundaries', () => {
+  const partition = {edge:[8,4,2]};
+  assert.deepEqual(batches([-1,-1,-1],[8,0,0],2,partition), [
+    {min:[-1,-1,-1],max:[7,-1,-1]}, {min:[8,-1,-1],max:[8,-1,-1]},
+    {min:[-1,0,-1],max:[7,0,-1]}, {min:[8,0,-1],max:[8,0,-1]},
+    {min:[-1,-1,0],max:[7,-1,0]}, {min:[8,-1,0],max:[8,-1,0]},
+    {min:[-1,0,0],max:[7,0,0]}, {min:[8,0,0],max:[8,0,0]},
+  ]);
+  const items = [{min:[-1,0,0],max:[-1,0,0]},{min:[8,0,0],max:[8,0,0]}];
+  assert.equal(groupBoxes(items,i=>i,2,partition).length,2);
+  const limits = {maxBodyBytes:265000,registeredNodes:4,longestNodeName:10};
+  assert.ok(blocksPerBatch(limits,partition)>blocksPerBatch(limits,WORLD_GEOMETRY.partition));
+});
+
+test('native partition drift refuses READ, APPLY and RESTORE before emerge or map access', async () => {
+  const before = await read(engine());
+  const requests = [readReq(),writeReq('APPLY',applyWrites(before),'bad-limits'),
+    writeReq('RESTORE',before.chunks.map(c=>({chunkPos:c.chunkPos,expectedCurrentDigest:c.stateDigest,ops:null,state:c.state})),'bad-restore')];
+  for (const r of requests) {
+    const e = engine();
+    const limits = await e.regionLimits(); e.regionLimits = async()=>({...limits,mapblockSize:32});
+    await assert.rejects(r.writes ? writeRegion(e,r) : readRegion(e,r),err=>err.message==='CAPABILITY_GAP');
+    assert.deepEqual(e.log,[]); assert.equal(e.writes,0);
+  }
+});
+
+test('every load/read/precheck/write carries the declared partition and geometry profile', async () => {
+  const e = engine(), seen = [];
+  for (const name of ['regionEmerge','regionRead','regionWrite']) {
+    const original = e[name].bind(e);
+    e[name] = async (...args)=>{seen.push(name==='regionEmerge'?args[2]:args[0]);return original(...args);};
+  }
+  const before = await read(e); const out = await write(e,'APPLY',applyWrites(before));
+  const after = await read(e);
+  await write(e,'RESTORE',before.chunks.map((c,i)=>({chunkPos:c.chunkPos,expectedCurrentDigest:after.chunks[i].stateDigest,ops:null,state:c.state})));
+  assert.equal(out.allWritten,true);
+  for (const command of seen) {
+    assert.equal(command?.geometryProfile,'voxel-grid/v1');
+    assert.deepEqual(command.partition,WORLD_GEOMETRY.partition);
+  }
+});
+
+test('unsupported APPLY or RESTORE block profile refuses before engine access', async () => {
+  const before = await read(engine());
+  for (const purpose of ['APPLY','RESTORE']) {
+    const writes = purpose==='APPLY'?applyWrites(before):before.chunks.map(c=>({chunkPos:c.chunkPos,expectedCurrentDigest:c.stateDigest,ops:null,state:c.state}));
+    const r = JSON.parse(JSON.stringify(writeReq(purpose,writes,'bad-profile')));
+    (purpose==='APPLY'?r.writes.at(-1).ops:r.writes.at(-1).state.block).geometryProfile='unsupported/v1';
+    const e = engine();
+    await assert.rejects(writeRegion(e,r),err=>err.message==='CAPABILITY_GAP');
+    assert.deepEqual(e.log,[]); assert.equal(e.writes,0);
+  }
 });

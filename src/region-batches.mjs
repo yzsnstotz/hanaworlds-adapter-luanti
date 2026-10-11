@@ -1,16 +1,15 @@
 // Pure batch planning for region I/O. The number of mapblocks per engine
 // command is derived from the courier's actual reply body limit and the loaded
 // registry; it is a transport bound, not a policy setting.
-export const BLOCK = 16;
-const floorBlock = n => Math.floor(n / BLOCK);
+import { chunkOf } from '#contracts';
 const fail = code => { throw new Error(code); };
 
 /** Worst-case reply bytes per mapblock and the resulting blocks per command. */
-export function blocksPerBatch(limits) {
+export function blocksPerBatch(limits, partition) {
   const { maxBodyBytes, registeredNodes, longestNodeName } = limits ?? {};
   if (![maxBodyBytes, registeredNodes, longestNodeName].every(n => Number.isSafeInteger(n) && n > 0))
     fail('CAPABILITY_UNAVAILABLE');
-  const cells = BLOCK ** 3;
+  const cells = partition.edge.reduce((n, edge) => n * edge, 1);
   // Every cell its own run: "index,count," (<= 7+1+5+1) and "param2,count,"
   // (<= 3+1+5+1), plus one guard entry per block. Extras are not bounded by
   // cells; an oversized reply is refused by the engine (LIMIT_EXCEEDED) and the
@@ -25,8 +24,8 @@ export function blocksPerBatch(limits) {
 }
 
 /** Split a node box into mapblock-aligned batch boxes of at most perBatch blocks. */
-export function batches(min, max, perBatch) {
-  const lo = min.map(floorBlock), hi = max.map(floorBlock);
+export function batches(min, max, perBatch, partition) {
+  const lo = chunkOf(min, partition), hi = chunkOf(max, partition);
   const n = lo.map((v, i) => hi[i] - v + 1);
   const sx = Math.min(n[0], perBatch);
   const sy = sx === n[0] ? Math.min(n[1], Math.floor(perBatch / sx)) : 1;
@@ -36,22 +35,22 @@ export function batches(min, max, perBatch) {
     for (let by = lo[1]; by <= hi[1]; by += sy)
       for (let bx = lo[0]; bx <= hi[0]; bx += sx) {
         const b0 = [bx, by, bz], b1 = [Math.min(bx + sx - 1, hi[0]), Math.min(by + sy - 1, hi[1]), Math.min(bz + sz - 1, hi[2])];
-        out.push({ min: b0.map((b, i) => Math.max(min[i], b * BLOCK)),
-          max: b1.map((b, i) => Math.min(max[i], b * BLOCK + BLOCK - 1)) });
+        out.push({ min: b0.map((b, i) => Math.max(min[i], b * partition.edge[i])),
+          max: b1.map((b, i) => Math.min(max[i], (b + 1) * partition.edge[i] - 1)) });
       }
   return out;
 }
 
-const blocksOf = box => box.max.reduce((n, v, i) => n * (floorBlock(v) - floorBlock(box.min[i]) + 1), 1);
+const blocksOf = (box, partition) => box.max.reduce((n, v, i) => n * (Math.floor(v / partition.edge[i]) - Math.floor(box.min[i] / partition.edge[i]) + 1), 1);
 const union = (a, b) => ({ min: a.min.map((v, i) => Math.min(v, b.min[i])), max: a.max.map((v, i) => Math.max(v, b.max[i])) });
 
 /** Group boxes (in the given order) so each group's bounding box spans at most
  * perBatch mapblocks: one VoxelManip working set per group. */
-export function groupBoxes(items, boxOf, perBatch) {
+export function groupBoxes(items, boxOf, perBatch, partition) {
   const groups = [];
   for (const item of items) {
     const box = boxOf(item), last = groups.at(-1);
-    if (last && blocksOf(union(last.box, box)) <= perBatch) { last.items.push(item); last.box = union(last.box, box); }
+    if (last && blocksOf(union(last.box, box), partition) <= perBatch) { last.items.push(item); last.box = union(last.box, box); }
     else groups.push({ box, items: [item] });
   }
   return groups;

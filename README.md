@@ -1,4 +1,4 @@
-# HanaWorlds Luanti Adapter 0.18.1 · contracts 2.8.0
+# HanaWorlds Luanti Adapter 0.18.3 · contracts 2.8.0
 
 The world source uses the exact published dependency
 `git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.8.0`.
@@ -7,6 +7,19 @@ The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
 `ReadLocalConnection.capabilities.worldGeometry` declares `voxel-grid/v1`,
 `partition.edge=[16,16,16]`, and `postWriteLighting=REQUIRED`.
+
+Region batching and chunk positions use that declared partition, including negative
+coordinates. The published region/v3 request carries `partition`; each operation
+or saved-state block carries `geometryProfile`. APPLY and RESTORE check all block
+profiles before native map access. A partition that differs from the declaration
+or the engine's actual partition refuses `CAPABILITY_GAP`. Private emerge, read,
+check-only and write commands carry the same partition and `voxel-grid/v1` profile;
+the Lua payload checks them against `core.MAP_BLOCKSIZE` before using native APIs.
+`npm run test:region` covers source/fixture behavior. `test/real-native-paths.mjs`
+with `HW_NATIVE_PATH=J5` locates the native path over 49 partitions and multiple
+batches, checks lighting and readback digests, then restarts and restores. These
+headless checks are diagnostic evidence; product UI and owner acceptance remain
+separate gates.
 
 Materials have opaque refs bound to their orientation translation tables and neutral tags. Orientation is an index in the world's
 material vocabulary; the private adapter translates it to/from the loaded node's legal
