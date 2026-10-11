@@ -1,6 +1,6 @@
 {
   "name": "hanaworlds-adapter-luanti",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,12 @@
     "./local-worlds-v2-mock": {
       "types": "./src/local-worlds-v2-mock.d.ts",
       "import": "./src/local-worlds-v2-mock.mjs"
-    }
+    },
+    "./source-locator": {
+      "types": "./src/source-locator.d.ts",
+      "import": "./src/source-locator.mjs"
+    },
+    "./fixtures/local-world-source.json": "./fixtures/local-world-source.json"
   },
   "imports": {
     "#contracts": "hanaworlds-contracts"
@@ -67,7 +72,11 @@
     "src/world-vocabulary.mjs",
     "src/local-worlds-v2-mock.mjs",
     "src/local-worlds-v2-mock.d.ts",
-    "fixtures/local-worlds-v2.json"
+    "fixtures/local-worlds-v2.json",
+    "src/source-locator.mjs",
+    "src/source-locator.d.ts",
+    "fixtures/local-world-source.json",
+    "docs/source-locator.md"
   ],
   "dsh": {
     "bundle": {
@@ -75,13 +84,14 @@
     }
   },
   "scripts": {
-    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
-    "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/contracts-v2-archive.test.mjs && lua test/contracts-v2-state.lua",
+    "build": "node --check src/index.mjs && node --check src/version.mjs && node --check src/local-worlds.mjs && node --check src/local-world-port.mjs && node --check src/world-vocabulary.mjs && node --check src/local-runtime.mjs && node --check src/local-transactions.mjs && node --check src/local-records.mjs && node --check src/local-courier.mjs && node --check src/native-storage.mjs && node --check src/material-sources.mjs && node --check src/stage1-facts.mjs && node --check src/safety-capabilities.mjs && node --check src/region-io.mjs && node --check src/region-batches.mjs && node --check src/local-worlds-v2-mock.mjs && node --check src/source-locator.mjs && node --check src/flat-world.mjs && node --check src/world-retirement.mjs && node --check src/local-world-deletion.mjs && luac -p payload/hanaworlds_adapter/init.lua payload/hanaworlds_adapter/engine.lua payload/hanaworlds_adapter/transport.lua payload/hanaworlds_adapter/region.lua payload/hanaworlds_adapter/facts.lua payload/hanaworlds_adapter/voxel.lua",
+    "test": "node --test test/local-world-current.test.mjs test/local-world-v6.test.mjs test/contracts-dependency.test.mjs test/local-contract-handshake.test.mjs test/contracts-v2-vocabulary.test.mjs test/contracts-v2-runtime.test.mjs test/local-catalogue.test.mjs test/local-region-io.test.mjs test/local-material-sources.test.mjs test/config-engine-facts-contracts.test.mjs test/contracts-v2-archive.test.mjs test/local-world-source.test.mjs && lua test/contracts-v2-state.lua",
     "test:lua": "lua test/engine-native.lua && lua test/stage1-facts.lua && lua test/local-world-region.lua && lua test/engine-guards.lua",
     "verify:contracts": "node scripts/verify-contracts-range.mjs",
     "test:catalogue": "node --test test/local-catalogue.test.mjs",
     "test:region": "node --test test/local-region-io.test.mjs",
-    "test:flat": "node --test test/local-flat-world.test.mjs test/local-worlds-v2-examples.test.mjs",
+    "test:flat": "node --test test/local-flat-world.test.mjs test/local-worlds-v2-examples.test.mjs test/local-world-source.test.mjs",
+    "test:source": "node --test test/local-world-source.test.mjs test/local-worlds-v2-examples.test.mjs",
     "test:materials": "node --test test/local-material-facts.test.mjs test/local-material-sources.test.mjs",
     "test:switch": "node --test test/local-world-switch.test.mjs",
     "test:delete": "node --test test/local-world-delete.test.mjs",
@@ -95,6 +105,6 @@
   },
   "dependencies": {
     "canonicalize": "5.1.0",
-    "hanaworlds-contracts": "git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.3.0"
+    "hanaworlds-contracts": "git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.5.0"
   }
 }

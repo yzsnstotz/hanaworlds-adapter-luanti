@@ -1,14 +1,19 @@
-import { createWorldLifecycleMock, validateBoundRequest, validateBoundResponse } from '#contracts';
+import { createLocalWorldSourceMock, createWorldLifecycleMock, validateBoundRequest, validateBoundResponse } from '#contracts';
 import examples from '../fixtures/local-worlds-v2.json' with { type: 'json' };
+import sourceExamples from '../fixtures/local-world-source.json' with { type: 'json' };
 
-/** Stateless SOURCE/FIXTURE peer for all four local-worlds/v2 operations.
- * Uses the published SDK; it never creates, discovers or deletes actual worlds.
+/** Stateless SOURCE/FIXTURE peer for every local-worlds/v2 operation, including the read-only
+ * describeSourceWorld (Luanti-shaped locators, selected by exact worldRef, never by name).
+ * Uses the published SDK; it never creates, discovers, describes or deletes actual worlds.
  * Refusals are keyed by local-worlds/v2:<operation> and must be declared codes.
  */
 export function createLocalWorldsMock(refusals = {}) {
-  const call = createWorldLifecycleMock(examples, refusals);
-  return Object.freeze(Object.fromEntries(['discover', 'createWorld', 'pair', 'deleteWorld']
-    .map(operation => [operation, async request => call('local-worlds/v2', operation, request)])));
+  const { 'local-worlds/v2:describeSourceWorld': sourceRefusal = null, ...lifecycleRefusals } = refusals;
+  const call = createWorldLifecycleMock(examples, lifecycleRefusals);
+  const describe = createLocalWorldSourceMock(sourceExamples, sourceRefusal);
+  return Object.freeze({ ...Object.fromEntries(['discover', 'createWorld', 'pair', 'deleteWorld']
+    .map(operation => [operation, async request => call('local-worlds/v2', operation, request)])),
+    describeSourceWorld: async request => describe(request) });
 }
 
 /** Fixture-only world-adapter readback operation; never proves native freshness. */

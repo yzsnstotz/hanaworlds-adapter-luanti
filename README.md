@@ -1,7 +1,7 @@
-# HanaWorlds Luanti Adapter 0.15.0 · contracts 2.3.0
+# HanaWorlds Luanti Adapter 0.16.0 · contracts 2.5.0
 
 The world source uses the exact published dependency
-`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.3.0`.
+`git+https://github.com/yzsnstotz/hanaworlds-contracts.git#v2.5.0`.
 The existing service names stay `hanaworldsWorldAdapterV6` (wire `world-adapter/v8`),
 `hanaworldsWorldAdapterRegionV1` (wire `world-adapter-region/v3`), and
 `hanaworldsLuantiNativeFacts.readCatalogue(worldRef)` (SDK `catalogue/v3`).
@@ -42,6 +42,15 @@ to later cards (adapter-08/10 and adapter-06/07). No undeclared wire is added he
   `CONNECTION_NOT_FOUND`; a failed loaded-payload check returns
   `PAYLOAD_VERSION_MISMATCH`. Pair does not launch or stop another world and
   does not select a Canvas session.
+- `describeSourceWorld({contractVersion, requestId, worldRef})` (contracts 2.5.0): read-only.
+  Finds the one discovered world with that exact `worldRef` (never by display name), checks its
+  canonical directory and identity, and returns `{worldRef, sourceLocator}`. The locator shape
+  (`hanaworlds-luanti-source-locator/v1`: canonical `worldPath`/`worldRoot`/`userPath`,
+  directory device/inode, game, payload identity) is defined in
+  [docs/source-locator.md](docs/source-locator.md) for the paired local-runtime only.
+  Missing/replaced worlds return `WORLD_NOT_FOUND`; duplicate or changed identity returns
+  `CURRENT_WORLD_MISMATCH`; unreadable roots/user path return `ADAPTER_UNAVAILABLE`.
+  It never provisions, pairs, starts a game or writes anything.
 - `deleteWorld({contractVersion, requestId, worldRef, confirmationName})`: only
   exact Adapter-created worlds, with current name confirmation, no active leases
   or unsettled journal, and a Canvas world-retirement reservation. A missing world
@@ -54,8 +63,10 @@ Creation facts stay source-owned; consumers carry them unchanged. Native Host
 provision/acquire/pair helpers remain native lifecycle operations. The v2 pair
 seam is adapter-04; engine-runtime integration remains a separate card.
 The `./local-worlds-v2-mock` package entry exports `createLocalWorldsMock()`;
-its four async operations use [examples](fixtures/local-worlds-v2.json)
-and the SDK's stateless fixture provider. `createLocalConnectionReadbackMock()`
+its four lifecycle operations use [examples](fixtures/local-worlds-v2.json)
+and the SDK's stateless fixture provider; its `describeSourceWorld` uses
+[source examples](fixtures/local-world-source.json) through the SDK's
+`createLocalWorldSourceMock`. `./source-locator` exports the locator version and type. `createLocalConnectionReadbackMock()`
 returns an async `ReadLocalConnection(request)` function with the same complete
 fixture connection. Both include the declared pair/readback refusals and have
 no world/runtime side effects.
