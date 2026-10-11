@@ -15,7 +15,7 @@ export class WorldVocabulary {
   constructor(native) {
     if (native?.profileVersion !== 'catalogue/v2' || !native.nodes?.air) fail('CAPABILITY_UNAVAILABLE');
     this.native = native; this.byName = new Map(); this.byRef = new Map();
-    const materials = {};
+    const materials = {}; this.presentation = {};
     for (const name of Object.keys(native.nodes).sort()) {
       const n = native.nodes[name];
       const legal = n.allowedParam2;
@@ -27,6 +27,8 @@ export class WorldVocabulary {
       const materialRef = `material:${hash(canonicalJSON({name,bytes}))}`;
       const entry = { materialRef, name, bytes, legal };
       this.byName.set(name,entry); this.byRef.set(materialRef,entry);
+      this.presentation[materialRef] = {displayName:typeof n.displayName==='string'&&n.displayName?n.displayName:null,
+        color:typeof n.color==='string'&&/^#[0-9a-f]{6}$/.test(n.color)?n.color:null};
       const tags = { passable:typeof n.walkable === 'boolean' ? !n.walkable : null,
         liquid:n.liquidType === null ? null : n.liquidType !== 'none', hazardPerSecond:n.damagePerSecond,
         emitsLight:n.lightSource === null ? null : n.lightSource > 0,
@@ -113,6 +115,7 @@ export class NeutralEngine {
       .map(([name,value])=>[this.vocabulary.byName.get(name).materialRef,value]))};
   }
   writeBackend() {return this.native.writeBackend();}
+  sourceDeclaration() {return this.native.sourceDeclaration();}
   worldEditRuntime() {return this.native.worldEditRuntime();}
   capacity(n) {return this.native.capacity(n);}
   regionLimits() {return this.native.regionLimits();}

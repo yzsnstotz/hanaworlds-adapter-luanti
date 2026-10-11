@@ -85,6 +85,7 @@ export class LocalCourier {
   writePath() { return this.dispatch('fact_write_path'); }
   materialMetadata() { return this.dispatch('fact_material_metadata'); }
   writeBackend() { return this.dispatch('fact_write_backend'); }
+  sourceDeclaration() { return this.dispatch('fact_world_source'); }
   worldEditRuntime() { return this.dispatch('fact_worldedit_runtime'); }
   capacity(cellCount) { return this.dispatch('fact_capacity', { cellCount }); }
   regionLimits() { return this.dispatch('region_limits'); }

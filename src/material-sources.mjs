@@ -2,8 +2,37 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, open } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
 import { validateType, validateMaterialSources, digestValue } from '#contracts';
+import { PNG } from 'pngjs';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=()=>{throw new Error('CURRENT_WORLD_MISMATCH');};
+
+/** Representative sRGB of a verified simple PNG asset. pngjs owns decoding;
+ * alpha weights visible pixels. Unsupported, corrupt, non-sRGB or very large
+ * images have no colour fact, never an invented substitute. */
+export function textureColor({mediaType,bytes}) {
+  if(mediaType!=='image/png')return null;
+  const buffer=Buffer.from(bytes);
+  if(buffer.length<33||!buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+    ||buffer.toString('ascii',12,16)!=='IHDR')return null;
+  const width=buffer.readUInt32BE(16),height=buffer.readUInt32BE(20);
+  if(!width||!height||width*height>1048576)return null;
+  // A conflicting gamma/ICC profile would require explicit colour conversion.
+  for(let at=8;at+12<=buffer.length;) {
+    const length=buffer.readUInt32BE(at),kind=buffer.toString('ascii',at+4,at+8);
+    if(at+12+length>buffer.length)return null;
+    if(kind==='iCCP'||kind==='cHRM')return null;
+    if(kind==='gAMA'&&(length!==4||buffer.readUInt32BE(at+8)!==45455))return null;
+    at+=12+length;
+  }
+  try {
+    const png=PNG.sync.read(buffer),sum=[0,0,0];let weight=0;
+    for(let at=0;at<png.data.length;at+=4) {
+      const alpha=png.data[at+3];weight+=alpha;
+      for(let c=0;c<3;c++)sum[c]+=png.data[at+c]*alpha;
+    }
+    return weight?'#'+sum.map(n=>Math.round(n/weight).toString(16).padStart(2,'0')).join(''):null;
+  }catch{return null;}
+}
 
 // Only the actual native game/mod media roots are read. Symlinked/unreadable
 // sources are unresolved; a possible hidden duplicate must never be ignored.

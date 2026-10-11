@@ -37,8 +37,8 @@ export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake',
  * publishes neutral placeable tags under that scope. */
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,
-  protocols: [{ protocol: 'world-adapter', major: 8, minor: 0 }],
-  capabilities: ['world-adapter/v8:callback-free-write', 'world-adapter/v8:write-path-state-facts'],
+  protocols: [{ protocol: 'world-adapter', major: 8, minor: 1 }],
+  capabilities: ['world-adapter/v8:callback-free-write', 'world-adapter/v8:world-source-capabilities', 'world-adapter/v8:write-path-state-facts'],
   provenance: { packageName: ADAPTER_ID, packageVersion: ADAPTER_VERSION, sourceRevision: null, artifactDigest: null },
 }));
 

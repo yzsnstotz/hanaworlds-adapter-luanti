@@ -6,7 +6,8 @@ const STAGE = { PrepareRecoverableTransaction: 'PREPARE_RECOVERABLE', ApplyCompi
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
-  validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, validateCatalogueWritePathFacts } from '#contracts';
+  validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, ContractError } from '#contracts';
+import { readWorldSourceFact, checkWritePathFacts } from './world-source-facts.mjs';
 import { LocalCourier } from './local-courier.mjs';
 import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
 import { LocalRecords } from './local-records.mjs';
@@ -103,7 +104,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const catalogue=validateType('Catalogue',raw?.catalogue);
         const materials=[...(raw?.evidence?.materials??[])].sort((a,b)=>a.materialRef<b.materialRef?-1:a.materialRef>b.materialRef?1:0);
         const evidence=validateType('WritePathEvidence',{...raw?.evidence,materials,catalogueDigest:digestValue('catalogue',catalogue).sha256});
-        const check=validateCatalogueWritePathFacts(catalogue,evidence);
+        const check=checkWritePathFacts(catalogue,evidence);
         await inspectConnection(row.connectionRef);
         if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
         return {catalogue,evidence,check};
@@ -228,6 +229,16 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
   }
   async function perform(name, r, row) {
     const b = row?.backend;
+    if(name==='ReadWorldSourceCapabilities') {
+      const matches=[...rows.values()].filter(x=>x.worldRef===r.worldRef);
+      if(matches.length!==1)fail('ADAPTER_UNAVAILABLE');
+      const selected=matches[0];
+      await inspectConnection(selected.connectionRef);
+      const result=await readWorldSourceFact(name,selected);
+      await inspectConnection(selected.connectionRef);
+      if(closed||selected.engine.closed||rows.get(selected.connectionRef)!==selected)fail('CURRENT_WORLD_MISMATCH');
+      return result;
+    }
     if (name === 'ReadLocalConnection') {
       const result = validateType('LocalConnectionReadback', {
         connectionRef: row.connectionRef, connectionIncarnationRef: row.incarnation, worldRef: row.worldRef,
@@ -396,8 +407,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       // during this Adapter call; queuing it behind that caller deadlocks.
       const inventoryRead = name === 'DiscoverConnections' || name === 'ListWorlds';
       const execute = async () => {
-        if (closed) fail('ADAPTER_UNAVAILABLE');
         try {
+          if (closed) fail('ADAPTER_UNAVAILABLE');
           if (mutators.has(name)) canvasCaller(caller);
           const row = r.connectionRef ? rows.get(r.connectionRef) : r.localContext ? rows.get(r.localContext.connectionRef) : null;
           if (r.connectionRef && !row) fail('CONNECTION_NOT_FOUND');
@@ -427,7 +438,8 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
             : STAGE[name] ? refusalDetail(STAGE[name], error.detail, { transactionRef: r.transactionId ?? null }) : null;
           if (named) return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null, ...named }));
           const mutationState = saved && !['PREPARED','ABORTED_PREPARED'].includes(saved.status) ? 'UNKNOWN' : 'NONE';
-          const code = name === 'ReadLocalConnection'
+          const code = name === 'ReadWorldSourceCapabilities' && !['CURRENT_WORLD_MISMATCH','CATALOGUE_MISMATCH','SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD','UNSUPPORTED_VERSION'].includes(error.code??error.message)
+            ? 'ADAPTER_UNAVAILABLE' : name === 'ReadLocalConnection'
             ? ((error.code ?? error.message) === 'PAYLOAD_VERSION_MISMATCH' ? 'PAYLOAD_VERSION_MISMATCH' : 'CONNECTION_NOT_FOUND')
             : schemaBundle.definitions.ErrorCode.enum.includes(error.code ?? error.message) ? error.code ?? error.message : 'CAPABILITY_UNAVAILABLE';
           return validateBoundResponse(WIRE, name, r, shaped(name, { contractVersion: WIRE, requestId: r.requestId, result: null,
@@ -440,5 +452,22 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       return work;
     },
   };
-  return { ...runtime, port, regionIO };
+  const worldFacts={contractVersion:'world-facts/v1',contractHandshake,
+    protocolHandshake:validateType('ProtocolHandshake',{...worldAdapterProtocolHandshake,
+      protocols:[{protocol:'world-facts',major:1,minor:0}],capabilities:['world-facts/v1:named-reads']}),
+    async call(name,input) {
+      const wire='world-facts/v1';
+      const request=typeof input==='string'||input instanceof Uint8Array?admitRequest(wire,name,input):validateBoundRequest(wire,name,input);
+      let result=null,error=null;
+      try { result=await stage1Read(request.worldRef,row=>readWorldSourceFact(name,row)); }
+      catch(failure) {
+        const cause=failure.code??failure.message;
+        const currency=['CURRENT_WORLD_MISMATCH','CATALOGUE_MISMATCH','SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD','UNSUPPORTED_VERSION'];
+        const code=currency.includes(cause)?cause:name==='ReadCatalogue'&&cause==='WORLD_NOT_BOUND'?'WORLD_NOT_BOUND'
+          :name==='ReadMaterialSources'?'CAPABILITY_UNAVAILABLE':'ADAPTER_UNAVAILABLE';
+        error=new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN').publicError;
+      }
+      return validateBoundResponse(wire,name,request,{contractVersion:wire,requestId:request.requestId,result,error});
+    }};
+  return { ...runtime, port, regionIO, worldFacts };
 }
