@@ -33,7 +33,7 @@ export const protocolHandshake = Object.freeze(validateType('ProtocolHandshake',
 }));
 
 /** world-adapter/v8 runtime protocol (published contracts 2.0.0): per-cell writes and
- * restores are WorldEdit set/set_param2 (VoxelManip) plus swap_node, and the Catalogue
+ * restores use native swap_node; region batches use VoxelManip, and the Catalogue
  * publishes neutral placeable tags under that scope. */
 export const worldAdapterProtocolHandshake = Object.freeze(validateType('ProtocolHandshake', {
   profileVersion: 'protocol-handshake/v1', component: ADAPTER_ID,

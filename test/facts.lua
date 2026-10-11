@@ -6,6 +6,7 @@ local core = {
     get_elapsed = function() return 0 end} end,
   get_node_light = function() return 15 end,
   fix_light = function() return true end,
+  swap_node = function() return true end,
   registered_nodes = {air = {walkable = false}},
   get_game_info = function() return {id = 'minimal'} end,
   get_modnames = function() return {'hanaworlds_adapter'} end,
@@ -16,8 +17,8 @@ local core = {
     return '{}'
   end,
 }
-local profile, code = facts.state_profile(core, {set = function() end,
-  set_param2 = function() end})
+worldedit = nil
+local profile, code = facts.state_profile(core)
 assert(code == nil and profile.profileVersion == 'state-profile/v2')
 assert(profile.derivedLightMode == 'recompute-with-readback')
 local capacity = facts.capacity(core, 1, 4194304)
@@ -31,7 +32,11 @@ assert(catalogue.raw_json:find('"hasPersistentState":null', 1, true),
 assert(facts.world_revision(core) == nil, 'world revision has no native source')
 assert(facts.object_revisions(core, {'building:one'}) == nil,
   'object revisions have no native object registry')
+core.swap_node = nil
+assert(select(2, facts.state_profile(core)) == 'CAPABILITY_UNAVAILABLE',
+  'missing native writer fails closed even if WorldEdit exists')
+core.swap_node = function() return true end
 core.fix_light = nil
-assert(facts.state_profile(core, {set = function() end, set_param2 = function() end}) == nil,
+assert(facts.state_profile(core) == nil,
   'missing light recomputation fails closed')
 print('facts.lua: PASS')

@@ -5,7 +5,7 @@ import { ADAPTER_ID, ADAPTER_VERSION } from './version.mjs';
 /** Loaded-world config-engine-facts/v2, checked against one neutral Catalogue snapshot.
  * Backend identity is read from the payload declaration. Player geometry stays engine-only;
  * the released AvatarEnvelopeFact permits UNAVAILABLE/NO_PUBLIC_SOURCE only.
- * Historical WorldEdit diagnostics remain read-only adapter facts until native writers replace it. */
+ * WorldEdit diagnostics are optional observations; native backend readiness is independent. */
 export const CONFIG_ENGINE_FACTS_VERSION = 'config-engine-facts/v2';
 export const WORLDEDIT_FACTS_VERSION = 'adapter-worldedit-runtime/v1';
 // The exact candidate permits only this avatar form; no public geometry source.

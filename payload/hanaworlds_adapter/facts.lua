@@ -4,14 +4,10 @@ local M = {}
 
 local function available(core, name) return type(core[name]) == 'function' end
 
-function M.state_profile(core, worldedit)
+function M.state_profile(core)
   for _, name in ipairs({'get_node_or_nil', 'get_meta', 'get_node_timer',
-    'get_node_light', 'fix_light'}) do
+    'get_node_light', 'fix_light', 'swap_node'}) do
     if not available(core, name) then return nil, 'CAPABILITY_UNAVAILABLE' end
-  end
-  if type(worldedit) ~= 'table' or type(worldedit.set) ~= 'function'
-    or type(worldedit.set_param2) ~= 'function' then
-    return nil, 'CAPABILITY_UNAVAILABLE'
   end
   return {profileVersion = 'state-profile/v2',
     nodeFields = {'nodeName', 'param1', 'param2'}, metadataMode = 'exact',
@@ -70,9 +66,9 @@ local function legal_param2(def)
 end
 
 -- Catalogue hasCallbacks/hasPersistentState follow Contracts scope write-path-init/v1:
--- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (VoxelManip
--- node data via WorldEdit set/set_param2 and this payload's region writer, swap_node
--- for restores), on which the engine runs no node-definition callback. Player
+-- they describe the declared CALLBACK_FREE_NODE_DATA write/restore path (native
+-- swap_node for cell images and VoxelManip for region batches), on which the
+-- engine runs no node-definition callback. Player
 -- callbacks, ABM/LBM and other later world dynamics are out of that scope and are
 -- caught by full-state readback digests, not claimed absent.
 -- Engine-documented node-definition callback fields (Luanti 5.17 lua_api.md,
