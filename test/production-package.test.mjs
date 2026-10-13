@@ -131,8 +131,15 @@ try {
  await assert.rejects(read('absent',[[0,0,0]]),refused('WORLD_NOT_BOUND'));
  await assert.rejects(read('absent',[[1,0,0],[0,0,0]]),refused('SCHEMA_INVALID'));
  await assert.rejects(cordis.get('hanaworldsWorldFacts').readScopedState('absent',[[0,0,0]]),refused('CAPABILITY_UNAVAILABLE'));
+ const canvasFacts=canvas.get('hanaworldsWorldFacts').readCanvasFacts;
+ assert.equal(typeof canvasFacts,'function','packed neutral Canvas facts capability missing');
+ const scope={worldRef:'absent-world',connectionRef:'absent',connectionIncarnationRef:'absent-incarnation'};
+ await assert.rejects(canvasFacts(scope),refused('WORLD_NOT_BOUND'));
+ await assert.rejects(canvasFacts({connectionRef:'absent'}),refused('SCHEMA_INVALID'));
+ await assert.rejects(cordis.get('hanaworldsWorldFacts').readCanvasFacts(scope),refused('CAPABILITY_UNAVAILABLE'));
  await source.close();
  await assert.rejects(read('absent',[[0,0,0]]),refused('ADAPTER_UNAVAILABLE'));
+ await assert.rejects(canvasFacts(scope),refused('ADAPTER_UNAVAILABLE'));
 }finally{await source.close();await canvasFiber.dispose();await sourceFiber.dispose();await cordis.fiber.dispose();}
 await fs.writeFile('host-errors.json',JSON.stringify(hostErrors));
 const noBundle = await import('node:fs/promises');
@@ -148,7 +155,7 @@ console.log('packed runtime without external contracts PASS');\n`);
   // Retain the former denial gate after ordinary default-condition execution succeeds.
   assert.match(run(process.execPath, ['--import', './deny-contract-import.mjs', 'consumer.mjs'], dir, env), /PASS/);
   writeFileSync(join(dir, 'consumer.ts'), `import { createNativeHost, type NativeHostOptions } from 'hanaworlds-adapter-luanti/host';
-import { apply, type WorldFactsHostPort, type ScopedStateFacts } from 'hanaworlds-adapter-luanti';
+import { apply, type WorldFactsHostPort, type ScopedStateFacts, type CanvasSourceFacts, type CanvasFactsScope } from 'hanaworlds-adapter-luanti';
 import { createInspectionContext } from 'hanaworlds-adapter-luanti/inspection-context';
 import { createLocalWorldsMock, createLocalConnectionReadbackMock } from 'hanaworlds-adapter-luanti/local-worlds-v2-mock';
 import { createWorldSourceFactsMock } from 'hanaworlds-adapter-luanti/world-source-facts-mock';
@@ -160,6 +167,14 @@ type Facts = ReturnType<typeof createWorldSourceFactsMock>;
 const locatorVersion: LuantiSourceLocator['locatorVersion'] = SOURCE_LOCATOR_VERSION;
 declare const facts:WorldFactsHostPort;
 const result:Promise<ScopedStateFacts>=facts.readScopedState('connection',[[0,0,0]]);
+const scope:CanvasFactsScope={worldRef:'world',connectionRef:'connection',connectionIncarnationRef:'incarnation'};
+const canvasResult:Promise<CanvasSourceFacts>=facts.readCanvasFacts(scope);
+// @ts-expect-error incomplete current-world scope
+facts.readCanvasFacts({connectionRef:'connection'});
+// @ts-expect-error caller may not supply provider authority
+facts.readCanvasFacts({...scope,providerRef:'forged'});
+// @ts-expect-error current-world identity must be opaque text
+facts.readCanvasFacts({...scope,worldRef:1});
 // @ts-expect-error wrong connection type
 facts.readScopedState(1,[[0,0,0]]);
 // @ts-expect-error wrong position shape
