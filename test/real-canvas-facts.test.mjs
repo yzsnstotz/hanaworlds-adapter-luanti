@@ -40,7 +40,7 @@ before(async()=>{
  await writeFile(join(root,'artifact.json'),JSON.stringify({tar,tarSHA256,packed,pnpm:'11.28.5',strictDefaultPolicy:true},null,2));
  console.log(`REAL_CANVAS_FACTS_EVIDENCE ${root}`);
 });
-const scenarios=['native-source','coordinate-calibration','normal','missing-and-recovery','content-drift-and-recovery','scope-and-providers'];
+const scenarios=['native-source','coordinate-calibration','normal','handedness-and-recovery','missing-and-recovery','content-drift-and-recovery','scope-and-providers'];
 for(const mode of ['source','packed'])for(const scenario of scenarios)
  test(`${mode}: actual Luanti ${scenario}`,async t=>{
   const run=join(root,`${mode}-${scenario}`);await mkdir(run);

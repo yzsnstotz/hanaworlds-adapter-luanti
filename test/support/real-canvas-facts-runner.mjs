@@ -129,7 +129,7 @@ function checkNativeFacts(raw,body=decl,revision=hash(originalDeclaration)){
  for(const field of ['unit','frame']){assert.deepEqual(raw[field].value,body[field]);assertSource(raw[field],'LOADED_WORLD_DECLARATION',revision);}
  assertSource(raw.partition,'NATIVE_OBSERVATION');return raw;
 }
-async function readComplete(){
+async function readComplete(declarationBody=decl,bytes=originalDeclaration){
  assert.equal(typeof port.readCanvasFacts,'function','normal neutral readCanvasFacts capability missing');
  const nativeBegin=commands.length;
  const result=await audit(()=>port.readCanvasFacts(scope));
@@ -137,15 +137,47 @@ async function readComplete(){
  assert.ok(sourceReads.length>=2,'each public fact read needs fresh before/after actual payload source observations');
  for(const command of sourceReads)assert.equal(command.worldRef,scope.worldRef);
  assert.deepEqual(plain(result.connection),scope);assert.equal(result.profileVersion,'canvas-source-facts/v1');
- const raw=checkNativeFacts(nativeCanvas());
+ const raw=checkNativeFacts(nativeCanvas(),declarationBody,hash(bytes));
  for(const field of ['tools','unit','frame','partition'])assert.deepEqual(plain(result[field]),raw[field],`public ${field} differs from real payload source`);
  const observation=await observe();assert.deepEqual(result.partition.value.edge,[observation.edge,observation.edge,observation.edge]);
  const limits=traceResult('region_limits');assert.equal(limits.response.result.mapblockSize,observation.edge);
  assert.equal(typeof result.provider.providerRef,'string');assert.ok(result.provider.providerRef);assert.ok(result.provider.providerRevision);
  const {sourceRevision,...body}=plain(result);const canonical=v=>v&&typeof v==='object'?(Array.isArray(v)?v.map(canonical):Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])]))):v;
  assert.equal(sourceRevision,hash(JSON.stringify(canonical(body))));
- checks.push({case:'complete',sourceRevision,connection:scope,provider:result.provider,actual:result,declarationSHA256:hash(originalDeclaration)});
+ checks.push({case:'complete',sourceRevision,connection:scope,provider:result.provider,actual:result,declarationSHA256:hash(bytes)});
  return result;
+}
+const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
+const subtract=(a,b)=>a.map((v,i)=>v-b[i]);
+const negate=a=>a.map(v=>-v);
+const determinant=([a,b,c])=>a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]);
+const closeVector=(a,b)=>{for(let i=0;i<3;i++)assert.ok(Math.abs(a[i]-b[i])<1e-10,`native direction mismatch: ${a} vs ${b}`);};
+function independentHandedness(observation,records){
+ // External engine reference, NOT Adapter's Frame, defaults or declaration:
+ // https://api.luanti.org/coordinate-system/ defines physical right/up/forward.
+ // https://api.luanti.org/nodes/ defines facedir quarter-turns and wallmounted 0 up.
+ // Runtime yaw and facedir rotations must agree on actual forward/right; use
+ // physical (right, up, BACKWARD) as the right-handed reference by definition.
+ // No expected handedness string or production transform literal is copied.
+ const {yaw0,yawMinusQuarter,yawPlusQuarter,turns,up,engineVersion}=observation.orientation;
+ const forward=yaw0,right=yawMinusQuarter;
+ closeVector(turns[0],forward);closeVector(turns[1],right);
+ closeVector(turns[2],negate(forward));closeVector(turns[3],negate(right));
+ closeVector(yawPlusQuarter,negate(right));
+ for(const a of [right,up,forward])assert.ok(Math.abs(dot(a,a)-1)<1e-10,'native reference is not unit length');
+ for(const [a,b] of [[right,up],[right,forward],[up,forward]])assert.ok(Math.abs(dot(a,b))<1e-10,'native reference is not orthogonal');
+ const project=v=>[dot(v,right),dot(v,up),-dot(v,forward)];
+ // Four distinct signed samples form a nondegenerate tetrahedron. Its signed
+ // volume ratio measures the ACTUAL neutral -> native -> physical transform,
+ // including permutations/reflections, independently of Frame.axes/origin.
+ const neutralVolume=determinant(points.slice(1).map(p=>subtract(p,points[0])));
+ const native=records.map(r=>r.position);
+ const referenceVolume=determinant(native.slice(1).map(p=>project(subtract(p,native[0]))));
+ assert.notEqual(neutralVolume,0);assert.notEqual(referenceVolume,0);
+ const ratio=referenceVolume/neutralVolume;assert.ok(Math.abs(Math.abs(ratio)-1)<1e-10,'actual coordinate transform changed volume');
+ const measuredHandedness=ratio>0?'right':'left';
+ const calibration={engineVersion,reference:'physical right/up/backward',orientation:observation.orientation,neutralVolume,referenceVolume,ratio,measuredHandedness};
+ checks.push({case:'independent-native-handedness',...calibration});return calibration;
 }
 async function coordinates(frame){
  // Native probe is independent of Adapter's Record encoder and reads x/y/z and
@@ -157,6 +189,7 @@ async function coordinates(frame){
  assert.deepEqual(response.result.records.map(r=>r.nodeName),observation.nodes.map(n=>n.node.name));
  assert.deepEqual(observation.nodes.map(n=>n.position),points);
  for(let i=0;i<points.length;i++)assert.equal(response.result.records[i].metadata['axis-marker'],points[i].join(','));
+ const calibration=independentHandedness(observation,response.result.records);
  if(frame){
   const axes={X:0,Y:1,Z:2};assert.equal(new Set(frame.axes.map(a=>a.slice(1))).size,3);
   const forward=p=>{const n=[...frame.origin];for(let i=0;i<3;i++)n[axes[frame.axes[i].slice(1)]]+=(frame.axes[i][0]==='-'?-1:1)*p[i];return n;};
@@ -168,8 +201,10 @@ async function coordinates(frame){
    assert.deepEqual(inverse(response.result.records[i].position),points[i]);
   }
   assert.equal(typeof frame.transformRevision,'string');assert.ok(frame.transformRevision);
+  assert.equal(frame.handedness,calibration.measuredHandedness,'declared Frame handedness disagrees with independent native calibration');
  }
  checks.push({case:'coordinate-calibration',points,frame:frame??null,native:response.result.records});
+ return calibration;
 }
 let failure;
 try{
@@ -209,7 +244,11 @@ core.register_globalstep(function()
  local q=core.parse_json(file:read('*a'));file:close();os.remove(root..'/canvas-probe-query.json')
  local nodes={}
  for _,p in ipairs(q.points) do local pos={x=p[1],y=p[2],z=p[3]};nodes[#nodes+1]={position=p,node=core.get_node(pos),metadata=core.get_meta(pos):to_table(),timer=core.get_node_timer(pos):is_started()} end
- core.safe_file_write(root..'/'..q.id..'.json',core.write_json({id=q.id,nodes=nodes,writes=writes,edge=core.MAP_BLOCKSIZE}))
+ local function triple(v) return {v.x,v.y,v.z} end
+ local turns={};for i=0,3 do turns[#turns+1]=triple(core.facedir_to_dir(i)) end
+ local orientation={engineVersion=core.get_version().string,turns=turns,up=triple(core.wallmounted_to_dir(0)),
+  yaw0=triple(core.yaw_to_dir(0)),yawMinusQuarter=triple(core.yaw_to_dir(-math.pi/2)),yawPlusQuarter=triple(core.yaw_to_dir(math.pi/2))}
+ core.safe_file_write(root..'/'..q.id..'.json',core.write_json({id=q.id,nodes=nodes,writes=writes,edge=core.MAP_BLOCKSIZE,orientation=orientation}))
 end)
 `);
  const lease=await local.acquire({connectionRef:created.connectionRef,requesterRef:'native-test',userPath:profile,action:'BIND_RUNNING_WORLD'});
@@ -228,7 +267,24 @@ end)
   const raw=nativeCanvas();await loadNormalDeclaration();checkNativeFacts(raw);
  }else{
   await loadNormalDeclaration();const initial=await readComplete();await coordinates(initial.frame.value);
-  if(scenario==='missing-and-recovery'){
+  if(scenario==='handedness-and-recovery'){
+   const changed=plain(decl);changed.frame.handedness=decl.frame.handedness==='left'?'right':'left';
+   const {handedness:normalHand,...normalRest}=decl.frame,{handedness:wrongHand,...wrongRest}=changed.frame;
+   assert.notEqual(wrongHand,normalHand);assert.deepEqual(wrongRest,normalRest,'only handedness may change');
+   const bytes=Buffer.from(JSON.stringify(changed));await writeFile(declarationPath(),bytes,{mode:0o600});
+   try{
+    const wrong=await readComplete(changed,bytes);
+    assert.deepEqual(plain(wrong.frame.value),changed.frame,'flipped declaration must really reach the public Frame');
+    assert.deepEqual(plain(wrong.frame.value.origin),plain(initial.frame.value.origin));
+    assert.deepEqual(plain(wrong.frame.value.axes),plain(initial.frame.value.axes));
+    // Expected TEST assertion, not a new production refusal code or wire ABI.
+    await assert.rejects(coordinates(wrong.frame.value),e=>e instanceof assert.AssertionError&&
+     e.message.startsWith('declared Frame handedness disagrees with independent native calibration'));
+    checks.push({case:'wrong-handedness-detected',normalHand,wrongHand,origin:changed.frame.origin,axes:changed.frame.axes});
+   }finally{await writeFile(declarationPath(),originalDeclaration,{mode:0o600});}
+   const recovered=await readComplete();assert.deepEqual(plain(recovered),plain(initial));await coordinates(recovered.frame.value);
+   checks.push({case:'handedness-recovery'});
+  }else if(scenario==='missing-and-recovery'){
    for(const path of ['tools','tools.0.purpose','tools.0.typicalScale','unit','unit.name','frame','frame.profileVersion','frame.frameId',
     'frame.axes','frame.handedness','frame.origin','frame.gridUnit','frame.transformRevision']){
     const changed=plain(decl),parts=path.split('.'),key=parts.pop();delete parts.reduce((v,k)=>v[k],changed)[key];
