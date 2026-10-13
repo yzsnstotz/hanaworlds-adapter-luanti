@@ -12,6 +12,17 @@ import { apply, inject } from '../src/index.mjs';
 import { LocalCourier } from '../src/local-courier.mjs';
 import { ENGINE_GUARDS } from '../src/safety-capabilities.mjs';
 const plain = v => JSON.parse(JSON.stringify(v));
+const original = v => v?.[symbols.original] ?? v;
+// Use the context captured at actual apply, never fabricate a fiber or bypass
+// Cordis. Assertions prove an official owner mutation really took effect.
+function replaceOwnedService(owner,name,replacement) {
+ const key=owner[symbols.isolate][name],registered=owner.reflect.store[key];
+ assert.equal(registered.fiber,owner.fiber,'replacement context must own the service');
+ const before=original(owner.get(name));assert.notEqual(before,replacement);
+ assert.equal(owner.set(name,replacement),true);
+ assert.equal(owner.reflect.store[key],registered);assert.equal(registered.value,replacement);
+ assert.equal(original(owner.get(name)),replacement);assert.notEqual(original(owner.get(name)),before);
+}
 const refused = code => e => {
  C.validateType('Error',e.publicError);
  return e.publicError.code === code && e.publicError.mutationState === 'NONE';
@@ -39,7 +50,7 @@ async function setup(t) {
  for(const name of ['prepareCheck','apply','applyState','restore','regionWrite','regionEmerge'])
   native[name]=async()=>{mutations.push(name);throw Error('FACT_READ_MUST_NOT_MUTATE');};
  t.mock.method(LocalCourier, 'open', async world => {bound=world;return native;});
- const ctx = new Context(); let adapter, canvas;
+ const ctx = new Context(); let adapter, adapterOwner, canvas;
  ctx.provide('webServer', {register:()=>()=>{}});ctx.provide('dshHomePath', (...p)=>join(root,'home',...p));
  for(const name of ['hanaworldsCanvasHistoryFacts','hanaworldsCanvasFootprintRegistry'])ctx.provide(name,{
   call:async()=>{mutations.push(name);throw Error('FACT_READ_MUST_NOT_CHANGE_HISTORY_OR_REGISTRY');}
@@ -48,7 +59,7 @@ async function setup(t) {
   inspect:async q=>{if(!live)throw Error('CURRENT_WORLD_MISMATCH');return {state:'CURRENT',worldPath:q.worldPath,processId:1234,operationRef:q.operationRef};},
   withStoppedWorld:async(q,cb)=>{lifecycle.push('withStoppedWorld');return cb({state:'STOPPED',worldPath:q.worldPath,processId:1234,operationRef:q.operationRef});}};
  ctx.provide('hanaworldsNativeEngineControl',host);
- const adapterFiber=ctx.plugin({name:'actual-adapter',inject,apply(c){adapter=apply(c,{localUserPath:profile,localWorldRoots:[worlds]});}});await adapterFiber.await();
+ const adapterFiber=ctx.plugin({name:'actual-adapter',inject,apply(c){adapterOwner=c;adapter=apply(c,{localUserPath:profile,localWorldRoots:[worlds]});}});await adapterFiber.await();
  const canvasFiber=ctx.plugin({name:'renamed-legitimate-canvas',apply(c){canvas=c;c.provide('hanaworldsCanvasV5',{call(){throw Error('UNEXPECTED_CANVAS_CALL');}});}});await canvasFiber.await();
  t.after(async()=>{await adapter.close();await canvasFiber.dispose();await adapterFiber.dispose();await ctx.fiber.dispose();});
  const local=ctx.get('hanaworldsLocalWorlds');
@@ -75,7 +86,7 @@ async function setup(t) {
    assert.deepEqual(mutations,writes,'facts read prepared, wrote or emerged');
   }
  };
- return {ctx,canvas,canvasFiber,adapter,paired,native,calls,scope,canvasRead,audit,
+ return {ctx,canvas,canvasFiber,adapter,adapterOwner,paired,native,calls,scope,canvasRead,audit,
   declaration:()=>declaration,changeDeclaration:fn=>fn(declaration),setDeclaration:v=>{declaration=v;},
   afterDeclaration:fn=>{afterDeclaration=fn;},declarationReads:()=>declarationReads,
   read:(positions=[[0,0,0]])=>canvas.get('hanaworldsWorldFacts').readScopedState(paired.connectionRef,positions),
@@ -170,9 +181,14 @@ for(const [name,change,code] of [
 for(const target of ['hanaworldsCanvasV5','hanaworldsWorldFacts'])for(const phase of ['before','during'])
  test('Canvas facts captured method refuses '+target+' replacement '+phase+' read',async t=>{
   const f=await setup(t),read=f.canvasRead();
-  const replace=()=>f.canvas.set(target,{call(){throw Error('REPLACEMENT_MUST_NOT_BE_CALLED');}});
+  const owner=target==='hanaworldsCanvasV5'?f.canvas:f.adapterOwner;
+  const replacement={call(){throw Error('REPLACEMENT_MUST_NOT_BE_CALLED');}};
+  let hookCompleted=false;
+  const replace=()=>{replaceOwnedService(owner,target,replacement);hookCompleted=true;};
   if(phase==='before')replace();else f.afterDeclaration(replace);
   await f.audit(()=>assert.rejects(read(f.scope),refused('CAPABILITY_UNAVAILABLE')));
+  assert.equal(hookCompleted,true,'a setup exception must not count as provider refusal');
+  assert.equal(original(owner.get(target)),replacement,'the provider really must be replaced');
   if(phase==='before')assert.equal(f.declarationReads(),0);
  });
 
@@ -191,10 +207,13 @@ test('Canvas facts root, foreign root and forged receiver lack authority',async 
 
 test('Canvas facts never use historical supplier aliases',async t=>{
  const f=await setup(t),read=f.canvasRead();
- for(const name of ['hanaworldsLuantiNativeFacts','hanaworldsWorldSourceFacts'])f.ctx.set(name,{
-  call(){throw Error('LEGACY_ALIAS_FORBIDDEN');},readCanvasFacts(){throw Error('LEGACY_ALIAS_FORBIDDEN');}
- });
+ const polluted=new Map();
+ for(const name of ['hanaworldsLuantiNativeFacts','hanaworldsWorldSourceFacts']){
+  const replacement={call(){throw Error('LEGACY_ALIAS_FORBIDDEN');},readCanvasFacts(){throw Error('LEGACY_ALIAS_FORBIDDEN');}};
+  replaceOwnedService(f.adapterOwner,name,replacement);polluted.set(name,replacement);
+ }
  const out=await f.audit(()=>read(f.scope));assert.deepEqual(plain(out.tools),f.declaration().tools);
+ for(const [name,value] of polluted)assert.equal(original(f.adapterOwner.get(name)),value);
 });
 
 test('absent declaration blocks temporarily and source-provider instance replacement changes identity',async t=>{
@@ -270,9 +289,12 @@ test('root caller, foreign root and forged receiver cannot read using a public p
 });
 for(const phase of ['before','during'])test('same-name provider replacement '+phase+' read invalidates captured authority',async t=>{
  const f=await setup(t),read=f.canvas.get('hanaworldsWorldFacts').readScopedState;
- const replace=()=>f.canvas.set('hanaworldsCanvasV5',{call(){}});
+ let hookCompleted=false;const replacement={call(){}};
+ const replace=()=>{replaceOwnedService(f.canvas,'hanaworldsCanvasV5',replacement);hookCompleted=true;};
  if(phase==='before')replace();else f.afterRead(replace);
  await assert.rejects(async()=>read(f.paired.connectionRef,[[0,0,0]]),refused('CAPABILITY_UNAVAILABLE'));
+ assert.equal(hookCompleted,true,'provider replacement hook must complete');
+ assert.equal(original(f.canvas.get('hanaworldsCanvasV5')),replacement);
  assert.equal(f.calls.length,phase==='before'?0:1);
 });
 test('lost connection never returns state',async t=>{

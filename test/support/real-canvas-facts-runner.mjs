@@ -11,6 +11,15 @@ import { createHash } from 'node:crypto';
 import { Server, ServerResponse } from 'node:http';
 const cfg=JSON.parse(process.argv[2]),{root,artifact,mode,scenario}=cfg;
 const plain=x=>JSON.parse(JSON.stringify(x)),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+const original=x=>x?.[Symbol.for('cordis.original')]??x;
+function replaceOwnedService(owner,name,replacement){
+ const key=owner[Symbol.for('cordis.isolate')][name],registered=owner.reflect.store[key];
+ assert.equal(registered.fiber,owner.fiber,'replacement must use the actual provider owner');
+ const before=original(owner.get(name));assert.notEqual(before,replacement);
+ assert.equal(owner.set(name,replacement),true);assert.equal(owner.reflect.store[key],registered);
+ assert.equal(registered.value,replacement);assert.equal(original(owner.get(name)),replacement);
+ return before;
+}
 const manifest=JSON.parse(await readFile(join(artifact,'package.json'),'utf8'));
 const {Context}=mode==='source'?await import('@deepseek-ai/cordis'):
  await import(pathToFileURL(cfg.cordis));
@@ -29,7 +38,8 @@ core.register_alias('mapgen_water_source','air')
 core.register_alias('mapgen_river_water_source','air')\n`);
 }
 const points=[[-11,4,-2],[-2,-11,4],[13,-7,22],[22,13,-7]];
-const commands=[],results=[],events=[],checks=[];let transportPort,externalFault=null,created,adapter,canvas,adapterFiber,canvasFiber;
+const commands=[],results=[],events=[],checks=[];let transportPort,externalFault=null,providerFault=null,created,adapter,adapterOwner,canvas,adapterFiber,canvasFiber;
+let probeInstalled=false,pinSetup=null,pinCleanup=null;
 // Observation of actual bytes, without replacing, delaying or rewriting a response.
 const originalEnd=ServerResponse.prototype.end,originalEmit=Server.prototype.emit;
 ServerResponse.prototype.end=function(data,...rest){
@@ -47,6 +57,10 @@ Server.prototype.emit=function(event,...args){
      // Controlled external file edit, AFTER real native result serialization and
      // BEFORE its receipt releases the caller to the second genuine native read.
      writeFileSync(fault.path,fault.bytes,{mode:0o600});fault.fired=true;
+    }
+    if(providerFault&&command?.operation==='fact_world_source'&&out.result?.canvasFacts){
+     const fault=providerFault;providerFault=null;fault.invoked=true;
+     try{fault.replace();fault.completed=true;}catch(e){fault.error={name:e.name,message:e.message};}
     }
    });
   }
@@ -81,7 +95,10 @@ async function observe(){
  const id=`observe-${Date.now()}-${Math.random()}`;
  await writeFile(join(created.worldPath,'canvas-probe-query.json'),JSON.stringify({id,points}));
  const out=JSON.parse(await waitFor(join(created.worldPath,`${id}.json`)));
- assert.equal(out.id,id);return out;
+ assert.equal(out.id,id);assert.equal(out.phase,'READ');assert.equal(out.edge,pinSetup.edge);
+ assert.deepEqual(out.pins,pinSetup.pins,'fixture pins changed or a marker block became unloaded');
+ assert.ok(out.pins.every(p=>p.loaded&&p.acquired&&p.transient),'every fixed marker block must stay loaded');
+ return out;
 }
 async function audit(read){
  const before=await observe(),files=await journal(),begin=commands.length,life=events.length;
@@ -206,9 +223,9 @@ async function coordinates(frame){
  checks.push({case:'coordinate-calibration',points,frame:frame??null,native:response.result.records});
  return calibration;
 }
-let failure;
+let failure;const cleanupErrors=[];
 try{
- adapterFiber=ctx.plugin({name:'real-source-under-test',inject,apply(c){adapter=apply(c,{localUserPath:profile,localWorldRoots:[worlds]});}});await adapterFiber.await();
+ adapterFiber=ctx.plugin({name:'real-source-under-test',inject,apply(c){adapterOwner=c;adapter=apply(c,{localUserPath:profile,localWorldRoots:[worlds]});}});await adapterFiber.await();
  canvasFiber=ctx.plugin({name:'renamed-real-canvas-caller',apply(c){canvas=c;c.provide('hanaworldsCanvasV5',{call(){throw Error('FACT_READ_MUST_NOT_CALL_CANVAS');}});}});await canvasFiber.await();
  local=ctx.get('hanaworldsLocalWorlds');created=await local.createFlatWorld({requesterRef:'native-test',userPath:profile,worldName:'facts'});
  transportPort=JSON.parse(await readFile(join(created.worldPath,'worldmods/hanaworlds_adapter/transport.json'),'utf8')).port;
@@ -217,15 +234,55 @@ try{
  await writeFile(join(observer,'init.lua'),`
 local root=core.get_worldpath()
 local points={{-11,4,-2},{-2,-11,4},{13,-7,22},{22,13,-7}}
-local writes={set_node=0,swap_node=0,emerge_area=0,fix_light=0,vm_write=0}
+local writes={set_node=0,swap_node=0,emerge_area=0,fix_light=0,vm_write=0,forceload_block=0,forceload_free_block=0,load_area=0}
+local pins,seen={},{}
+local phase='SETUP'
+local function block_position(pos)
+ return {x=math.floor(pos.x/core.MAP_BLOCKSIZE),y=math.floor(pos.y/core.MAP_BLOCKSIZE),z=math.floor(pos.z/core.MAP_BLOCKSIZE)}
+end
+local function block_key(pos) return pos.x..','..pos.y..','..pos.z end
+local function pin_snapshot()
+ local loaded={};for _,block in ipairs(core.get_loaded_blocks()) do loaded[block_key(block)]=true end
+ local out={}
+ for i,pin in ipairs(pins) do
+  out[i]={position=pin.position,block=pin.block,acquired=pin.acquired,transient=true,loaded=loaded[block_key(pin.block)]==true}
+ end
+ return out
+end
+core.register_on_shutdown(function()
+ phase='TEARDOWN'
+ local released=0
+ for _,pin in ipairs(pins) do
+  local ok=pcall(core.forceload_free_block,pin.position,true)
+  pin.released=ok;if ok then released=released+1 end
+ end
+ local file=io.open(root..'/force_loaded.txt','rb')
+ local persistent=file and core.deserialize(file:read('*a')) or nil;if file then file:close() end
+ local persisted=0
+ if type(persistent)=='table' then
+  for _,pin in ipairs(pins) do if persistent[core.hash_node_position(pin.block)]~=nil then persisted=persisted+1 end end
+ end
+ core.safe_file_write(root..'/canvas-probe-pins-released.json',core.write_json({phase=phase,transient=true,
+  acquiredCount=#pins,releasedCount=released,pins=pins,writes=writes,persistentFilePresent=file~=nil,
+  persistentFileValid=type(persistent)=='table',persistentMarkerPins=persisted}))
+end)
 local function instrument()
- for _,key in ipairs({'set_node','swap_node','emerge_area','fix_light'}) do
-  local original=core[key];core[key]=function(...) writes[key]=writes[key]+1;return original(...) end
+ for _,key in ipairs({'set_node','swap_node','emerge_area','fix_light','forceload_block','forceload_free_block','load_area'}) do
+  local original=core[key];core[key]=function(...)
+   writes[key]=writes[key]+1
+   if key=='forceload_block' or key=='forceload_free_block' or key=='emerge_area' or key=='load_area' then
+    assert(phase~='READ','fixture must not load/free/emerge blocks during reads')
+   end
+   return original(...)
+  end
  end
  local mt=getmetatable(core.get_voxel_manip());local index=type(mt)=='table' and (type(mt.write_to_map)=='function' and mt or mt.__index)
  assert(type(index)=='table' and type(index.write_to_map)=='function')
  local original=index.write_to_map;index.write_to_map=function(...) writes.vm_write=writes.vm_write+1;return original(...) end
- core.safe_file_write(root..'/canvas-probe-ready','ready')
+ local snapshot=pin_snapshot();assert(#snapshot==#points)
+ for _,pin in ipairs(snapshot) do assert(pin.acquired and pin.loaded and pin.transient) end
+ phase='READ'
+ core.safe_file_write(root..'/canvas-probe-ready',core.write_json({phase=phase,edge=core.MAP_BLOCKSIZE,acquiredCount=#pins,pins=snapshot}))
 end
 core.after(0,function()
  local pending=#points
@@ -235,6 +292,13 @@ core.after(0,function()
    if remaining~=0 then return end
    core.set_node(pos,{name=core.registered_nodes['base:stone'] and 'base:stone' or 'mcl_core:stone'})
    core.get_meta(pos):set_string('axis-marker',table.concat(p,','))
+   local block=block_position(pos);local key=block_key(block)
+   if not seen[key] then
+    local acquired=core.forceload_block(pos,true)
+    assert(acquired==true,'temporary forceload of generated marker block failed')
+    pins[#pins+1]={position=pos,block=block,acquired=acquired,transient=true};seen[key]=true
+   end
+   assert(core.get_node_or_nil(pos) and core.get_node(pos).name~='ignore','marker must actually be loaded before audit')
    pending=pending-1;if pending==0 then instrument() end
   end)
  end
@@ -248,13 +312,24 @@ core.register_globalstep(function()
  local turns={};for i=0,3 do turns[#turns+1]=triple(core.facedir_to_dir(i)) end
  local orientation={engineVersion=core.get_version().string,turns=turns,up=triple(core.wallmounted_to_dir(0)),
   yaw0=triple(core.yaw_to_dir(0)),yawMinusQuarter=triple(core.yaw_to_dir(-math.pi/2)),yawPlusQuarter=triple(core.yaw_to_dir(math.pi/2))}
- core.safe_file_write(root..'/'..q.id..'.json',core.write_json({id=q.id,nodes=nodes,writes=writes,edge=core.MAP_BLOCKSIZE,orientation=orientation}))
+ core.safe_file_write(root..'/'..q.id..'.json',core.write_json({id=q.id,nodes=nodes,writes=writes,edge=core.MAP_BLOCKSIZE,orientation=orientation,phase=phase,pins=pin_snapshot()}))
 end)
 `);
+ probeInstalled=true;
  const lease=await local.acquire({connectionRef:created.connectionRef,requesterRef:'native-test',userPath:profile,action:'BIND_RUNNING_WORLD'});
  paired=await local.pair({connectionRef:created.connectionRef,requesterRef:'native-test',leaseRef:lease.leaseRef});paired.leaseRef=lease.leaseRef;
  scope={worldRef:paired.worldRef,connectionRef:paired.connectionRef,connectionIncarnationRef:paired.connectionIncarnationRef};port=canvas.get('hanaworldsWorldFacts');
- await waitFor(join(created.worldPath,'canvas-probe-ready'));
+ pinSetup=JSON.parse(await waitFor(join(created.worldPath,'canvas-probe-ready')));
+ assert.equal(pinSetup.phase,'READ');assert.equal(pinSetup.acquiredCount,points.length);
+ assert.equal(pinSetup.pins.length,points.length);assert.equal(new Set(pinSetup.pins.map(p=>JSON.stringify(p.block))).size,points.length);
+ assert.ok(pinSetup.pins.every(p=>p.acquired&&p.transient&&p.loaded));
+ assert.deepEqual(pinSetup.pins.map(p=>[p.position.x,p.position.y,p.position.z]),points);
+ for(const pin of pinSetup.pins)assert.deepEqual([pin.block.x,pin.block.y,pin.block.z],
+  [pin.position.x,pin.position.y,pin.position.z].map(n=>Math.floor(n/pinSetup.edge)));
+ checks.push({case:'fixture-pins-established-before-audit',...pinSetup});
+ // Standalone negative diagnostic of exception cleanup. Not part of the locked
+ // parent scenario list, never a production option/error or a mocked source.
+ if(scenario==='fixture-cleanup-on-error')throw Error('TEST_OBSERVER_ABORT_AFTER_PINS');
  // This existing public read ensures actual fact_world_source/region_limits
  // commands execute even on the intentionally RED, pre-implementation baseline.
  const engine=await audit(()=>port.call('ReadEngineFacts',{contractVersion:'world-facts/v1',requestId:'native-baseline',worldRef:paired.worldRef}));
@@ -311,24 +386,55 @@ end)
    for(const field of ['worldRef','connectionIncarnationRef'])await audit(()=>assert.rejects(port.readCanvasFacts({...scope,[field]:'wrong'}),refused('CURRENT_WORLD_MISMATCH')));
    await audit(()=>assert.rejects(port.readCanvasFacts({...scope,connectionRef:'absent'}),refused('WORLD_NOT_BOUND')));
    await audit(()=>assert.rejects(ctx.get('hanaworldsWorldFacts').readCanvasFacts(scope),refused('CAPABILITY_UNAVAILABLE')));
-   const read=port.readCanvasFacts;
-   if(mode==='source')canvas.set('hanaworldsCanvasV5',{call(){throw Error('REPLACED_PROVIDER');}});
-   else canvas.set('hanaworldsWorldFacts',{call(){throw Error('REPLACED_SOURCE_PROVIDER');}});
-   await audit(()=>assert.rejects(read(scope),refused('CAPABILITY_UNAVAILABLE')));checks.push({case:'provider-replacement',provider:mode==='source'?'canvas':'source'});
+   for(const target of ['hanaworldsCanvasV5','hanaworldsWorldFacts'])for(const phase of ['before','during']){
+    const owner=target==='hanaworldsCanvasV5'?canvas:adapterOwner,prior=original(owner.get(target));
+    const read=canvas.get('hanaworldsWorldFacts').readCanvasFacts;
+    const replacement={call(){throw Error('REPLACED_PROVIDER_MUST_NOT_BE_CALLED');}};
+    const hook={invoked:false,completed:false,error:null,replace(){replaceOwnedService(owner,target,replacement);}};
+    const begin=commands.length;
+    try{
+     if(phase==='before'){hook.invoked=true;hook.replace();hook.completed=true;}else providerFault=hook;
+     await audit(()=>assert.rejects(read(scope),refused('CAPABILITY_UNAVAILABLE')));
+     assert.equal(hook.error,null,'a setup exception cannot count as source refusal');assert.equal(hook.invoked,true);assert.equal(hook.completed,true);
+     assert.equal(original(owner.get(target)),replacement,'actual owner replacement must take effect');
+     const reads=commands.slice(begin).filter(q=>q.operation==='fact_world_source');
+     if(phase==='before')assert.equal(reads.length,0);else assert.ok(reads.length>0,'during hook needs an actual payload observation');
+     checks.push({case:'provider-replacement',provider:target,phase,hookCompleted:hook.completed,actualReplacement:true});
+    }finally{providerFault=null;replaceOwnedService(owner,target,prior);}
+    assert.deepEqual(plain(await readComplete()),plain(initial));
+   }
   }else assert.equal(scenario,'normal');
  }
 }catch(e){failure=e;}finally{
- externalFault=null;
- if(originalDeclaration&&created)await writeFile(declarationPath(),originalDeclaration,{mode:0o600});
- if(adapter)await adapter.close();await host.shutdown();if(canvasFiber)await canvasFiber.dispose();if(adapterFiber)await adapterFiber.dispose();await ctx.fiber.dispose();
+ externalFault=null;providerFault=null;
+ // Preserve the primary error AND attempt every teardown action. A native
+ // startup/stop failure must not suppress pin release evidence or the receipt.
+ const cleanup=async(stage,fn)=>{try{await fn();}catch(e){cleanupErrors.push({stage,name:e.name,message:e.message});failure??=e;}};
+ await cleanup('restore-declaration',async()=>{if(originalDeclaration&&created)await writeFile(declarationPath(),originalDeclaration,{mode:0o600});});
+ await cleanup('adapter-close',async()=>{if(adapter)await adapter.close();});
+ await cleanup('host-shutdown',()=>host.shutdown());
+ await cleanup('canvas-dispose',async()=>{if(canvasFiber)await canvasFiber.dispose();});
+ await cleanup('adapter-dispose',async()=>{if(adapterFiber)await adapterFiber.dispose();});
+ await cleanup('root-dispose',()=>ctx.fiber.dispose());
+ await cleanup('verify-pins-released',async()=>{if(probeInstalled){
+  pinCleanup=JSON.parse(await readFile(join(created.worldPath,'canvas-probe-pins-released.json'),'utf8'));
+  assert.equal(pinCleanup.phase,'TEARDOWN');assert.equal(pinCleanup.transient,true);
+  assert.equal(pinCleanup.releasedCount,pinCleanup.acquiredCount,'all acquired pins must release on normal or exceptional exit');
+  if(pinSetup)assert.equal(pinCleanup.releasedCount,pinSetup.acquiredCount);
+  if(pinCleanup.acquiredCount)assert.ok(pinCleanup.pins.every(p=>p.released&&p.transient));
+  assert.equal(pinCleanup.persistentMarkerPins,0,'transient marker pins must never persist');
+  if(pinCleanup.persistentFilePresent)assert.equal(pinCleanup.persistentFileValid,true);
+ }});
  ServerResponse.prototype.end=originalEnd;Server.prototype.emit=originalEmit;
  for(const record of host.records.values()){
-  assert.equal(record.exit?.code,0,`native exit failed: ${record.logfile}`);
-  assert.throws(()=>process.kill(record.child.pid,0),e=>e.code==='ESRCH','native process was not reaped');
+  await cleanup('native-exit',()=>assert.equal(record.exit?.code,0,`native exit failed: ${record.logfile}`));
+  await cleanup('native-process-reaped',()=>assert.throws(()=>process.kill(record.child.pid,0),e=>e.code==='ESRCH','native process was not reaped'));
  }
  await writeFile(join(root,'native-protocol.json'),JSON.stringify({commands,results},null,2));
  await writeFile(join(root,'receipt.json'),JSON.stringify({status:failure?'RED':'PASS',mode,scenario,tarSHA256:cfg.tarSHA256,
   evidence:'REAL_ENGINE/COURIER; source or normally installed strict tgz; game/Canvas are environment peers',
-  sourceMocked:false,UI:'NOT_RUN',owner:'NOT_ACCEPTED',scope,events,checks,failure:failure?{name:failure.name,message:failure.message}:null},null,2));
+  sourceMocked:false,UI:'NOT_RUN',owner:'NOT_ACCEPTED',scope,events,checks,pinSetup,pinCleanup,cleanupErrors,
+  nativeProcesses:[...host.records.values()].map(r=>({pid:r.child.pid,exit:r.exit,logfile:r.logfile})),
+  failure:failure?{name:failure.name,message:failure.message}:null},null,2));
 }
 if(failure)throw failure;
