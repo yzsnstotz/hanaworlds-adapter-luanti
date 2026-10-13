@@ -364,7 +364,33 @@ export type WriteProfile = {readonly transportPolicy?:WorldSourceTransportPolicy
 export type WriteRegionRequest = { readonly "contractVersion": "world-adapter-region/v3"; readonly "sessionRef": Ref; readonly "requestId": Ref; readonly "worldRef": Ref; readonly "transactionId": Ref; readonly "purpose": RegionWritePurpose; readonly "partition": Partition; readonly "writes": RegionChunkWrites; readonly "localContext": LocalWorldContext };
 export type WriteRegionResponse = { readonly "contractVersion": "world-adapter-region/v3"; readonly "requestId": Ref; readonly "result": RegionWriteResult | null; readonly "error": Error | null; readonly "guardRefusal": GuardRefusal | null };
 export type ScopedStateFacts = Pick<ScopedWorldBinding,'worldRef'|'stateProfile'|'cells'>;
+/** Additive C-world-facts v2 Host facts, owned by the world-source. */
+export type CanvasFactsScope = MaterialSourceConnection;
+export type FactsProviderIdentity = {readonly providerRef:Ref;readonly providerRevision:Ref};
+export type FactSource = {readonly kind:'LOADED_WORLD_DECLARATION'|'NATIVE_OBSERVATION';readonly factRef:Ref;readonly revision:Ref};
+export type CanvasTypicalScale = {readonly size:RegionSize;readonly unit:Ref};
+export type SourcedText = {readonly value:Ref;readonly source:FactSource};
+export type SourcedScale = {readonly value:CanvasTypicalScale;readonly source:FactSource};
+export type SourcedGridUnit = {readonly value:GridUnit;readonly source:FactSource};
+export type SourcedFrame = {readonly value:Frame;readonly source:FactSource};
+export type SourcedPartition = {readonly value:Partition;readonly source:FactSource};
+export type CanvasToolFacts = {readonly toolRef:Ref;readonly purpose:SourcedText;readonly typicalScale:SourcedScale};
+export type CanvasDeclarationFacts = {readonly tools:ReadonlyArray<CanvasToolFacts>;readonly unit:SourcedGridUnit;readonly frame:SourcedFrame;readonly partition:SourcedPartition};
+export type CanvasSourceFacts = CanvasDeclarationFacts & {readonly profileVersion:'canvas-source-facts/v1';readonly connection:CanvasFactsScope;readonly provider:FactsProviderIdentity;readonly sourceRevision:Digest};
 export interface TypeMap {
+"CanvasFactsScope":CanvasFactsScope;
+"FactsProviderIdentity":FactsProviderIdentity;
+"FactSource":FactSource;
+"CanvasTypicalScale":CanvasTypicalScale;
+"SourcedText":SourcedText;
+"SourcedScale":SourcedScale;
+"SourcedGridUnit":SourcedGridUnit;
+"SourcedFrame":SourcedFrame;
+"SourcedPartition":SourcedPartition;
+"CanvasToolFacts":CanvasToolFacts;
+"CanvasDeclarationFacts":CanvasDeclarationFacts;
+"CanvasSourceFacts":CanvasSourceFacts;
+
 FailureSource:FailureSource;
 WorldSourceTransportSetting:WorldSourceTransportSetting;
 WorldSourceTransportPolicy:WorldSourceTransportPolicy;

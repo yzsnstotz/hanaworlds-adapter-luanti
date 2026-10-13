@@ -89,7 +89,7 @@ function M.start(http, engine_module, manifest, read_own_file, on_ready, capabil
     elseif command.operation == 'fact_world_source' then
       if type(facts) ~= 'table' or type(facts.source_declaration) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'
-      else result, code = facts.source_declaration(minetest, engine_module.WRITE_BACKEND, engine_module.native_writer) end
+      else result, code = facts.source_declaration(minetest, engine_module.WRITE_BACKEND, engine_module.native_writer, read_own_file, manifest.worldRef) end
     elseif command.operation == 'fact_world_revision' then
       if type(facts) ~= 'table' or type(facts.world_revision) ~= 'function' then
         code = 'CAPABILITY_UNAVAILABLE'

@@ -8,7 +8,7 @@ the card's `contract-add` directory for the program to append after integration.
 
 `src/protocol` owns the necessary schema, metadata, strict JSON/schema/domain and
 binding validators, exact canonical digest rules and declarations. The selected
-368 schema definitions cover the current Adapter handlers and their public peer
+380 schema definitions cover the current Adapter handlers and their public peer
 requests/responses; sibling-only schemas and tool/plugin/placement-setting
 bindings are excluded. No sibling implementation, SDK package, full repository
 or complete fixture set is included. Existing wire/error/hash/handshake bytes
@@ -51,3 +51,11 @@ C.validateType injection remains supported for existing Host callers/fixtures;
 ordinary production assembly needs neither an external SDK nor a private
 protocol module import. NativeControl shapes and process ownership checks remain
 required, and malformed input is tested through the default public factory.
+
+The additive Canvas source facts Host read is documented in
+`docs/protocol-canvas-facts.md`. Its twelve owned types, completeness/domain
+checks and declarations are normal build inputs. Purposes, typical scales and
+complete grid Frame are explicit source-authored normal payload data in
+`canvas-facts.json`; native reads bind that world's actual file bytes and
+partition observations to scope/provider identities. No shared package, wire
+operation, synchronous guard or historical alias supplies these facts.

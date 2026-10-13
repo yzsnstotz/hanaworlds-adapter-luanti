@@ -1,7 +1,8 @@
 export type { Ref, Positions, StateProfile, ScopedCells, ScopedWorldBinding, Error as WorldFactsError, FailureSource } from '../dist/contracts-types/index.js';
+export type { CanvasFactsScope, CanvasSourceFacts, FactsProviderIdentity, FactSource } from '../dist/contracts-types/index.js';
 import type { ScopedWorldBinding, Ref, Positions, ReadCatalogueRequest, ReadCatalogueResponse,
  ReadMaterialSourcesRequest, ReadMaterialSourcesResponse, ReadEngineFactsRequest, ReadEngineFactsResponse,
- ReadWriteProfileRequest, ReadWriteProfileResponse } from '../dist/contracts-types/index.js';
+ ReadWriteProfileRequest, ReadWriteProfileResponse, CanvasFactsScope, CanvasSourceFacts } from '../dist/contracts-types/index.js';
 /** Read-only Host facts using the existing scoped transaction types. No wire operation
  * or synchronous guard; hashes retain the StateProfile rules of the paired source. */
 export type ScopedStateFacts = Pick<ScopedWorldBinding, 'worldRef' | 'stateProfile' | 'cells'>;
@@ -10,6 +11,7 @@ export type ScopedStateFacts = Pick<ScopedWorldBinding, 'worldRef' | 'stateProfi
 export interface WorldFactsHostPort {
  readonly contractVersion: 'world-facts/v1';
  readScopedState(connectionRef: Ref, positions: Positions): Promise<ScopedStateFacts>;
+ readCanvasFacts(scope: CanvasFactsScope): Promise<CanvasSourceFacts>;
  call(operation: 'ReadCatalogue', request: ReadCatalogueRequest): Promise<ReadCatalogueResponse>;
  call(operation: 'ReadMaterialSources', request: ReadMaterialSourcesRequest): Promise<ReadMaterialSourcesResponse>;
  call(operation: 'ReadEngineFacts', request: ReadEngineFactsRequest): Promise<ReadEngineFactsResponse>;

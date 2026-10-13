@@ -5,22 +5,23 @@
   "sha256": {
     "docs/protocol-baseline/C-world-adapter.md": "bf38628c9e7fd67bb8763deb866bbc11b218b4a3e3bf429d83d86bfd5378927d",
     "docs/protocol-baseline/C-world-facts.md": "92854519901af95fc6c95c7562ccf01f7ddc9bb669552fa24f5ea27f7c95377c",
-    "docs/protocol-provenance.md": "115e318e89bf26630ce66d9e9210bef0d83ed6fe4f537b889152cc1e43326a54",
+    "docs/protocol-provenance.md": "e5783dc31df17f270a01f400e0cc8ea2ea6cbbc2cc7558a510ed9eeadd98b7fe",
     "docs/protocol-scoped-state.md": "b6b23fd2c761ccca530895883e7b36948bb1359e28518ab5da82413cfa0ea7ef",
     "fixtures/local-world-source.json": "6cf8517da8cdb8810116c727867342378306ec4a73ea04cc51fe7fe84f0099b9",
     "fixtures/local-worlds-v2.json": "644f284c37c398b697c0ac5a51c57fe1dc7f11f82aed3ed67e0dcb15e79c49dd",
     "fixtures/world-source-facts.json": "12720d75a72d33b6c10c6c46826ca28f974926d1424640ebf7e3257afc200916",
     "src/protocol/LICENSE": "921940ddfcb1c9915b4d55942203a52ca8abf2e71354df85a8464f589d17c548",
-    "src/protocol/contracts.d.ts": "41244eaf05a935c8cc72bb9824e570140513c876dd61c0f54d6f2f691ff0e3d9",
+    "src/protocol/contracts.d.ts": "3eff78f0ea39f9d77a8ddcc483c9cdeb268415357d9831540162a9a40bbe6688",
     "src/protocol/historical-NOTICE": "eb379fc4d7055a01aec0e0064ac5ad884aa662f1a7d16ce13ff14c609126f591",
-    "src/protocol/index.d.ts": "89f45ec0426c6f9ff41e8cffd218f7d809f1526aba2f50e6b700e8635e57e179",
-    "src/protocol/metadata.json": "a902ce9648e3532edcd55a10377c3acc1dfe487867a16490c1a835122d7b01df",
-    "src/protocol/schema.json": "9f0f53152328cb1e09bf7d8ca2061bb418d2f5b854983df4e0c67cf73f7d2d4b",
-    "src/protocol/values.mjs": "491e781932e7f22c44dd85f78406f68b6e8f285d47d4645c001c4e4c7ffde685",
+    "src/protocol/index.d.ts": "a632b912ef7b3a74590085b2b928c946595cfc5ab7efe0a7731b357800ca2495",
+    "src/protocol/metadata.json": "377b6ad68a36f8ce9b894fac7f5b0240a5059d6fbf303f4a32bda9164f98a512",
+    "src/protocol/schema.json": "f65ffc2a5a0c87dd4af8a0e75b06ca4d505e2656fc6bd491f270280b58cc75d0",
+    "src/protocol/values.mjs": "c88102faaf2dab61b2e94480fd8450d829a897a6c2b3d5820252fedc5ef6be48",
     "test/fixtures/catalogue.json": "7b489bcf1ef3567b45426c8534c6666d679a2a7bd293a7ff07662824f51853c5",
     "test/fixtures/config-engine-facts.json": "6356780352e25d8f91b720d42b424e9419bf156489d5d35fb0e6ca2a258b3b10",
     "test/fixtures/session-world.json": "abe2741902b509041c5936b110ce6a76e68910f2c54c16739f1b227783f9f9fc",
     "test/fixtures/source-startup.json": "2d817bc5a3ed02117ed6389f9cdb2205d08bc420cb1ebb02cd55ed8139cec0ce",
-    "test/fixtures/transport-policy.json": "6e2e2b668bce15bbe31fb6ff567c646412cca9516bc41925dd274aa2c3bb595b"
+    "test/fixtures/transport-policy.json": "6e2e2b668bce15bbe31fb6ff567c646412cca9516bc41925dd274aa2c3bb595b",
+    "docs/protocol-canvas-facts.md": "641df7340bd75a94c4ab55d6641928fa3211388b1747684e1706dec34232105f"
   }
 }

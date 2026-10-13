@@ -55,6 +55,7 @@
     "payload/hanaworlds_adapter/region.lua",
     "payload/hanaworlds_adapter/facts.lua",
     "payload/hanaworlds_adapter/voxel.lua",
+    "payload/hanaworlds_adapter/canvas-facts.json",
     "cordis.patch.yml",
     "GADGET.md",
     "LICENSE_AUDIT.md",
@@ -77,6 +78,7 @@
     "src/index.d.ts",
     "docs/protocol-scoped-state.md",
     "docs/protocol-provenance.md",
+    "docs/protocol-canvas-facts.md",
     "dist/protocol-source.json"
   ],
   "dsh": {

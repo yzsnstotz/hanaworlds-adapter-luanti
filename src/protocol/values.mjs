@@ -1116,6 +1116,15 @@ function validateType(typeName, value) {
   const visits = validateShape(typeName, snapshot);
   validateDomain(visits);
   for (const {name,value} of visits) {
+    if(name==='CanvasDeclarationFacts'||name==='CanvasSourceFacts') {
+      const tools=value.tools;
+      requireFact(tools.every((t,i)=>i===0||tools[i-1].toolRef<t.toolRef));
+      requireFact(tools.every(t=>t.typicalScale.value.unit===value.unit.value.name));
+      requireFact(canonicalJSON(value.frame.value.gridUnit)===canonicalJSON(value.unit.value));
+      requireFact([value.unit,value.frame,...tools.flatMap(t=>[t.purpose,t.typicalScale])]
+        .every(f=>f.source.kind==='LOADED_WORLD_DECLARATION'));
+      requireFact(value.partition.source.kind==='NATIVE_OBSERVATION');
+    }
     if(name==='WorldSourceTransportPolicy') {
       const names=value.settings.map(s=>s.name);
       requireFact(new Set(names).size===names.length,'SCHEMA_INVALID','INVALID_SHAPE');
@@ -1127,6 +1136,27 @@ function validateType(typeName, value) {
     validateDigestBinding("region-block", value2.block, value2.blockDigest);
   if (Object.hasOwn(canvasEventRules, typeName)) validateEventDomain(typeName, snapshot);
   return deepFreeze(snapshot);
+}
+/** Missing source facts are recoverable incompleteness; malformed present facts
+ * still use the strict owned schema's ordinary errors. Null physical conversion
+ * is valid only where the declaration explicitly permits it. */
+export function validateCanvasDeclarationFacts(input) {
+  const value=snapshotJSON(input);
+  const complete=(s,v)=>{
+    if(!s)return; // Extra tuple elements remain an ordinary schema-shape error.
+    if(s.$ref)s=schemaBundle.definitions[s.$ref.slice('#/definitions/'.length)];
+    if(s.anyOf){if(v===null&&s.anyOf.some(x=>x.type==='null'))return;s=s.anyOf.find(x=>x.type!=='null');}
+    requireFact(v!==null&&v!==undefined,'TARGET_FACTS_INCOMPLETE','REQUIRED_FACT_UNKNOWN');
+    if(s.type==='object'&&typeof v==='object'&&!Array.isArray(v)) {
+      for(const key of s.required??[])requireFact(Object.hasOwn(v,key),'TARGET_FACTS_INCOMPLETE','REQUIRED_FACT_UNKNOWN');
+      for(const [key,child] of Object.entries(s.properties??{}))if(Object.hasOwn(v,key))complete(child,v[key]);
+    } else if(s.type==='array'&&Array.isArray(v)) {
+      for(let i=0;i<v.length;i++)complete(Array.isArray(s.items)?s.items[i]:s.items,v[i]);
+    }
+  };
+  complete(schemaBundle.definitions.CanvasDeclarationFacts,value);
+  if(Array.isArray(value.tools))requireFact(value.tools.length>0,'TARGET_FACTS_INCOMPLETE','REQUIRED_FACT_UNKNOWN');
+  return validateType('CanvasDeclarationFacts',value);
 }
 function operation(wire4, operationName) {
   if (!Object.hasOwn(operationContracts, wire4)) fail("UNSUPPORTED_VERSION", "decode", "VERSION_UNSUPPORTED");

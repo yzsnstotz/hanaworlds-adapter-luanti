@@ -8,7 +8,7 @@ local function read(name)
   return bytes
 end
 local manifest = assert(minetest.parse_json(assert(read('payload.json'))))
-local files = {'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'transport-policy.lua', 'region.lua', 'facts.lua', 'voxel.lua'}
+local files = {'mod.conf', 'init.lua', 'engine.lua', 'transport.lua', 'transport-policy.lua', 'region.lua', 'facts.lua', 'voxel.lua', 'canvas-facts.json'}
 local bytes = ''
 for _, name in ipairs(files) do bytes = bytes .. name .. '\n' .. assert(read(name)) end
 local digest = minetest.sha256(bytes)

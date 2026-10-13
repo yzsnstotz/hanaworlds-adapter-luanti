@@ -10106,6 +10106,265 @@
       ],
       "additionalProperties": false,
       "x-typeName": "WorldSourceTransportPolicy"
+    },
+    "CanvasFactsScope": {
+      "type": "object",
+      "properties": {
+        "worldRef": {
+          "$ref": "#/definitions/Ref"
+        },
+        "connectionRef": {
+          "$ref": "#/definitions/Ref"
+        },
+        "connectionIncarnationRef": {
+          "$ref": "#/definitions/Ref"
+        }
+      },
+      "required": [
+        "worldRef",
+        "connectionRef",
+        "connectionIncarnationRef"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "CanvasFactsScope"
+    },
+    "FactsProviderIdentity": {
+      "type": "object",
+      "properties": {
+        "providerRef": {
+          "$ref": "#/definitions/Ref"
+        },
+        "providerRevision": {
+          "$ref": "#/definitions/Ref"
+        }
+      },
+      "required": [
+        "providerRef",
+        "providerRevision"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "FactsProviderIdentity"
+    },
+    "FactSource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "LOADED_WORLD_DECLARATION",
+            "NATIVE_OBSERVATION"
+          ]
+        },
+        "factRef": {
+          "$ref": "#/definitions/Ref"
+        },
+        "revision": {
+          "$ref": "#/definitions/Ref"
+        }
+      },
+      "required": [
+        "kind",
+        "factRef",
+        "revision"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "FactSource"
+    },
+    "CanvasTypicalScale": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "$ref": "#/definitions/RegionSize"
+        },
+        "unit": {
+          "$ref": "#/definitions/Ref"
+        }
+      },
+      "required": [
+        "size",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "CanvasTypicalScale"
+    },
+    "SourcedText": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/Ref"
+        },
+        "source": {
+          "$ref": "#/definitions/FactSource"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "SourcedText"
+    },
+    "SourcedScale": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/CanvasTypicalScale"
+        },
+        "source": {
+          "$ref": "#/definitions/FactSource"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "SourcedScale"
+    },
+    "SourcedGridUnit": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/GridUnit"
+        },
+        "source": {
+          "$ref": "#/definitions/FactSource"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "SourcedGridUnit"
+    },
+    "SourcedFrame": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/Frame"
+        },
+        "source": {
+          "$ref": "#/definitions/FactSource"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "SourcedFrame"
+    },
+    "SourcedPartition": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/Partition"
+        },
+        "source": {
+          "$ref": "#/definitions/FactSource"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "SourcedPartition"
+    },
+    "CanvasToolFacts": {
+      "type": "object",
+      "properties": {
+        "toolRef": {
+          "$ref": "#/definitions/Ref"
+        },
+        "purpose": {
+          "$ref": "#/definitions/SourcedText"
+        },
+        "typicalScale": {
+          "$ref": "#/definitions/SourcedScale"
+        }
+      },
+      "required": [
+        "toolRef",
+        "purpose",
+        "typicalScale"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "CanvasToolFacts"
+    },
+    "CanvasDeclarationFacts": {
+      "type": "object",
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CanvasToolFacts"
+          },
+          "minItems": 1
+        },
+        "unit": {
+          "$ref": "#/definitions/SourcedGridUnit"
+        },
+        "frame": {
+          "$ref": "#/definitions/SourcedFrame"
+        },
+        "partition": {
+          "$ref": "#/definitions/SourcedPartition"
+        }
+      },
+      "required": [
+        "tools",
+        "unit",
+        "frame",
+        "partition"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "CanvasDeclarationFacts"
+    },
+    "CanvasSourceFacts": {
+      "type": "object",
+      "properties": {
+        "profileVersion": {
+          "const": "canvas-source-facts/v1"
+        },
+        "connection": {
+          "$ref": "#/definitions/CanvasFactsScope"
+        },
+        "provider": {
+          "$ref": "#/definitions/FactsProviderIdentity"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CanvasToolFacts"
+          },
+          "minItems": 1
+        },
+        "unit": {
+          "$ref": "#/definitions/SourcedGridUnit"
+        },
+        "frame": {
+          "$ref": "#/definitions/SourcedFrame"
+        },
+        "partition": {
+          "$ref": "#/definitions/SourcedPartition"
+        },
+        "sourceRevision": {
+          "$ref": "#/definitions/Digest"
+        }
+      },
+      "required": [
+        "profileVersion",
+        "connection",
+        "provider",
+        "tools",
+        "unit",
+        "frame",
+        "partition",
+        "sourceRevision"
+      ],
+      "additionalProperties": false,
+      "x-typeName": "CanvasSourceFacts"
     }
   }
 }

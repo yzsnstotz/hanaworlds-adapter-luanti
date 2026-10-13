@@ -1,0 +1,30 @@
+{
+  "profileVersion": "canvas-declaration/v1",
+  "tools": [
+    {
+      "toolRef": "tool:fill",
+      "purpose": "将选定网格区域填充为一种材质。",
+      "typicalScale": {"size": [9, 5, 9], "unit": "world-cell"}
+    },
+    {
+      "toolRef": "tool:line",
+      "purpose": "沿选定方向排列网格单元，构建线段。",
+      "typicalScale": {"size": [25, 1, 1], "unit": "world-cell"}
+    },
+    {
+      "toolRef": "tool:replace",
+      "purpose": "在选定区域中替换匹配的材质。",
+      "typicalScale": {"size": [9, 5, 9], "unit": "world-cell"}
+    }
+  ],
+  "unit": {"name": "world-cell", "metersPerGridUnit": null},
+  "frame": {
+    "profileVersion": "frame/v2",
+    "frameId": "frame:world-grid",
+    "origin": [0, 0, 0],
+    "axes": ["+X", "+Y", "+Z"],
+    "handedness": "left",
+    "gridUnit": {"name": "world-cell", "metersPerGridUnit": null},
+    "transformRevision": "record-position/v1"
+  }
+}

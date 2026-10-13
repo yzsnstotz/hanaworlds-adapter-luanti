@@ -1,6 +1,7 @@
 import { canonicalJSON, digestValue, validateType, validateCatalogueFacts,
   validateEngineFacts, validateWriteProfile,
   validateWorldSourceCapabilities, ContractError } from '#contracts';
+import { validateCanvasDeclarationFacts } from '#contracts';
 import { WORLD_GEOMETRY } from './world-vocabulary.mjs';
 import { engineGuardDeclaration } from './safety-capabilities.mjs';
 import { resolveMaterialSources, materialSourceFacts } from './material-sources.mjs';
@@ -8,6 +9,23 @@ import { createHash } from 'node:crypto';
 const digest = (kind, value) => digestValue(kind, value).sha256;
 const opaqueRevision = value => createHash('sha256').update(canonicalJSON(value)).digest('hex');
 const refuse = code => { throw new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN'); };
+/** Fresh native observations of the loaded declaration and actual partition.
+ * Instance authority and world currency belong to the runtime, not caller JSON.
+ * Never obtains a fact through a legacy supplier, fixture, body or budget. */
+export async function readCanvasSourceFacts(row,provider,checkCurrent) {
+  const engine=row.engine;
+  const first=await engine.sourceDeclaration();await checkCurrent();
+  const facts=validateCanvasDeclarationFacts(first?.canvasFacts??null);
+  const limits=await engine.regionLimits();await checkCurrent();
+  if(!facts.partition.value.edge.every(edge=>edge===limits.mapblockSize))refuse('CURRENT_WORLD_MISMATCH');
+  if(!facts.partition.value.edge.every((edge,i)=>edge===WORLD_GEOMETRY.partition.edge[i]))refuse('CAPABILITY_GAP');
+  const last=await engine.sourceDeclaration();await checkCurrent();
+  const confirmedLimits=await engine.regionLimits();await checkCurrent();
+  if(canonicalJSON(first)!==canonicalJSON(last)||canonicalJSON(limits)!==canonicalJSON(confirmedLimits))refuse('CURRENT_WORLD_MISMATCH');
+  const connection={worldRef:row.worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation};
+  const body={profileVersion:'canvas-source-facts/v1',connection,provider,...facts};
+  return validateType('CanvasSourceFacts',{...body,sourceRevision:opaqueRevision(body)});
+}
 const INIT = new Set(['after_destruct','after_place_node','on_construct','on_destruct','on_timer']);
 const STATE = new Set(['allow_metadata_inventory_move','allow_metadata_inventory_put','allow_metadata_inventory_take',
   'on_metadata_inventory_move','on_metadata_inventory_put','on_metadata_inventory_take','on_receive_fields','preserve_metadata']);

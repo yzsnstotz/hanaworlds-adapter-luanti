@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { types } from 'node:util';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, ContractError } from '#contracts';
-import { readWorldSourceFact, checkWritePathFacts } from './world-source-facts.mjs';
+import { readWorldSourceFact, readCanvasSourceFacts, checkWritePathFacts } from './world-source-facts.mjs';
 import { createInspectionContext } from './inspection-context.mjs';
 import { LocalCourier } from './local-courier.mjs';
 import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
@@ -38,6 +38,7 @@ const trackedCaller = (receiver, port, ctx) => types.isProxy(receiver) &&
 /** All dependencies below are in-process ports, never caller JSON facts. */
 export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, transportSettings = {}, log = message => console.warn(message) }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
+  const factsProvider=Object.freeze({providerRef:`facts-provider:${randomUUID()}`,providerRevision:`facts-generation:${randomUUID()}`});
   let activeCanvasCheck = () => {}, activeWriteRequest = null;
   let inventorySignature = null, inventoryRevision = `adapter:${ADAPTER_VERSION}:${randomUUID()}`;
   const stage1 = createStage1Facts();
@@ -512,6 +513,59 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     },
   };
   const worldFacts={ctx,[Symbol.for('cordis.tracker')]:{property:'ctx'},contractVersion:'world-facts/v1',contractHandshake,
+    get readCanvasFacts() {
+      const caller=trackedCaller(this,worldFacts,ctx);
+      let check,refusal;
+      try {
+        const canvasCheck=canvasCaller(caller);
+        const key=ctx?.[Symbol.for('cordis.isolate')]?.hanaworldsWorldFacts;
+        const registered=key&&ctx.reflect?.store?.[key];
+        check=()=>{
+          canvasCheck();
+          if(!registered||registered.fiber?.state!==2||original(registered.value)!==worldFacts||
+            ctx.reflect.store[key]!==registered||original(ctx.get('hanaworldsWorldFacts'))!==worldFacts)fail('CAPABILITY_UNAVAILABLE');
+        };check();
+      }catch(error){refusal=error;}
+      return async input=>{
+        try {
+          const scope=validateType('CanvasFactsScope',input);
+          if(closed)fail('ADAPTER_UNAVAILABLE');
+          if(refusal)throw refusal;check();
+          const work=serial.then(async()=>{
+            if(closed)fail('ADAPTER_UNAVAILABLE');check();
+            const row=rows.get(scope.connectionRef);if(!row)fail('WORLD_NOT_BOUND');
+            const current=async()=>{
+              check();
+              if(closed||row.engine.closed||rows.get(scope.connectionRef)!==row||
+                row.worldRef!==scope.worldRef||row.incarnation!==scope.connectionIncarnationRef)fail('CURRENT_WORLD_MISMATCH');
+              try {await inspectConnection(scope.connectionRef);}
+              catch(error){
+                // This runtime already knows the paired row: a missing live
+                // lease is lost currency, not an unknown input connection.
+                if((error.code??error.message)==='WORLD_NOT_BOUND')fail('CURRENT_WORLD_MISMATCH');
+                throw error;
+              }
+              check();
+              if(closed||row.engine.closed||rows.get(scope.connectionRef)!==row)fail('CURRENT_WORLD_MISMATCH');
+            };
+            await current();
+            const result=await readCanvasSourceFacts(row,factsProvider,current);
+            await current();return result;
+          });
+          serial=work.catch(()=>{});return await work;
+        }catch(error){
+          if(error instanceof ContractError)throw error;
+          if(error?.publicError!==undefined){
+            const refusal=validateType('Error',error.publicError);
+            if(refusal.mutationState!=='NONE'||refusal.transactionRef!==null)throw new ContractError('SCHEMA_INVALID','validate','INVALID_SHAPE');
+            throw new ContractError(refusal.code,refusal.phase,refusal.reason,refusal);
+          }
+          const cause=error?.code??error?.message;
+          const code=schemaBundle.definitions.ErrorCode.enum.includes(cause)?cause:'CAPABILITY_UNAVAILABLE';
+          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error?.source?{source:error.source}:{});
+        }
+      };
+    },
     // Host method on the existing fact service, not an added wire operation or a
     // synchronous session guard. Capture the real Cordis caller before queueing.
     get readScopedState() {

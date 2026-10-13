@@ -356,7 +356,7 @@ end
 -- mcl_playerplus normal/sneaking/riding/swimming/elytra bodies fit within a
 -- 1 x 2 x 1 grid envelope. Actual bodies (including modded ones) are checked
 -- inside write guards. Other games receive no implicit dimensions.
-function M.source_declaration(core, declaration, native_writer)
+function M.source_declaration(core, declaration, native_writer, read_own_file, world_ref)
   local out, code = M.write_backend(core, declaration, native_writer)
   if not out then return nil, code end
   out.writeMethods = {}
@@ -377,7 +377,69 @@ function M.source_declaration(core, declaration, native_writer)
       end
     end
   end
+  if read_own_file then
+    local canvas, canvas_code = M.canvas_facts(core, read_own_file, world_ref)
+    if not canvas then return nil, canvas_code end
+    local base = assert(core.write_json(out)):gsub('%s+$', '')
+    return {raw_json = base:sub(1, -2) .. ',"canvasFacts":' .. canvas .. '}'}
+  end
   return out
+end
+
+-- Explicit source-authored purposes/scales and coordinate convention, loaded
+-- from THIS world's installed payload on every observation. No game/body/budget
+-- inference. The original bytes, not reserialized JSON, identify the revision.
+function M.canvas_facts(core, read_own_file, world_ref)
+  local bytes = read_own_file('canvas-facts.json')
+  if not bytes then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  local null = {}
+  local ok, body = pcall(core.parse_json, bytes, null)
+  if not ok or type(body) ~= 'table' or body == null then return nil, 'SCHEMA_INVALID' end
+  if body.profileVersion == nil then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  if body.profileVersion ~= 'canvas-declaration/v1' then return nil, 'SCHEMA_INVALID' end
+  for key in pairs(body) do
+    if key ~= 'profileVersion' and key ~= 'tools' and key ~= 'unit' and key ~= 'frame' then return nil, 'UNKNOWN_REQUIRED_FIELD' end
+  end
+  -- Preserve explicit JSON null (physical conversion) instead of losing it to
+  -- Lua nil. Empty tools are emitted as an array and refused by the Host.
+  local function json(value)
+    if value == nil or value == null then return 'null' end
+    if type(value) ~= 'table' then return assert(core.write_json(value)) end
+    local parts = {}
+    if #value > 0 then
+      for i = 1, #value do parts[i] = json(value[i]) end
+      return '[' .. table.concat(parts, ',') .. ']'
+    end
+    local keys = {}; for key in pairs(value) do keys[#keys + 1] = key end; table.sort(keys)
+    for _, key in ipairs(keys) do parts[#parts + 1] = assert(core.write_json(key)) .. ':' .. json(value[key]) end
+    return '{' .. table.concat(parts, ',') .. '}'
+  end
+  local revision = core.sha256(bytes)
+  local function sourced(value, field, kind, content_revision)
+    local fact_ref = core.sha256(world_ref .. '\n' .. field)
+    return '{"value":' .. json(value) .. ',"source":{"kind":' .. json(kind)
+      .. ',"factRef":' .. json(fact_ref) .. ',"revision":' .. json(content_revision) .. '}}'
+  end
+  local function declared(value, field) return sourced(value, field, 'LOADED_WORLD_DECLARATION', revision) end
+  local tools = 'null'
+  if type(body.tools) == 'table' and body.tools ~= null then
+    local items = {}
+    for i, tool in ipairs(body.tools) do
+      if type(tool) ~= 'table' or tool == null then return nil, 'SCHEMA_INVALID' end
+      for key in pairs(tool) do
+        if key ~= 'toolRef' and key ~= 'purpose' and key ~= 'typicalScale' then return nil, 'UNKNOWN_REQUIRED_FIELD' end
+      end
+      items[i] = '{"toolRef":' .. json(tool.toolRef) .. ',"purpose":' .. declared(tool.purpose, 'purpose:' .. tostring(tool.toolRef))
+        .. ',"typicalScale":' .. declared(tool.typicalScale, 'scale:' .. tostring(tool.toolRef)) .. '}'
+    end
+    tools = '[' .. table.concat(items, ',') .. ']'
+  elseif body.tools ~= nil and body.tools ~= null then tools = json(body.tools) end
+  local edge = core.MAP_BLOCKSIZE
+  if type(edge) ~= 'number' or edge <= 0 or edge ~= math.floor(edge) then return nil, 'TARGET_FACTS_INCOMPLETE' end
+  local partition_revision = core.sha256('partition-observation/v1\n' .. tostring(edge))
+  local partition = sourced({edge = {edge, edge, edge}}, 'partition', 'NATIVE_OBSERVATION', partition_revision)
+  return '{"tools":' .. tools .. ',"unit":' .. declared(body.unit, 'unit')
+    .. ',"frame":' .. declared(body.frame, 'frame') .. ',"partition":' .. partition .. '}'
 end
 
 function M.world_revision() return nil, 'CAPABILITY_UNAVAILABLE' end
