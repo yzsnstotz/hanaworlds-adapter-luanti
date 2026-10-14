@@ -1,11 +1,15 @@
 // Private world-source interpretation. No transport credential is read here.
 import { createHash } from 'node:crypto';
-import { lstat, open, realpath } from 'node:fs/promises';
+import { lstat as nativeLstat, open as nativeOpen, realpath as nativeRealpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJSON } from '#contracts';
 import { payloadDigest } from './local-worlds.mjs';
 import { PAYLOAD_FILES, PAYLOAD_VERSION } from './version.mjs';
+import { sourceRead } from './source-scope.mjs';
+import { closedObject } from './local-source-protocol.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const realpath = (...args) => sourceRead(() => nativeRealpath(...args));
 export const SOURCE_STARTUP_VERSION = 'hanaworlds-luanti-source-startup/v1';
 const unavailable = () => ({ profileVersion: SOURCE_STARTUP_VERSION, availability: 'UNAVAILABLE', reason: 'PAYLOAD_NOT_VERIFIED' });
 /** Least native startup permissions for this exact world-bound installed payload.
@@ -26,21 +30,22 @@ export async function readSourceStartupFacts(row, directory) {
       // O_NOFOLLOW closes the lstat->open final-component symlink window. No bytes
       // are read until the opened file and current canonical directories still match.
       let handle;
-      try { handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
-      catch (error) { if (['ELOOP','ENOENT','ENOTDIR'].includes(error.code)) return null; throw error; }
+      try { await sourceRead(async () => { handle = await nativeOpen(path, constants.O_RDONLY | constants.O_NOFOLLOW); }); }
+      catch (error) { if (handle) await handle.close(); if (['ELOOP','ENOENT','ENOTDIR'].includes(error.code)) return null; throw error; }
       let bytes;
       try {
-        const held = await handle.stat({bigint:true}), current = await lstat(path,{bigint:true});
+        const held = await sourceRead(() => handle.stat({bigint:true})), current = await lstat(path,{bigint:true});
         if (!held.isFile() || current.isSymbolicLink() || held.dev !== current.dev || held.ino !== current.ino) return null;
         if (await realpath(dir) !== dir || await realpath(row.worldPath) !== row.worldPath) return null;
         const world = await lstat(row.worldPath,{bigint:true});
         if (String(world.dev) !== directory.device || String(world.ino) !== directory.inode) throw Error('CURRENT_WORLD_MISMATCH');
-        bytes = await handle.readFile();
+        bytes = await sourceRead(() => handle.readFile());
         const after = await lstat(path,{bigint:true});
         if (after.isSymbolicLink() || held.dev !== after.dev || held.ino !== after.ino || held.size !== after.size || held.mtimeNs !== after.mtimeNs || held.ctimeNs !== after.ctimeNs) throw Error('CURRENT_WORLD_MISMATCH');
       } finally { await handle.close(); }
       if (name === 'payload.json') {
         let identity; try { identity = JSON.parse(bytes); } catch { return null; }
+        closedObject(identity, ['worldRef', 'payloadVersion', 'payloadDigest']);
         if (identity.worldRef !== row.worldRef || identity.payloadVersion !== row.payloadVersion || identity.payloadDigest !== row.payloadDigest) return null;
       } else {
         hash.update(`${name}\n`); hash.update(bytes);

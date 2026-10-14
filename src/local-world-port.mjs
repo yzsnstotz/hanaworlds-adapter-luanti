@@ -1,6 +1,6 @@
 import { validateType, validateBoundRequest, validateBoundResponse, ContractError } from '#contracts';
 import { randomUUID } from 'node:crypto';
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat as nativeLstat, realpath as nativeRealpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { discoverLocalWorlds, provisionLocalPayload } from './local-worlds.mjs';
@@ -11,8 +11,14 @@ import { readSourceStartupFacts } from './source-startup.mjs';
 import { SOURCE_LOCATOR_VERSION } from './source-locator.mjs';
 
 import { sourceLog } from './resource-errors.mjs';
+import { attachLocalSource } from './local-source-port.mjs';
+import { creationMaterials, closedObject, sourceError } from './local-source-protocol.mjs';
+import { sourceRead, checkSourceScope, sourceCallActive, bindSourceWorld, addSourceCheck, sourceMutationState } from './source-scope.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const realpath = (...args) => sourceRead(() => nativeRealpath(...args));
 
 const ACTIONS = new Set(['PROVISION_PAYLOAD', 'BIND_RUNNING_WORLD']);
+const original = value => value?.[Symbol.for('cordis.original')] ?? value;
 function deny(code = 'CURRENT_WORLD_MISMATCH', details) { const error = new Error(code); if (details) error.details = details; throw error; }
 function text(value) { return typeof value === 'string' && value.length > 0; }
 function fields(value, allowed, required = allowed) {
@@ -30,15 +36,17 @@ async function freePort() {
 
 /** In-process Host lifecycle port. Never accepts lifecycle facts from request JSON. Native process and
  * child lifecycle stay in the public Host; stopped facts exist only in its callback. */
-export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameId, resolveControl, resolveCanvas, runtime, transportSettings = {}, log = (_,message) => {if(message.startsWith('WORLD_SOURCE_FAILURE'))console.warn(message);} }) {
+export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, gameId, localSourceCreationMaterials, resolveEngineRuntime, resolveControl, resolveCanvas, runtime, transportSettings = {}, log = (_,message) => {if(message.startsWith('WORLD_SOURCE_FAILURE'))console.warn(message);} }) {
   let rootPaths = roots.map(root => resolve(root)), closed = false;
+  const materials = creationMaterials(localSourceCreationMaterials);
+  let source;
   const leases = new Map(), running = new Map(), bindings = new Map(), managed = new Set(), pending = new Set();
   // Latest Host control record per world path this service acquired; kept after the lease ends so a
   // later deletion runs inside that Host's own stopped-world callback for the exact owned process.
   const controls = new Map();
   let lifecycle = Promise.resolve();
   function track(run) {
-    const work = lifecycle.then(() => { if (closed) deny('ADAPTER_UNAVAILABLE'); return run(); });
+    const work = lifecycle.then(async () => { if (closed) deny('ADAPTER_UNAVAILABLE'); await checkSourceScope(); return run(); });
     lifecycle = work.catch(() => {});
     pending.add(work);
     void work.then(() => pending.delete(work), () => pending.delete(work));
@@ -52,6 +60,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     catch (failure) {
       const origin = operation === 'pair' && !failure.source ? (failure.cause ?? failure) : failure;
       const cause = origin.code ?? origin.message;
+      if (sourceCallActive() && ['CURRENT_WORLD_MISMATCH', 'UNKNOWN_REQUIRED_FIELD'].includes(cause)) throw failure;
       if(sourceLog(origin)) log('warn',sourceLog(origin));
       const code = operation === 'deleteWorld'
         ? (cause === 'WORLD_NOT_FOUND' ? 'WORLD_NOT_FOUND' : 'TRANSACTION_CONFLICT')
@@ -75,6 +84,8 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     const rows = (await discover()).filter(row => sourceRef(row) === worldRef);
     if (!rows.length) deny('WORLD_NOT_FOUND');
     if (rows.length !== 1) deny('TRANSACTION_CONFLICT');
+    const stat = await lstat(rows[0].worldPath);
+    bindSourceWorld({ ...rows[0], device: stat.dev, inode: stat.ino });
     return rows[0];
   }
   // Read-only source description: one exact discovered world by worldRef, its canonical directory
@@ -128,7 +139,9 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     const row = rows[0], path = await realpath(row.worldPath);
     if (path !== row.worldPath) deny();
     const info = await lstat(path);
-    return { ...row, device: info.dev, inode: info.ino };
+    const selected = { ...row, device: info.dev, inode: info.ino };
+    bindSourceWorld(selected);
+    return selected;
   }
   function sameWorld(left, right) {
     return ['connectionRef', 'worldPath', 'worldRef', 'payloadVersion', 'payloadDigest', 'device', 'inode']
@@ -156,10 +169,12 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
       phase = 'WORLD_IDENTITY';
       if (!sameWorld(row.world, await world(row.world.connectionRef))) deny();
       phase = 'NATIVE_INSPECT';
-      const facts = await host.inspect({ ...row.nativeQuery });
+      if (row.sourceCheck) await row.sourceCheck();
+      const facts = await sourceRead(() => host.inspect({ ...row.nativeQuery }));
       phase = 'NATIVE_FACTS';
       provider(row);
       if (!factsMatch(row, facts, 'CURRENT') || !sameWorld(row.world, await world(row.world.connectionRef))) deny();
+      if (row.sourceCheck) await row.sourceCheck();
       return facts;
     } catch { log('warn', `LOCAL_LEASE_${phase}_REJECTED`); forget(row); deny(); } // no provider error text or credentials escape
   }
@@ -203,7 +218,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
           if (lease.world.connectionRef === row.world.connectionRef) { lease.retired = true; forget(lease); }
         }
         forget(row);
-        await runtime.retireLocal(row.world.connectionRef);
+        await runtime.retireLocal(row.publicConnectionRef ?? row.world.connectionRef);
         provider(row);
         if (!active) deny();
         bindings.delete(row.world.connectionRef);
@@ -230,7 +245,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
       blockers.push({ code: 'WORLD_IN_USE', reason: 'ADAPTER_CONNECTION_BOUND' });
     if (typeof runtime.localWorldActivity !== 'function') blockers.push({ code: 'REQUIRED_FACT_UNKNOWN', reason: 'RUNTIME_ACTIVITY_UNAVAILABLE' });
     else {
-      const activity = await runtime.localWorldActivity({ connectionRef: selected.connectionRef, worldRef: selected.worldRef });
+        const activity = await sourceRead(() => runtime.localWorldActivity({ connectionRef: selected.connectionRef, worldRef: selected.worldRef }));
       if (activity.bound) blockers.push({ code: 'WORLD_IN_USE', reason: 'RUNTIME_CONNECTION_OPEN' });
       if (activity.journal.state === 'UNKNOWN') blockers.push({ code: 'REQUIRED_FACT_UNKNOWN', reason: 'JOURNAL_UNREADABLE', detail: activity.journal.reason });
       else if (activity.journal.state === 'PRESENT' && activity.journal.unsettled.length)
@@ -242,6 +257,23 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     return { world: selected, marker: ownership.marker ?? null, blockers, control,
       nativeStop: control ? 'HOST_STOPPED_CALLBACK' : 'NOT_LAUNCHED_BY_THIS_SERVICE', data: await worldData(selected.worldPath) };
   }
+  async function createFlatWorldProduct(input, material) {
+      const q = fields(input, ['requesterRef', 'userPath', 'root', 'gameId', 'worldName'], ['requesterRef', 'userPath']);
+      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath) ||
+          ['root', 'gameId', 'worldName'].some(k => k in q && !text(q[k])) || ('root' in q && !isAbsolute(q.root)))
+        return Promise.reject(new Error('SCHEMA_INVALID'));
+      return track(async () => {
+        const made = await createFlatWorld({ transportSettings, roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
+          gameId: q.gameId, worldName: q.worldName, transportPort: await sourceRead(freePort),
+          ...(material ? { creationFacts: material.creationFacts } : {}) });
+        const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
+        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('LOCAL_CREATE_DISCOVERY_MISMATCH'); }
+        log('info', `LOCAL_FLAT_WORLD_CREATED ${rows[0].connectionRef}`);
+        return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
+          worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
+          game: made.game, mapgen: made.mapgen, nextAction: 'BIND_RUNNING_WORLD', creationFacts: made.creationFacts };
+      });
+    }
   const port = {
     async setRoots(input) {
       const { roots: selected } = fields(input, ['roots']);
@@ -253,7 +285,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
           const info = await lstat(path).catch(() => null);
           if (!info?.isDirectory() || info.isSymbolicLink() || await realpath(path) !== path) deny('CONNECTION_NOT_FOUND');
         }
-        rootPaths = paths; runtime.setLocalRoots(paths);
+        rootPaths = paths; source?.invalidate(); runtime.setLocalRoots(paths);
       });
     },
     // No-input discovery is the native Host inventory; v2 returns only neutral world descriptors.
@@ -268,13 +300,13 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
     describeSourceWorld: input => lifecycleCall('describeSourceWorld', input, q => track(() => describeSource(q.worldRef))),
     async createWorld(input) {
       return lifecycleCall('createWorld', input, async q => {
-        if (q.templateId !== FLAT_WORLD_TEMPLATE_ID || !text(userPath) || !isAbsolute(userPath)) deny('ADAPTER_UNAVAILABLE');
+        const material = materials.find(row => row.templateId === q.templateId);
+        if ((q.templateId !== FLAT_WORLD_TEMPLATE_ID && !material) || !text(userPath) || !isAbsolute(userPath)) deny('ADAPTER_UNAVAILABLE');
         // The template owns engine configuration; consumers supply only template and name.
-        const made = await port.createFlatWorld({ requesterRef: 'world-source', userPath,
+        const made = await createFlatWorldProduct({ requesterRef: 'world-source', userPath,
           ...(creationRoot === undefined ? {} : { root: creationRoot }),
-          ...(gameId === undefined ? {} : { gameId }), worldName: q.displayName });
-        const { worldRef, worldName, created, nextAction, ...creationFacts } = made;
-        return { worldRef, templateId: q.templateId, displayName: worldName, creationFacts };
+          ...(gameId === undefined ? {} : { gameId }), worldName: q.displayName }, material);
+        return { worldRef: made.worldRef, templateId: q.templateId, displayName: made.worldName, creationFacts: made.creationFacts };
       });
     },
     async acquire(input) {
@@ -353,20 +385,8 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
      * already installed. The result names only that new world; on any failure nothing is
      * selected, created or overwritten. The next step is BIND_RUNNING_WORLD on its connectionRef. */
     async createFlatWorld(input) {
-      const q = fields(input, ['requesterRef', 'userPath', 'root', 'gameId', 'worldName'], ['requesterRef', 'userPath']);
-      if (!text(q.requesterRef) || !text(q.userPath) || !isAbsolute(q.userPath) ||
-          ['root', 'gameId', 'worldName'].some(k => k in q && !text(q[k])) || ('root' in q && !isAbsolute(q.root)))
-        return Promise.reject(new Error('SCHEMA_INVALID'));
-      return track(async () => {
-        const made = await createFlatWorld({ transportSettings, roots: rootPaths, root: q.root, userPath: resolve(q.userPath),
-          gameId: q.gameId, worldName: q.worldName, transportPort: await freePort() });
-        const rows = (await discover()).filter(row => row.worldPath === made.worldPath);
-        if (rows.length !== 1 || rows[0].worldRef !== made.identity.worldRef) { log('warn', 'LOCAL_CREATE_DISCOVERY_MISMATCH'); deny('LOCAL_CREATE_DISCOVERY_MISMATCH'); }
-        log('info', `LOCAL_FLAT_WORLD_CREATED ${rows[0].connectionRef}`);
-        return { created: true, connectionRef: rows[0].connectionRef, worldPath: made.worldPath, worldName: made.worldName,
-          worldRef: made.identity.worldRef, payloadVersion: made.identity.payloadVersion, payloadDigest: made.identity.payloadDigest,
-          game: made.game, mapgen: made.mapgen, nextAction: 'BIND_RUNNING_WORLD' };
-      });
+      const { creationFacts, ...result } = await createFlatWorldProduct(input);
+      return result;
     },
     /** What deleting one exact world would remove and whether it is allowed now. Changes nothing. */
     async describeWorldDeletion(input) {
@@ -461,7 +481,7 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
         if (selected.lease) await port.pair({ leaseRef: selected.lease.leaseRef,
           requesterRef: selected.lease.requesterRef, connectionRef: selected.world.connectionRef });
         const request = { contractVersion: 'world-adapter/v8', requestId: `${q.requestId}:readback`,
-          sessionRef: 'world-source:local-pair', connectionRef: selected.world.connectionRef };
+          sessionRef: 'world-source:local-pair', connectionRef: bindings.get(selected.world.connectionRef)?.publicConnectionRef ?? selected.world.connectionRef };
         const response = validateBoundResponse('world-adapter/v8', 'ReadLocalConnection', request,
           await runtime.port.call('ReadLocalConnection', request));
         if (response.error) deny(response.error.code);
@@ -471,37 +491,115 @@ export function createLocalWorldPort({ roots = [], userPath, creationRoot, gameI
       });
       const { row } = query(input);
       if (row.action !== 'BIND_RUNNING_WORLD' || row.paired) return Promise.reject(new Error('CURRENT_WORLD_MISMATCH'));
-      row.paired = true;
       return track(async () => {
         let runtimePaired = false;
         try {
           await inspectRow(row);
+          if (row.paired) deny();
+          await checkSourceScope(); row.paired = true;
           // Native connections are independent. Canvas owns which Session selects each world.
           // Pairing B must never retire A: another Session may still select A.
           if (bindings.has(row.world.connectionRef)) deny();
           if (running.has(row.world.worldPath)) deny();
           running.set(row.world.worldPath, row);
-          const loaded = await runtime.pairLocal(row.world);
-          runtimePaired = true;
+          const loaded = await sourceRead(async () => {
+            const result = await runtime.pairLocal(row.runtimeWorld ?? row.world);
+            runtimePaired = true; // committed even when sourceRead's post-check fails
+            return result;
+          });
           bindings.set(row.world.connectionRef, row);
           const facts = await inspectRow(row);
           return { ...observations(row, facts), ...loaded, paired: true };
         } catch (error) {
           // A late inspection failure owns only this new row, never another world's runtime.
           try {
-            if (runtimePaired) { bindings.delete(row.world.connectionRef); await runtime.retireLocal(row.world.connectionRef); }
-          } finally { await stopUnused(row); }
+            if (runtimePaired) { bindings.delete(row.world.connectionRef); await runtime.retireLocal(row.publicConnectionRef ?? row.world.connectionRef); }
+          } catch (cleanup) {
+            throw Object.assign(new Error('CONNECTION_NOT_FOUND', { cause: error }), { mutationState: 'UNKNOWN', cleanup });
+          } finally {
+            // A scoped pair never borrows stale source authority to stop the
+            // original runtime's native process. Its lifecycle owner cleans it.
+            if (sourceCallActive()) forget(row); else await stopUnused(row);
+          }
           throw new Error('CURRENT_WORLD_MISMATCH', { cause: error });
         }
       });
     },
 
   };
+  async function scopedPair(q, check) {
+    try {
+      // The public status read deliberately runs outside the lifecycle queue.
+      // Its provider may itself reobserve this source without a pair/read cycle.
+      const selected = await track(async () => world((await selectWorld(q.payload.worldRef)).connectionRef));
+      const startup = await sourceRead(() => readSourceStartupFacts(selected, { device: String(selected.device), inode: String(selected.inode) }));
+      if (startup.availability !== 'KNOWN') deny('PAYLOAD_VERSION_MISMATCH');
+      const engine = resolveEngineRuntime?.();
+      const key = ctx?.[Symbol.for('cordis.isolate')]?.hanaworldsEngineRuntime;
+      const registered = key && ctx.reflect?.store?.[key];
+      const checkRuntime = () => {
+        if (!engine || !registered || registered.fiber?.state !== 2 || registered.fiber.ctx?.root !== ctx.root ||
+          ctx.reflect.store[key] !== registered || original(registered.value) !== original(engine) ||
+          original(resolveEngineRuntime()) !== original(engine)) deny('CURRENT_WORLD_MISMATCH');
+      };
+      if (typeof engine?.ReadRuntimeStatus !== 'function') deny('CONNECTION_NOT_FOUND');
+      addSourceCheck(checkRuntime);
+      const checkPair = async () => {
+        await check(); checkRuntime();
+        const request = { contractVersion: 'engine-runtime/v2', requestId: `${q.requestId}:runtime-read:${randomUUID()}`, connectionRef: q.payload.connectionRef };
+        const response = await engine.ReadRuntimeStatus(request);
+        await check(); checkRuntime();
+        try {
+          closedObject(response, ['contractVersion', 'requestId', 'result', 'error']);
+          if (response.contractVersion !== request.contractVersion || response.requestId !== request.requestId || response.error !== null) deny('CONNECTION_NOT_FOUND');
+          closedObject(response.result, ['worldRef', 'connectionRef', 'connectionIncarnationRef', 'state']);
+          if (response.result.worldRef !== q.payload.worldRef || response.result.connectionRef !== q.payload.connectionRef ||
+            response.result.connectionIncarnationRef !== q.payload.connectionIncarnationRef || response.result.state !== 'RUNNING') deny('CONNECTION_NOT_FOUND');
+        } catch (error) { throw new Error('CONNECTION_NOT_FOUND', { cause: error }); }
+      };
+      await checkPair(); await checkSourceScope();
+      const confirmed = await sourceRead(() => readSourceStartupFacts(selected, { device: String(selected.device), inode: String(selected.inode) }));
+      if (JSON.stringify(confirmed) !== JSON.stringify(startup)) deny('PAYLOAD_VERSION_MISMATCH');
+      await track(async () => {
+        await check(); checkRuntime(); await checkSourceScope();
+        let row = bindings.get(selected.connectionRef);
+        if (row) {
+          if (row.publicConnectionRef !== q.payload.connectionRef || row.runtimeWorld.runtimeIncarnationRef !== q.payload.connectionIncarnationRef) deny('CONNECTION_NOT_FOUND');
+        } else {
+          const candidates = [...leases.values()].filter(row => row.action === 'BIND_RUNNING_WORLD' && !row.paired && sameWorld(row.world, selected));
+          if (candidates.length !== 1) deny('CONNECTION_NOT_FOUND');
+          row = candidates[0];
+          row.publicConnectionRef = q.payload.connectionRef;
+          row.runtimeWorld = { ...selected, connectionRef: q.payload.connectionRef, runtimeIncarnationRef: q.payload.connectionIncarnationRef };
+          row.sourceCheck = async () => { await check(); checkRuntime(); };
+          row.runtimeStatusCheck = checkPair;
+        }
+      });
+      const lease = [...leases.values()].find(row => row.publicConnectionRef === q.payload.connectionRef);
+      if (!bindings.has(selected.connectionRef)) await port.pair({ leaseRef: lease.leaseRef, requesterRef: lease.requesterRef, connectionRef: selected.connectionRef });
+      const request = { contractVersion: 'world-adapter/v8', requestId: `${q.requestId}:readback`, sessionRef: 'world-source:local-pair', connectionRef: q.payload.connectionRef };
+      const response = validateBoundResponse('world-adapter/v8', 'ReadLocalConnection', request, await runtime.port.call('ReadLocalConnection', request));
+      if (response.error) deny(response.error.code);
+      await checkPair();
+      return { contractVersion: 'local-worlds/v2', requestId: q.requestId, result: response.result, error: null };
+    } catch (failure) {
+      if ((failure.code ?? failure.message) === 'UNKNOWN_REQUIRED_FIELD' ||
+        (failure.code ?? failure.message) === 'CURRENT_WORLD_MISMATCH' && (!failure.cause || failure.sourceCurrency || failure.cause?.sourceCurrency)) throw failure;
+      const origin = failure.cause ?? failure;
+      const code = (origin.code ?? origin.message) === 'PAYLOAD_VERSION_MISMATCH' ? 'PAYLOAD_VERSION_MISMATCH' : 'CONNECTION_NOT_FOUND';
+      return { contractVersion: 'local-worlds/v2', requestId: q.requestId, result: null,
+        error: sourceError(code, failure.mutationState ?? sourceMutationState(), code === 'PAYLOAD_VERSION_MISMATCH' ? 'VERSION_UNSUPPORTED' : 'REQUIRED_FACT_UNKNOWN') };
+    }
+  }
+  source = attachLocalSource(port, { ctx, roots: () => [...rootPaths], userPath, creationRoot, materials, closed: () => closed, pair: scopedPair });
   return { port,
     async inspectConnection(connectionRef) {
-      const row = [...running.values()].find(x => x.world.connectionRef === connectionRef);
+      const row = [...running.values()].find(x => (x.publicConnectionRef ?? x.world.connectionRef) === connectionRef);
       if (!row || !row.paired) deny('WORLD_NOT_BOUND');
-      return inspectRow(row);
+      if (row.runtimeStatusCheck) await row.runtimeStatusCheck();
+      const result = await inspectRow(row);
+      if (row.runtimeStatusCheck) await row.runtimeStatusCheck();
+      return result;
     },
     manages: path => typeof path === 'string' && managed.has(resolve(path)),
     async close() {

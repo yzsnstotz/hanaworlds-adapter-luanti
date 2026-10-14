@@ -1,11 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readdir, readFile, realpath, rename } from 'node:fs/promises';
+import { lstat as nativeLstat, mkdir as nativeMkdir, open, readdir as nativeReaddir, readFile as nativeReadFile, realpath as nativeRealpath, rename as nativeRename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { absentOnly, resourceFailure, ioKind } from './resource-errors.mjs';
 
 import { validateRecordData } from './local-records.mjs';
+import { sourceRead, sourceWrite } from './source-scope.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const readdir = (...args) => sourceRead(() => nativeReaddir(...args));
+const readFile = (...args) => sourceRead(() => nativeReadFile(...args));
+const realpath = (...args) => sourceRead(() => nativeRealpath(...args));
+const mkdir = (...args) => sourceWrite(() => nativeMkdir(...args));
+const rename = (...args) => sourceWrite(() => nativeRename(...args));
 
 const OWNER = 'hanaworlds-adapter-luanti';
 // Not *.json: DurableJournal reads every *.json entry as a transaction record.
@@ -24,8 +31,11 @@ function expandHomePath(path) {
   return path;
 }
 async function syncDirectory(path) {
-  const handle = await open(path, 'r');
-  try { await handle.sync(); } finally { await handle.close(); }
+  let handle;
+  try {
+    await sourceRead(async () => { handle = await open(path, 'r'); });
+    await sourceWrite(() => handle.sync());
+  } finally { if (handle) await handle.close(); }
 }
 
 /**
@@ -104,11 +114,12 @@ async function bindWorld(directory, worldRef) {
   const entries = (await readdir(directory)).filter(name => !name.startsWith('.pending-'));
   if (entries.length) throw unavailable('journal records exist without a world marker');
   const temporary = join(directory, `.pending-${randomUUID()}`);
-  const handle = await open(temporary, 'wx', 0o600);
+  let handle;
   try {
-    await handle.writeFile(`${JSON.stringify({ format: MARKER_FORMAT, worldRef })}\n`);
-    await handle.sync();
-  } finally { await handle.close(); }
+    await sourceWrite(async () => { handle = await open(temporary, 'wx', 0o600); });
+    await sourceWrite(() => handle.writeFile(`${JSON.stringify({ format: MARKER_FORMAT, worldRef })}\n`));
+    await sourceWrite(() => handle.sync());
+  } finally { if (handle) await handle.close(); }
   await rename(temporary, markerPath);
   await syncDirectory(directory);
 }

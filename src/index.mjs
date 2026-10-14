@@ -31,8 +31,10 @@ export function apply(ctx, config = {}) {
     resolveHistory: () => get('hanaworldsCanvasHistoryFacts'), resolveOracle: () => get('hanaworldsWorldRevisionOracle'),
     resolveInspection: () => get('hanaworldsWorldInspectionContext'),
     inspectConnection: ref => local.inspectConnection(ref) });
-  local = createLocalWorldPort({ transportSettings, roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
+  local = createLocalWorldPort({ ctx, transportSettings, roots: config.localWorldRoots ?? [], userPath: config.localUserPath,
     creationRoot: config.localCreationRoot, gameId: config.localGameId,
+    localSourceCreationMaterials: config.localSourceCreationMaterials,
+    resolveEngineRuntime: () => get('hanaworldsEngineRuntime'),
     resolveControl: () => get('hanaworldsNativeEngineControl'), resolveCanvas: () => get('hanaworldsCanvasV5'), runtime });
   let unregister, closing;
   const service = {

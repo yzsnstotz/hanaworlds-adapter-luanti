@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { requireWorldRetirable, validateBoundRequest, validateBoundResponse } from '#contracts';
+import { checkSourceScope } from './source-scope.mjs';
 const fail = code => { throw Error(code); };
 const original = value => value?.[Symbol.for('cordis.original')] ?? value;
 function control(resolveCanvas) {
@@ -20,9 +21,10 @@ export async function readWorldSelections(resolveCanvas,worldRef) {
 export async function withWorldRetirement(resolveCanvas,worldRef,remove) {
   const canvas=control(resolveCanvas);
   const inventory=requireWorldRetirable(await canvas.call('ListWorldSelections',{worldRef}));
+  await checkSourceScope();
   const reservation=await canvas.call('ReserveWorldRetirement',{worldRef,expectedInventoryRevision:inventory.inventoryRevision});
   let result;
-  try {canvas.current();result=await remove();}
+  try {await checkSourceScope();canvas.current();result=await remove();}
   catch(error) {
     // Always close the public retirement sequence; abort is not a filesystem rollback.
     if(['DELETE_INCOMPLETE','READBACK_MISMATCH'].includes(error.message)) {

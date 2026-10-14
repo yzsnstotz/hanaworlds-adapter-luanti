@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { lstat as nativeLstat, readFile as nativeReadFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { payloadDigest } from './local-worlds.mjs';
@@ -7,6 +7,9 @@ import { PAYLOAD_VERSION } from './version.mjs';
 import { validateTransportSettings, validatePairedTransportSettings, transportPolicy, BATCH_ENVELOPE_RESERVE_BYTES } from './transport-policy.mjs';
 import { resourceFailure, ioKind } from './resource-errors.mjs';
 import { sameGuards } from './safety-capabilities.mjs';
+import { sourceRead, checkSourceScope } from './source-scope.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const readFile = (...args) => sourceRead(() => nativeReadFile(...args));
 
 
 /** Private loopback transport; no model/Canvas public HTTP mutator. */
@@ -31,6 +34,7 @@ export class LocalCourier {
     const expected = validateTransportSettings(settings);
     const actual = validatePairedTransportSettings(config.settings);
     if (JSON.stringify(actual) !== JSON.stringify(expected)) throw resourceFailure('PAYLOAD_VERSION_MISMATCH','pair','courier-settings','INVALID_CONFIG');
+    await checkSourceScope();
     const self = new LocalCourier(manifest, config);
     self.server = createServer(async (req, res) => {
       const reply = (code, value) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); };
@@ -61,8 +65,15 @@ export class LocalCourier {
       } else entry.resolve(value.result);
       reply(200, { status: 'RECEIVED' });
     });
-    await new Promise((yes, no) => { self.server.once('error', no); self.server.listen(config.port, '127.0.0.1', yes); });
-    return self;
+    try {
+      await checkSourceScope();
+      await new Promise((yes, no) => { self.server.once('error', no); self.server.listen(config.port, '127.0.0.1', yes); });
+      await checkSourceScope();
+      return self;
+    } catch (error) {
+      if (self.server.listening) await self.close();
+      throw error;
+    }
   }
   constructor(manifest, config) {
     this.settings = validateTransportSettings(config.settings === undefined ? {} : config.settings);

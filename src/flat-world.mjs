@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { syncDirectory, syncFile, writePayload } from './local-worlds.mjs';
 import { CREATED_MARKER, createdMarker } from './local-world-deletion.mjs';
 import { ADAPTER_VERSION } from './version.mjs';
+import { sourceRead, sourceWrite } from './source-scope.mjs';
 
 // New local single-player world, generated flat by Luanti's own `flat` mapgen.
 // The mapgen parameters are written into the new world's map_meta.txt before its
@@ -33,19 +34,27 @@ function conf(raw) {
   return out;
 }
 const list = value => (value ?? '').split(',').map(x => x.trim()).filter(Boolean);
-async function realDir(path) { const s = await lstat(path).catch(() => null); return !!s?.isDirectory() && !s.isSymbolicLink(); }
-async function dirOrLink(path) { const s = await lstat(path).catch(() => null); return !!s && (s.isDirectory() || s.isSymbolicLink()); }
+async function optionalRead(run, absent = null) {
+  return sourceRead(async () => {
+    try { return await run(); } catch (error) {
+      if (error.code === 'ENOENT') return absent;
+      throw error;
+    }
+  });
+}
+async function realDir(path) { const s = await optionalRead(() => lstat(path)); return !!s?.isDirectory() && !s.isSymbolicLink(); }
+async function dirOrLink(path) { const s = await optionalRead(() => lstat(path)); return !!s && (s.isDirectory() || s.isSymbolicLink()); }
 
 /** Games installed in the Luanti user path, as Luanti itself finds them (games/<id>/game.conf). */
 export async function discoverLocalGames(userPath) {
   const root = join(userPath, 'games'), games = [];
   if (!await dirOrLink(root)) return games;
-  for (const entry of await readdir(root, { withFileTypes: true })) {
+  for (const entry of await sourceRead(() => readdir(root, { withFileTypes: true }))) {
     const dir = join(root, entry.name);
-    const raw = await readFile(join(dir, 'game.conf'), 'utf8').catch(() => null);
+    const raw = await optionalRead(() => readFile(join(dir, 'game.conf'), 'utf8'));
     if (raw === null) continue;
     const c = conf(raw);
-    const types = await readFile(join(dir, 'settingtypes.txt'), 'utf8').catch(() => '');
+    const types = await optionalRead(() => readFile(join(dir, 'settingtypes.txt'), 'utf8'), '');
     const options = GAME_FLAT_OPTIONS.filter(o => new RegExp(`^\\s*${o.setting.replace('.', '\\.')}\\s*\\(.*\\)\\s*${o.type}\\b`, 'm').test(types));
     const allowed = list(c.allowed_mapgens), disallowed = list(c.disallowed_mapgens);
     games.push({ gameId: entry.name, title: c.title ?? null, version: c.version ?? null,
@@ -70,8 +79,9 @@ export async function describeFlatWorldCreation({ roots, userPath }) {
  * Creates a new world directory under `root` (staged, fsynced, then renamed into place;
  * an existing name is never reused or overwritten). The new world carries world.mt,
  * map_meta.txt with the flat mapgen, and this Adapter's payload with a fresh identity.
+ * Source-owned creation facts are opaque and committed with the same world transaction.
  */
-export async function createFlatWorld({ roots, root, userPath, gameId, worldName, transportPort, transportSettings }) {
+export async function createFlatWorld({ roots, root, userPath, gameId, worldName, transportPort, transportSettings, creationFacts }) {
   const plan = await describeFlatWorldCreation({ roots, userPath });
   let base = root;
   if (base === undefined) {
@@ -95,12 +105,13 @@ export async function createFlatWorld({ roots, root, userPath, gameId, worldName
   const name = worldName ?? `hanaworlds-flat-${stamp}-${randomBytes(2).toString('hex')}`;
   if (typeof name !== 'string' || !NAME.test(name) || name.includes('..')) throw fault('INVALID_NAME');
   const target = join(base, name);
-  if (await lstat(target).catch(() => null)) throw fault('WORLD_EXISTS', { worldPath: target });
+  if (await optionalRead(() => lstat(target))) throw fault('WORLD_EXISTS', { worldPath: target });
   const seed = BigInt(`0x${randomBytes(8).toString('hex')}`).toString();
   const mapgen = { ...FLAT_MAPGEN, seed };
   for (const o of game.flatOptions) mapgen[o.setting] = o.value;
   const staging = join(base, `.hanaworlds-new-world-${randomUUID()}`);
-  await mkdir(staging, { mode: 0o700 });
+  await sourceWrite(() => mkdir(staging, { mode: 0o700 }));
+  let committed = false;
   try {
     await syncFile(join(staging, 'world.mt'), [`gameid = ${game.gameId}`, `world_name = ${name}`,
       'backend = sqlite3', 'player_backend = sqlite3', 'auth_backend = sqlite3', 'mod_storage_backend = sqlite3',
@@ -108,18 +119,28 @@ export async function createFlatWorld({ roots, root, userPath, gameId, worldName
     await syncFile(join(staging, 'map_meta.txt'),
       `${Object.entries(mapgen).map(([k, v]) => `${k} = ${v}`).join('\n')}\n[end_of_params]\n`);
     const mods = join(staging, 'worldmods'), payload = join(mods, 'hanaworlds_adapter');
-    await mkdir(mods, { mode: 0o700 }); await mkdir(payload, { mode: 0o700 });
+    await sourceWrite(() => mkdir(mods, { mode: 0o700 }));
+    await sourceWrite(() => mkdir(payload, { mode: 0o700 }));
     const identity = await writePayload(payload, { transportPort, transportSettings });
+    const gameFacts = { gameId: game.gameId, title: game.title, version: game.version, gameConfDigest: game.gameConfDigest };
+    const facts = creationFacts === undefined ? {
+      connectionRef: `local:${createHash('sha256').update(resolve(target)).digest('hex')}`,
+      worldPath: target, payloadVersion: identity.payloadVersion, payloadDigest: identity.payloadDigest,
+      game: gameFacts, mapgen,
+    } : creationFacts;
+    await syncFile(join(staging, 'hanaworlds-creation-facts.json'), `${JSON.stringify(facts)}\n`);
     await syncFile(join(staging, CREATED_MARKER), createdMarker({ worldRef: identity.worldRef, worldName: name, root: base, adapterVersion: ADAPTER_VERSION }));
     await syncDirectory(mods); await syncDirectory(staging);
-    if (await lstat(target).catch(() => null)) throw fault('WORLD_EXISTS', { worldPath: target });
-    await rename(staging, target);
+    if (await optionalRead(() => lstat(target))) throw fault('WORLD_EXISTS', { worldPath: target });
+    await sourceWrite(async () => { await rename(staging, target); committed = true; });
     await syncDirectory(base);
     return { worldPath: target, worldName: name, identity,
-      game: { gameId: game.gameId, title: game.title, version: game.version, gameConfDigest: game.gameConfDigest },
-      mapgen };
+      game: gameFacts, mapgen, creationFacts: facts };
   } catch (error) {
-    await rm(staging, { recursive: true, force: true });
+    if (committed && !error.mutationState)
+      Object.defineProperty(error, 'mutationState', { value: 'UNKNOWN', configurable: true });
+    if (!committed && error.message !== 'CURRENT_WORLD_MISMATCH')
+      await sourceWrite(() => rm(staging, { recursive: true, force: true }));
     throw error;
   }
 }

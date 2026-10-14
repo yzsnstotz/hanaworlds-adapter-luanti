@@ -20,6 +20,7 @@ import { resolveMaterialSources } from './material-sources.mjs';
 import { createStage1Facts } from './stage1-facts.mjs';
 import { readRegion, writeRegion, protocolHandshake, worldAdapterProtocolHandshake, RegionFault } from './region-io.mjs';
 import { sourceLog } from './resource-errors.mjs';
+import { sourceRead, checkSourceScope, markSourceMutation } from './source-scope.mjs';
 
 const WIRE = 'world-adapter/v8';
 const mutators = new Set(['PrepareRecoverableTransaction','ApplyCompiledTransaction','RestoreTransaction',
@@ -61,20 +62,27 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       return { bound, journal: await readJournalActivity(homePath, worldRef) };
     },
     async pairLocal(world) {
+      await checkSourceScope();
       if (closed || rows.has(world.connectionRef) || [...rows.values()].some(row =>
         row.worldRef === world.worldRef || row.worldPath === world.worldPath)) fail('CURRENT_WORLD_MISMATCH');
-      const engine = await LocalCourier.open(world, transportSettings);
+      let engine;
       try {
+        await sourceRead(async () => { engine = await LocalCourier.open(world, transportSettings); });
         await engine.handshake();
+        await checkSourceScope();
         const neutral = new NeutralEngine(engine);
         await neutral.catalogue();
+        await checkSourceScope();
         const profile = validateType('StateProfile', await neutral.profile());
+        await checkSourceScope();
         const limits = await neutral.regionLimits();
+        await checkSourceScope();
         if (limits.mapblockSize !== 16) fail('CAPABILITY_GAP');
         const bound = limits.mapgenLimit;
         const engineBounds = Number.isSafeInteger(bound) && bound > 0 ? {min:[-bound,-bound,-bound],max:[bound,bound,bound]} : null;
         const store = await LocalRecords.open(await nativeJournalDirectory(homePath, world.worldRef), world.worldRef);
-        const row = { ...world, engine:neutral, profile, store, engineBounds, incarnation: engine.connectionIncarnationRef };
+        await checkSourceScope();
+        const row = { ...world, engine:neutral, profile, store, engineBounds, incarnation: world.runtimeIncarnationRef ?? engine.connectionIncarnationRef };
         neutral.beforeWrite = async () => {
           if (!activeWriteRequest) fail('CAPABILITY_UNAVAILABLE');
           await current(activeWriteRequest, row); activeCanvasCheck();
@@ -86,10 +94,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         const revision = `${ADAPTER_ID}@${ADAPTER_VERSION}+${world.payloadDigest}`;
         row.backend = new LocalTransactions({ store, engine:neutral, stateProfile: profile,
           current: request => current(request, row), registry: resolveRegistry, historyFacts: resolveHistory, revision });
-        rows.set(world.connectionRef, row);
+        await checkSourceScope(); markSourceMutation(); rows.set(world.connectionRef, row);
         return { connectionRef: world.connectionRef, worldRef: world.worldRef,
           connectionIncarnationRef: row.incarnation, payloadVersion: world.payloadVersion, payloadDigest: world.payloadDigest };
-      } catch (error) { await engine.close(); throw error; }
+      } catch (error) { if (engine) await engine.close(); throw error; }
     },
     readCatalogue(worldRef) {
       // A read-only Host supplier. The requested world must be the actual paired
@@ -558,11 +566,11 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           if(error?.publicError!==undefined){
             const refusal=validateType('Error',error.publicError);
             if(refusal.mutationState!=='NONE'||refusal.transactionRef!==null)throw new ContractError('SCHEMA_INVALID','validate','INVALID_SHAPE');
-            throw new ContractError(refusal.code,refusal.phase,refusal.reason,refusal);
+            throw Object.assign(new ContractError(refusal.code,refusal.phase,refusal.reason,refusal), { cause: error });
           }
           const cause=error?.code??error?.message;
           const code=schemaBundle.definitions.ErrorCode.enum.includes(cause)?cause:'CAPABILITY_UNAVAILABLE';
-          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error?.source?{source:error.source}:{});
+          throw Object.assign(new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error?.source?{source:error.source}:{}), { cause: error });
         }
       };
     },
@@ -585,11 +593,11 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
           if(error?.publicError!==undefined){
             const refusal=validateType('Error',error.publicError);
             if(refusal.mutationState!=='NONE')throw new ContractError('SCHEMA_INVALID','validate','INVALID_SHAPE');
-            throw new ContractError(refusal.code,refusal.phase,refusal.reason,refusal);
+            throw Object.assign(new ContractError(refusal.code,refusal.phase,refusal.reason,refusal), { cause: error });
           }
           const cause=error?.code??error?.message;
           const code=schemaBundle.definitions.ErrorCode.enum.includes(cause)?cause:'CAPABILITY_UNAVAILABLE';
-          throw new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error.source?{source:error.source}:{});
+          throw Object.assign(new ContractError(code,'validate',code==='SCHEMA_INVALID'?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',error.source?{source:error.source}:{}), { cause: error });
         }
       };
     },

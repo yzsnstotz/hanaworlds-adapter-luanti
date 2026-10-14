@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { lstat as nativeLstat, readdir as nativeReaddir, readFile as nativeReadFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { syncDirectory } from './local-worlds.mjs';
 import { ioKind } from './resource-errors.mjs';
 import { ADAPTER_ID } from './version.mjs';
+import { sourceRead, sourceWrite, movedSourceWorld, removedSourceWorld } from './source-scope.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const readdir = (...args) => sourceRead(() => nativeReaddir(...args));
+const readFile = (...args) => sourceRead(() => nativeReadFile(...args));
 
 // Written by createFlatWorld into the new world's own directory (outside the
 // payload, so the payload digest is unchanged). It is the only proof that this
@@ -60,13 +64,13 @@ export async function worldData(path) {
 export async function removeWorldDirectory(world) {
   const root = dirname(world.worldPath);
   const staging = join(root, `${STAGING_PREFIX}deleting-${randomUUID()}`);
-  await rename(world.worldPath, staging);
+  await sourceWrite(async () => { await rename(world.worldPath, staging); movedSourceWorld(world.worldPath, staging); });
   await syncDirectory(root);
   const moved = await lstat(staging);
   if (moved.dev !== world.device || moved.ino !== world.inode) {
-    await rename(staging, world.worldPath); await syncDirectory(root);
+    await sourceWrite(async () => { await rename(staging, world.worldPath); movedSourceWorld(staging, world.worldPath); }); await syncDirectory(root);
     throw fault('CURRENT_WORLD_MISMATCH');
   }
-  try { await rm(staging, { recursive: true }); await syncDirectory(root); }
+  try { await sourceWrite(async () => { await rm(staging, { recursive: true }); removedSourceWorld(staging); }); await syncDirectory(root); }
   catch (error) { throw fault('DELETE_INCOMPLETE', { residuePath: staging, cause: error.code ?? error.message }); }
 }

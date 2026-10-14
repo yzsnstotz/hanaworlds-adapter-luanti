@@ -1,8 +1,11 @@
-import { open, rename, readFile, lstat } from 'node:fs/promises';
+import { open, rename, readFile as nativeReadFile, lstat as nativeLstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { resourceFailure, ioKind } from './resource-errors.mjs';
+import { sourceRead, sourceWrite } from './source-scope.mjs';
+const lstat = (...args) => sourceRead(() => nativeLstat(...args));
+const readFile = (...args) => sourceRead(() => nativeReadFile(...args));
 
 /** Fresh per-world durable before images and outcomes. No authority state. */
 export class LocalRecords {
@@ -25,12 +28,16 @@ export class LocalRecords {
   constructor(directory, data) { this.directory = directory; this.data = data; }
   async save(next) {
     const file = join(this.directory, `pending-${randomUUID()}`);
-    const handle = await open(file, 'wx', 0o600);
-    try { await handle.writeFile(JSON.stringify(next)); await handle.sync(); }
-    finally { await handle.close(); }
-    await rename(file, join(this.directory, 'local-world-state'));
-    const dir = await open(this.directory, 'r');
-    try { await dir.sync(); } finally { await dir.close(); }
+    let handle, dir;
+    try {
+      await sourceWrite(async () => { handle = await open(file, 'wx', 0o600); });
+      await sourceWrite(() => handle.writeFile(JSON.stringify(next))); await sourceWrite(() => handle.sync());
+    } finally { if (handle) await handle.close(); }
+    await sourceWrite(() => rename(file, join(this.directory, 'local-world-state')));
+    try {
+      await sourceRead(async () => { dir = await open(this.directory, 'r'); });
+      await sourceWrite(() => dir.sync());
+    } finally { if (dir) await dir.close(); }
     this.data = next;
   }
   async put(transaction) {
