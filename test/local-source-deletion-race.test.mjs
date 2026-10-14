@@ -7,13 +7,18 @@ import { promises as fs } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import { join, basename } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Context } from '@deepseek-ai/cordis';
-import { apply, inject } from '../src/index.mjs';
-import { withSourceScope, bindSourceWorld } from '../src/source-scope.mjs';
-import { removeWorldDirectory } from '../src/local-world-deletion.mjs';
+import { observeCommitBoundary } from './support/commit-boundary-observer.mjs';
 
-const RUN = fileURLToPath(new URL('../../', import.meta.url));
+// The same public suite runs against source and a normally installed own package.
+const ADAPTER_ROOT = process.env.SOURCE_RACE_ADAPTER_ROOT ?? fileURLToPath(new URL('../src/', import.meta.url));
+const adapterModule = name => import(pathToFileURL(join(ADAPTER_ROOT, name)).href);
+const { apply, inject } = await adapterModule('index.mjs');
+const { withSourceScope, bindSourceWorld } = await adapterModule('source-scope.mjs');
+const { removeWorldDirectory } = await adapterModule('local-world-deletion.mjs');
+
+const RUN = process.env.SOURCE_RACE_RUN ?? fileURLToPath(new URL('../../', import.meta.url));
 const WIRE = 'local-worlds/v2';
 const request = (requestId, extra = {}) => ({ contractVersion: WIRE, requestId, ...extra });
 const id = stat => [String(stat.dev), String(stat.ino)];
@@ -39,7 +44,7 @@ async function fixture(t, publicPort = false) {
     receipt.finalTree = await snapshot(worlds);
     await fs.writeFile(join(base, `${t.name.replace(/[^a-zA-Z0-9]+/g, '-')}.json`), JSON.stringify(receipt, null, 2));
     await f.adapter?.close(); await f.ctx?.fiber.dispose();
-    await fs.rm(root, { recursive: true, force: true });
+    // The program owns cleanup. Keep the actual directory identities and bytes.
   });
   if (publicPort) {
     await fs.mkdir(join(user, 'games/fixture'), { recursive: true });
@@ -101,9 +106,9 @@ async function preserved(f, swapped = false) {
 }
 async function atomicBinding() {
   let module, failure;
-  try { module = await import('../src/source-atomic-native.mjs'); } catch (error) { failure = error; }
+  try { module = await adapterModule('source-atomic-native.mjs'); } catch (error) { failure = error; }
   assert.equal(typeof module?.loadAtomicNative, 'function',
-    `ATOMIC_NATIVE_CAPABILITY_MISSING: deletion must use trusted OWN exclusive primitive (${failure?.code ?? 'missing capability'})`);
+    `ATOMIC_NATIVE_CAPABILITY_MISSING: deletion must use trusted OWN exclusive primitive (${failure?.code === 'ERR_MODULE_NOT_FOUND' ? 'own native is not shipped' : failure?.code ?? 'missing capability'})`);
   const binding = await module.loadAtomicNative();
   assert.equal(typeof binding.moveDirectoryNoReplace, 'function', 'actual OWN atomic native movement is required');
   return binding;
@@ -264,4 +269,228 @@ test('public scoped deletion recovers after rename and a revoked source registra
   assert.equal(r.error.code, 'CURRENT_WORLD_MISMATCH'); assert.equal(r.error.mutationState, 'UNKNOWN');
   await preserved(f); assert.deepEqual(f.nativeActions, []);
   assert.equal(f.actions.at(-1).request.outcome, 'ABORTED');
+});
+
+// D-154: an observer inside the genuine own primitive, after its final source
+// and parent identity checks and before its real movement commit. These actors
+// mutate real directories synchronously and return; they neither replace the
+// syscall nor throw a fabricated refusal from the native observer.
+function observeVerifiedEvent(f, event, fromName) {
+  assert.equal(event.phase, 'AFTER_FINAL_IDENTITY_CHECK_BEFORE_COMMIT');
+  assert.equal(event.fromName, fromName);
+  assert.equal(typeof event.toName, 'string');
+  const source = builtinFS.lstatSync(join(f.worlds, event.fromName), { bigint: true });
+  const parent = builtinFS.lstatSync(f.worlds, { bigint: true });
+  assert.deepEqual(event.verifiedDirectory, { device: String(source.dev), inode: String(source.ino) });
+  assert.deepEqual(event.verifiedParent, { device: String(parent.dev), inode: String(parent.ino) });
+  f.receipt.commitBoundary = { ...event };
+}
+function synchronousSnapshot(path) {
+  const entries = {};
+  function walk(p, rel) {
+    const stat = builtinFS.lstatSync(p, { bigint: true });
+    entries[rel] = { identity: id(stat), mode: String(stat.mode),
+      digest: stat.isFile() ? createHash('sha256').update(builtinFS.readFileSync(p)).digest('hex') : null };
+    if (stat.isDirectory()) for (const name of builtinFS.readdirSync(p).sort()) walk(join(p, name), rel ? `${rel}/${name}` : name);
+  }
+  walk(path, ''); return entries;
+}
+function captureActor(f, run) {
+  try { run(); f.receipt.actorCompleted = true; }
+  catch (error) {
+    // A real mandatory binding may deny the actor's attempt. Record the native
+    // OS refusal, then still let the genuine original primitive continue.
+    f.receipt.actorRefusal = { code: error.code, message: error.message };
+    try {
+      f.receipt.actorRefusalVerifiedSource = synchronousSnapshot(join(f.worlds, f.receipt.commitBoundary.fromName));
+      f.receipt.actorRefusalTarget = synchronousSnapshot(f.target.worldPath);
+      f.receipt.actorRefusalNeighbour = synchronousSnapshot(f.neighbour.worldPath);
+    } catch (observation) { f.receipt.actorRefusalObservation = observation.code; }
+  }
+}
+async function scopedDelete(f, source, requestId) {
+  return f.port().callScoped(request(requestId, { source, operation: 'deleteWorld',
+    payload: { worldRef: f.target.worldRef, confirmationName: 'Target' } }));
+}
+function publicRefusal(f, out, code) {
+  f.receipt.response = out; f.receipt.actions = f.actions; f.receipt.nativeActions = f.nativeActions;
+  assert.equal(out.result, null); assert.equal(out.error.code, code);
+  assert.equal(out.error.mutationState, 'UNKNOWN');
+  assert.deepEqual(Object.keys(out.error).sort(),
+    ['causeCode', 'code', 'mutationState', 'phase', 'reason', 'retryability', 'transactionRef']);
+  assert.equal(out.error.causeCode, null);
+  assert.deepEqual(f.nativeActions, []);
+  assert.equal(f.actions.at(-1).name, 'ReleaseWorldRetirement');
+  assert.equal(f.actions.at(-1).request.outcome, 'ABORTED');
+}
+async function blockedActorSucceededNormally(f, out) {
+  assert.ok(['EACCES', 'EPERM', 'EBUSY', 'ETXTBSY'].includes(f.receipt.actorRefusal?.code),
+    'a mandatory binding must produce an actual OS denial, not a test-hook refusal');
+  assert.deepEqual(f.receipt.actorRefusalTarget, f.receipt.before.target, 'kernel denial must precede any actor directory replacement');
+  assert.deepEqual(f.receipt.actorRefusalNeighbour, f.receipt.before.neighbour);
+  assert.equal(out.error, null); assert.deepEqual(out.result,
+    { worldRef: f.target.worldRef, confirmationName: 'Target', deleted: true });
+  assert.equal(await fs.lstat(f.target.worldPath).catch(e => { if (e.code === 'ENOENT') return null; throw e; }), null);
+  assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+  assert.deepEqual(f.nativeActions, []);
+  assert.equal(f.actions.at(-1).request.outcome, 'RETIRED');
+}
+
+for (const actor of ['source', 'parent']) test(`D-154 public scoped forward deletion binds ${actor} through native final-check to real commit`, async t => {
+  const f = await fixture(t, true), d = await f.descriptor(), binding = await atomicBinding();
+  let reached = false;
+  const originalParent = join(f.user, 'Captured-worlds');
+  const originalDirectory = join(f.worlds, 'Captured-original');
+  const stop = await observeCommitBoundary(binding, event => {
+    if (reached || event.fromName !== basename(f.target.worldPath) || !event.toName.startsWith('.hanaworlds-deleting-')) return;
+    reached = true; observeVerifiedEvent(f, event, basename(f.target.worldPath));
+    captureActor(f, () => {
+      if (actor === 'source') {
+        builtinFS.renameSync(f.target.worldPath, originalDirectory);
+        builtinFS.mkdirSync(f.target.worldPath);
+        builtinFS.writeFileSync(join(f.target.worldPath, 'replacement.txt'), 'replacement must not move');
+      } else {
+        builtinFS.renameSync(f.worlds, originalParent);
+        builtinFS.mkdirSync(f.worlds);
+        builtinFS.mkdirSync(f.target.worldPath);
+        builtinFS.writeFileSync(join(f.target.worldPath, 'occupant.txt'), 'new parent occupant');
+        builtinFS.mkdirSync(f.neighbour.worldPath);
+        builtinFS.writeFileSync(join(f.neighbour.worldPath, 'unrelated.txt'), 'new parent neighbour');
+      }
+      f.receipt.actorTarget = synchronousSnapshot(f.target.worldPath);
+      f.receipt.actorNeighbour = synchronousSnapshot(f.neighbour.worldPath);
+      f.receipt.actorWorlds = synchronousSnapshot(f.worlds);
+    });
+  });
+  let out;
+  try { out = await scopedDelete(f, d.source, `d154:forward:${actor}`); }
+  finally { stop(); }
+  assert.equal(reached, true, 'actor reached the last actual native identity check before real commit');
+  if (!f.receipt.actorCompleted) { await blockedActorSucceededNormally(f, out); return; }
+  publicRefusal(f, out, 'CURRENT_WORLD_MISMATCH');
+  assert.deepEqual(await snapshot(f.target.worldPath), f.receipt.actorTarget, 'the replacement directory identity and all bytes remain unchanged');
+  assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.actorNeighbour);
+  assert.deepEqual(await snapshot(f.worlds), f.receipt.actorWorlds);
+  if (actor === 'source') {
+    assert.deepEqual(await snapshot(originalDirectory), f.receipt.before.target);
+    assert.deepEqual(Object.keys(await snapshot(f.target.worldPath)).sort(), ['', 'replacement.txt']);
+    assert.equal(await fs.readFile(join(f.target.worldPath, 'replacement.txt'), 'utf8'), 'replacement must not move');
+    assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+    assert.deepEqual((await fs.readdir(f.worlds)).sort(), ['Captured-original', 'Neighbour', 'Target']);
+    assert.deepEqual((await f.descriptor()).source, d.source, 'world-name replacement must not retire the same root source generation');
+  } else {
+    assert.deepEqual(await snapshot(join(originalParent, 'Target')), f.receipt.before.target);
+    assert.deepEqual(await snapshot(join(originalParent, 'Neighbour')), f.receipt.before.neighbour);
+    assert.deepEqual((await fs.readdir(originalParent)).sort(), ['Neighbour', 'Target']);
+    assert.deepEqual(Object.keys(await snapshot(f.target.worldPath)).sort(), ['', 'occupant.txt']);
+    assert.equal(await fs.readFile(join(f.target.worldPath, 'occupant.txt'), 'utf8'), 'new parent occupant');
+    assert.deepEqual(Object.keys(await snapshot(f.neighbour.worldPath)).sort(), ['', 'unrelated.txt']);
+    assert.equal(await fs.readFile(join(f.neighbour.worldPath, 'unrelated.txt'), 'utf8'), 'new parent neighbour');
+    assert.deepEqual((await fs.readdir(f.worlds)).sort(), ['Neighbour', 'Target']);
+  }
+});
+
+for (const actor of ['source', 'parent', 'parent-and-occupant']) test(`D-154 public scoped compensation binds ${actor} through native final-check to real commit`, async t => {
+  const f = await fixture(t, true), d = await f.descriptor(), binding = await atomicBinding();
+  const cause = Object.assign(new Error('D154_ORIGINAL_IO_CAUSE'), { code: 'EIO' });
+  const original = Object.assign(new Error('EIO', { cause }), { code: 'EIO' });
+  const originalParent = join(f.user, 'Captured-worlds');
+  const preservedName = '.hanaworlds-preserved-original';
+  let reached = false, stagingName, replacementTree, occupantTree, freshParentTree;
+  // Fault timing only: the original primitive completes the real forward move
+  // before this EIO is delivered. The production deletion and recovery run.
+  const restoreForward = await observeRename(t, f, (staging) => {
+    stagingName = basename(staging); throw original;
+  });
+  const stop = await observeCommitBoundary(binding, event => {
+    if (reached || event.fromName !== stagingName || event.toName !== basename(f.target.worldPath)) return;
+    reached = true; observeVerifiedEvent(f, event, stagingName);
+    captureActor(f, () => {
+      if (actor === 'source') {
+        builtinFS.renameSync(join(f.worlds, stagingName), join(f.worlds, preservedName));
+        builtinFS.mkdirSync(join(f.worlds, stagingName));
+        builtinFS.writeFileSync(join(f.worlds, stagingName, 'replacement.txt'), 'compensation replacement must not move');
+      } else {
+        builtinFS.renameSync(f.worlds, originalParent);
+        builtinFS.mkdirSync(f.worlds);
+        builtinFS.mkdirSync(f.target.worldPath);
+        builtinFS.writeFileSync(join(f.target.worldPath, 'fresh-owner.txt'), 'fresh parent owner');
+        builtinFS.mkdirSync(f.neighbour.worldPath);
+        builtinFS.writeFileSync(join(f.neighbour.worldPath, 'fresh-neighbour.txt'), 'fresh parent neighbour');
+        // Also occupy the real captured parent's recovery destination. A stale
+        // path check and a held fd alone must neither overwrite this occupant
+        // nor modify the unrelated new parent.
+        if (actor === 'parent-and-occupant') {
+          builtinFS.mkdirSync(join(originalParent, 'Target'));
+          builtinFS.writeFileSync(join(originalParent, 'Target', 'new-owner.txt'), 'captured parent new owner');
+        }
+      }
+      if (actor === 'source') {
+        f.receipt.actorReplacement = synchronousSnapshot(join(f.worlds, stagingName));
+        f.receipt.actorNeighbour = synchronousSnapshot(f.neighbour.worldPath);
+        f.receipt.actorWorlds = synchronousSnapshot(f.worlds);
+      } else {
+        if (actor === 'parent-and-occupant') f.receipt.actorOccupant = synchronousSnapshot(join(originalParent, 'Target'));
+        f.receipt.actorWorlds = synchronousSnapshot(f.worlds);
+        f.receipt.actorHeldParent = synchronousSnapshot(originalParent);
+      }
+    });
+  });
+  let out;
+  try { out = await scopedDelete(f, d.source, `d154:compensation:${actor}`); }
+  finally { stop(); restoreForward(); }
+  assert.equal(f.receipt.renameReached, true, 'the genuine forward movement completed before the original error');
+  assert.equal(reached, true, 'the real compensation reached its final native check before commit');
+  publicRefusal(f, out, 'TRANSACTION_CONFLICT');
+  assert.equal(original.cause, cause, 'recovery retains the exact original cause object');
+  assert.equal(original.code, 'EIO'); assert.equal(original.message, 'EIO');
+  assert.equal(original.mutationState, 'UNKNOWN');
+  f.receipt.originalFailure = { message: original.message, code: original.code, causeCode: original.cause.code,
+    causeMessage: original.cause.message, mutationState: original.mutationState, details: original.details };
+  if (!f.receipt.actorCompleted) {
+    assert.ok(['EACCES', 'EPERM', 'EBUSY', 'ETXTBSY'].includes(f.receipt.actorRefusal?.code));
+    assert.deepEqual(f.receipt.actorRefusalVerifiedSource, f.receipt.before.target, 'kernel refusal must precede any actor source replacement');
+    assert.deepEqual(f.receipt.actorRefusalNeighbour, f.receipt.before.neighbour);
+    await preserved(f); return;
+  }
+  assert.equal(typeof original.details?.residuePath, 'string', 'blocked safe compensation names actual original custody');
+  assert.deepEqual(await snapshot(original.details.residuePath), f.receipt.before.target,
+    'the diagnostic must name the actual captured directory, not a replacement at its old spelling');
+  if (actor === 'source') {
+    assert.equal(original.details.residuePath, join(f.worlds, preservedName));
+    assert.deepEqual(await snapshot(join(f.worlds, preservedName)), f.receipt.before.target);
+    replacementTree = await snapshot(join(f.worlds, stagingName));
+    assert.deepEqual(replacementTree, f.receipt.actorReplacement);
+    assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.actorNeighbour);
+    assert.deepEqual(await snapshot(f.worlds), f.receipt.actorWorlds);
+    assert.deepEqual(Object.keys(replacementTree).sort(), ['', 'replacement.txt']);
+    assert.equal(await fs.readFile(join(f.worlds, stagingName, 'replacement.txt'), 'utf8'), 'compensation replacement must not move');
+    assert.equal(await fs.lstat(f.target.worldPath).catch(e => { if (e.code === 'ENOENT') return null; throw e; }), null);
+    assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+    assert.deepEqual((await fs.readdir(f.worlds)).sort(), [preservedName, stagingName, 'Neighbour'].sort());
+  } else {
+    assert.equal(original.details.residuePath, join(originalParent, stagingName));
+    assert.deepEqual(await snapshot(join(originalParent, stagingName)), f.receipt.before.target);
+    assert.deepEqual(await snapshot(join(originalParent, 'Neighbour')), f.receipt.before.neighbour);
+    if (actor === 'parent-and-occupant') {
+      occupantTree = await snapshot(join(originalParent, 'Target'));
+      assert.deepEqual(occupantTree, f.receipt.actorOccupant);
+      assert.deepEqual(Object.keys(occupantTree).sort(), ['', 'new-owner.txt']);
+      assert.equal(await fs.readFile(join(originalParent, 'Target', 'new-owner.txt'), 'utf8'), 'captured parent new owner');
+    } else {
+      assert.equal(await fs.lstat(join(originalParent, 'Target')).catch(error => { if (error.code === 'ENOENT') return null; throw error; }), null,
+        'parent-only replacement must not recover into the stale captured parent merely because its destination is empty');
+    }
+    assert.deepEqual(await snapshot(originalParent), f.receipt.actorHeldParent);
+    freshParentTree = await snapshot(f.worlds);
+    assert.deepEqual(freshParentTree, f.receipt.actorWorlds);
+    assert.deepEqual(Object.keys(freshParentTree).sort(), ['', 'Neighbour', 'Neighbour/fresh-neighbour.txt', 'Target', 'Target/fresh-owner.txt']);
+    assert.equal(await fs.readFile(join(f.target.worldPath, 'fresh-owner.txt'), 'utf8'), 'fresh parent owner');
+    assert.equal(await fs.readFile(join(f.neighbour.worldPath, 'fresh-neighbour.txt'), 'utf8'), 'fresh parent neighbour');
+    assert.deepEqual((await fs.readdir(originalParent)).sort(),
+      [stagingName, 'Neighbour', ...(actor === 'parent-and-occupant' ? ['Target'] : [])].sort());
+  }
+  f.receipt.preservedReplacement = replacementTree;
+  f.receipt.preservedOccupant = occupantTree;
+  f.receipt.preservedFreshParent = freshParentTree;
 });

@@ -41,7 +41,8 @@ test('OWN atomic mover capability must be present rather than module-load setup 
   await requireMover(sourceModule);
 });
 for (const scenario of ['success', 'occupied-empty', 'occupied-nonempty', 'parent-replaced', 'parent-symlink',
-  'source-replaced', 'post-source-replaced', 'post-target-replaced', 'native-error-after-move', 'identity-mismatch', 'invalid-name', 'closed']) {
+  'source-replaced', 'post-source-replaced', 'post-target-replaced', 'native-error-after-move', 'identity-mismatch', 'invalid-name', 'closed',
+  'commit-source-replaced', 'commit-parent-replaced', 'commit-source-replaced-occupied', 'commit-parent-replaced-occupied']) {
   test(`real primitive ${scenario} on actual current target volume`, t => {
     childProbe(t, sourceModule, scenario, `source-${scenario}`);
   });
@@ -95,7 +96,8 @@ function preparePackage() {
   const extracted = join(archiveRoot, 'extracted'); fs.mkdirSync(extracted);
   execute(['tar', '-xzf', packed, '-C', extracted], archiveRoot);
   for (const name of ['test/source-release-materials.test.mjs', 'test/support/source-release-fixture.mjs',
-    'test/fixtures/source-release-materials.json', 'test/support/source-atomic-release-package-probe.mjs']) {
+    'test/fixtures/source-release-materials.json', 'test/support/source-atomic-release-package-probe.mjs',
+    'test/local-source-deletion-race.test.mjs', 'test/support/commit-boundary-observer.mjs']) {
     const to = join(consumer, name); fs.mkdirSync(dirname(to), { recursive: true });
     fs.copyFileSync(join(root, name), to);
   }
@@ -124,6 +126,19 @@ test('normal installed public Adapter passes full independent SOURCE RELEASE mat
   assert.match(output, /(?:ℹ tests|# tests) [1-9][0-9]*/, 'actual installed SOURCE suite must execute tests');
   assert.equal(result.status, 0,
     'INSTALLED_SOURCE_RELEASE_CAPABILITY_MISSING: actual installed Adapter must pass complete readSourceReleaseMaterials SOURCE suite; inspect installed-source-release-materials.log');
+});
+test('D-154 normal installed public delete and compensation run the same native final-check races', () => {
+  const p = preparePackage();
+  const result = spawnSync(process.execPath, ['--test', 'test/local-source-deletion-race.test.mjs'], {
+    cwd: p.consumer, encoding: 'utf8', env: { ...cleanEnv, PATH: dirname(process.execPath),
+      SOURCE_RACE_ADAPTER_ROOT: join(p.installed, 'dist/runtime'), SOURCE_RACE_RUN: resolve(root, '..') }
+  });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  fs.writeFileSync(join(evidenceRoot, 'installed-public-deletion-D154.log'), `${output}\nEXIT=${result.status}\n`);
+  assert.doesNotMatch(output, /ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module|recursively within a test file/);
+  assert.match(output, /(?:ℹ tests|# tests) [1-9][0-9]*/);
+  assert.match(output, /D-154/, 'same new final-check public assertions must actually execute');
+  assert.equal(result.status, 0, 'INSTALLED_DELETE_IDENTITY_CAPABILITY_MISSING: full real public deletion/compensation suite must pass');
 });
 function requireReleaseFixture(p) {
   const pkg = JSON.parse(fs.readFileSync(join(p.extracted, 'package.json')));
@@ -211,7 +226,8 @@ test('normal archive pack/default prod install supplies real successful OWN atom
   }, null, 2));
 });
 for (const scenario of ['occupied-empty', 'occupied-nonempty', 'parent-replaced', 'parent-symlink', 'source-replaced',
-  'post-source-replaced', 'post-target-replaced', 'native-error-after-move'])
+  'post-source-replaced', 'post-target-replaced', 'native-error-after-move', 'commit-source-replaced', 'commit-parent-replaced',
+  'commit-source-replaced-occupied', 'commit-parent-replaced-occupied'])
   test(`installed OWN primitive ${scenario} uses actual extracted native bytes`, t => {
     const p = preparePackage(); requireRelease(p);
     childProbe(t, join(p.installed, 'dist/runtime/source-atomic-move.mjs'), scenario, `installed-${scenario}`);
@@ -224,6 +240,52 @@ function candidatePackage(name) {
   return { ...release, caseRoot, candidate };
 }
 function writeManifest(c) { fs.writeFileSync(join(c.candidate, manifestRelative), JSON.stringify(c.manifest, null, 2)); }
+let hostileFixture;
+function genuineReplacementFixture(p) {
+  if (hostileFixture) return hostileFixture;
+  // Test preparation only. Never a production compiler dependency or shipped
+  // loader helper. A valid, self-authored executable attack image is required;
+  // invalid bytes and a mocked dlopen are not non-execution evidence.
+  const headers = join(dirname(dirname(process.execPath)), 'include/node');
+  assert.ok(fs.existsSync(join(headers, 'node_api.h')), 'test SDK must match the actual Node distribution');
+  const fixtureRoot = fs.mkdtempSync(join(evidenceRoot, 'D154-executable-fixture-'));
+  const fixture = join(fixtureRoot, 'replacement.node');
+  const source = join(root, 'test/fixtures/d154-replacement-native.c');
+  const compiler = { darwin: '/usr/bin/clang', linux: '/usr/bin/cc' }[process.platform];
+  assert.ok(compiler, 'D154_TEST_FIXTURE_TOOLCHAIN_UNPROVEN: provide legal normal native test toolchain; no platform skip/shrink');
+  const args = ['-I', headers, '-DNAPI_VERSION=8', ...(process.platform === 'darwin' ? ['-bundle', '-undefined', 'dynamic_lookup'] : ['-shared', '-fPIC']), source, '-o', fixture];
+  observe('D154-compile-executable-test-fixture', compiler, args, fixtureRoot, cleanEnv);
+  const loadProbe = join(root, 'test/support/source-atomic-load-race.mjs');
+  observe('D154-real-replacement-dlopen-control', process.execPath, [loadProbe, JSON.stringify({
+    mode: 'control', hostilePath: fixture, evidencePath: join(fixtureRoot, 'control.json')
+  })], fixtureRoot, { ...cleanEnv, PATH: dirname(process.execPath) });
+  hostileFixture = fixture;
+  return fixture;
+}
+test('D-154 actual executable replacement fixture has a genuine dlopen initialization control', () => {
+  const p = preparePackage(); requireRelease(p); genuineReplacementFixture(p);
+});
+for (const surface of ['source', 'normal-installed']) for (const mode of ['binary', 'parent'])
+  test(`D-154 ${surface} verified bytes -> real dlopen ${mode} replacement never executes foreign code`, t => {
+    const p = preparePackage(), c = candidatePackage(`D154-load-${surface}-${mode}`);
+    if (surface === 'source') {
+      // Exercise the normally prepared archive's real src loader, with its own
+      // actual built artifacts; dependencies are not copied from this worktree.
+      const sourceCandidate = join(c.caseRoot, 'source-checkout');
+      fs.cpSync(p.checkout, sourceCandidate, { recursive: true, filter: path => !path.includes(`${sep}node_modules`) });
+      fs.symlinkSync(join(p.checkout, 'node_modules'), join(sourceCandidate, 'node_modules'), 'dir');
+      c.candidate = sourceCandidate;
+    }
+    const caller = join(c.caseRoot, 'worlds'); fs.mkdirSync(caller);
+    for (const name of ['source', 'neighbour']) { fs.mkdirSync(join(caller, name)); fs.writeFileSync(join(caller, name, 'keep'), name); }
+    const evidencePath = join(c.caseRoot, 'load-race.json');
+    observe(`D154-load-${surface}-${mode}`, process.execPath, [join(root, 'test/support/source-atomic-load-race.mjs'), JSON.stringify({
+      mode, modulePath: join(c.candidate, surface === 'source' ? 'src/source-atomic-move.mjs' : 'dist/runtime/source-atomic-move.mjs'),
+      artifactPath: join(c.candidate, c.selected.relativePath), hostilePath: genuineReplacementFixture(p),
+      parentPath: caller, evidencePath, expectedProfile: c.selected.runtimeProfile
+    })], c.caseRoot, { ...cleanEnv, PATH: dirname(process.execPath) });
+    t.diagnostic(`genuine loader and preserved worlds evidence ${evidencePath}`);
+  });
 const trustCases = {
   'missing-manifest': c => fs.rmSync(join(c.candidate, manifestRelative)),
   'missing-native': c => fs.rmSync(join(c.candidate, c.selected.relativePath)),

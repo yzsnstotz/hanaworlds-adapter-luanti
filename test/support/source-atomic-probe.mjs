@@ -7,6 +7,7 @@ import promiseFS from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { observeCommitBoundary } from './commit-boundary-observer.mjs';
 
 export const directoryIdentity = path => {
   const s = fs.lstatSync(path, { bigint: true });
@@ -43,7 +44,7 @@ async function probe({ modulePath, caseRoot, scenario }) {
   const request = { fromName: 'source', toName: 'target', expectedDirectory };
   const evidence = { scenario, platform: process.platform, arch: process.arch, node: process.version,
     napi: process.versions.napi, targetVolumeDevice: expectedDirectory.device, primitiveCalls: 0, openedParents: 0, closedParents: 0, dlopenPaths: [] };
-  let actor, mover, failure, receipt;
+  let actor, mover, failure, receipt, stopCommitObserver;
   const actualRenameSync = builtinFS.renameSync, actualCallbackRename = builtinFS.rename, actualRename = promiseFS.rename;
   const forbiddenRename = () => { throw Error('FALLBACK_RENAME_FORBIDDEN: OWN native exclusive move required'); };
   builtinFS.renameSync = forbiddenRename; builtinFS.rename = forbiddenRename; promiseFS.rename = forbiddenRename; syncBuiltinESMExports();
@@ -81,7 +82,59 @@ async function probe({ modulePath, caseRoot, scenario }) {
       'selected cached OWN binding runtimeProfile metadata must be read-only');
     mover = await openAtomicMover({ parentPath });
     assert.equal(typeof mover.move, 'function'); assert.equal(typeof mover.close, 'function');
-    if (scenario === 'occupied-empty' || scenario === 'occupied-nonempty') {
+    if (scenario.startsWith('commit-')) {
+      const replaceParent = scenario.includes('parent'), occupied = scenario.endsWith('-occupied');
+      const held = join(root, replaceParent ? 'held-parent' : 'held-source');
+      const sourceObject = replaceParent ? parentPath : source;
+      const originalObject = tree(sourceObject);
+      let replacement, occupant, attempted = false, denied;
+      stopCommitObserver = observeCommitBoundary(binding, event => {
+        if (event.fromName !== request.fromName || event.toName !== request.toName) return;
+        assert.equal(attempted, false, 'exactly one final native check/commit notification');
+        attempted = true; evidence.commitBoundary = event;
+        assert.deepEqual(event.verifiedDirectory, expectedDirectory);
+        assert.deepEqual(event.verifiedParent, directoryIdentity(parentPath));
+        try { actualRenameSync(sourceObject, held); }
+        catch (error) {
+          assert.ok(['EBUSY', 'EACCES', 'EPERM'].includes(error.code), 'only actual kernel exclusion counts as denied actor');
+          denied = error.code; evidence.actorKernelRefusal = denied;
+          assert.deepEqual(tree(sourceObject), originalObject);
+        }
+        if (!denied) {
+          fs.mkdirSync(sourceObject);
+          fs.writeFileSync(join(sourceObject, 'foreign'), 'replacement owner');
+          if (replaceParent) {
+            fs.mkdirSync(source); fs.writeFileSync(join(source, 'foreign'), 'foreign world');
+            fs.mkdirSync(join(parentPath, 'neighbour')); fs.writeFileSync(join(parentPath, 'neighbour', 'foreign'), 'foreign neighbour');
+          }
+          replacement = tree(sourceObject);
+        }
+        if (occupied) { fs.mkdirSync(target); fs.writeFileSync(join(target, 'new-owner'), 'new destination owner'); occupant = tree(target); }
+        // No recheck/mock rejection here. Return and let the real native commit
+        // run. An implementation cannot rename a replacement then repair it.
+      });
+      try { receipt = await mover.move(request); } catch (error) { failure = error; }
+      assert.equal(attempted, true, 'replacement must occur inside native after the LAST identity check');
+      if (denied && !occupied) {
+        if (failure) throw failure;
+        assert.deepEqual(receipt.movedDirectory, expectedDirectory);
+        assert.deepEqual(tree(target), before); assert.equal(tree(source), null);
+        assert.deepEqual(tree(join(parentPath, 'neighbour')), neighbour);
+      } else {
+        assert.ok(failure, 'post-check replacement/occupancy must not move any replacement');
+        assert.equal(failure.mutationState, 'NONE', 'detection after moving the wrong object is too late');
+        if (!denied) assert.equal(failure.code ?? failure.message, 'CURRENT_WORLD_MISMATCH');
+        assert.deepEqual(tree(target), occupied ? occupant : null);
+        if (denied) assert.deepEqual(tree(source), before);
+        else {
+          assert.deepEqual(tree(held), originalObject);
+          // Include an actor's newly occupied destination in expected parent.
+          if (replaceParent && occupied) replacement.children.target = occupant;
+          assert.deepEqual(tree(sourceObject), replacement);
+          if (!replaceParent) assert.deepEqual(tree(join(parentPath, 'neighbour')), neighbour);
+        }
+      }
+    } else if (scenario === 'occupied-empty' || scenario === 'occupied-nonempty') {
       fs.mkdirSync(target); if (scenario === 'occupied-nonempty') fs.writeFileSync(join(target, 'owned'), 'owned');
       const occupied = tree(target);
       try { await mover.move(request); } catch (e) { failure = e; }
@@ -165,10 +218,11 @@ async function probe({ modulePath, caseRoot, scenario }) {
       assert.deepEqual(tree(target), before); assert.equal(tree(source), null);
       assert.ok(evidence.primitiveCalls > 0, 'success must use OWN shipped native primitive');
     }
-    if (!scenario.startsWith('parent-')) assert.deepEqual(tree(join(parentPath, 'neighbour')), neighbour);
+    if (!scenario.startsWith('parent-') && !scenario.startsWith('commit-')) assert.deepEqual(tree(join(parentPath, 'neighbour')), neighbour);
     evidence.receipt = receipt; evidence.failure = failure && { code: failure.code, message: failure.message, mutationState: failure.mutationState, details: failure.details };
     evidence.proven = true;
   } finally {
+    stopCommitObserver?.();
     await mover?.close(); process.dlopen = realDlopen;
     builtinFS.renameSync = actualRenameSync; builtinFS.rename = actualCallbackRename; promiseFS.rename = actualRename; syncBuiltinESMExports();
     fs.writeFileSync(join(root, 'receipt.json'), JSON.stringify(evidence, null, 2));
