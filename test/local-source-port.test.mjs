@@ -169,6 +169,72 @@ async function setup(t, config = {}) {
     statusChange: value => { statusChange = value; }, runtimeError: e => { runtimeError = e; } };
 }
 
+// Only the Canvas retirement peer is substituted. Creation, scoped dispatch,
+// ownership/activity checks, filesystem removal and readback use actual Adapter code.
+async function deletionFixture(t) {
+  const f = await setup(t), retirement = { calls: [], sessionRefs: [], reservationRef: null };
+  replace(f.canvas, 'hanaworldsCanvasV5', { async call(name, q) {
+    assert.ok(['ListWorldSelections', 'ReserveWorldRetirement', 'ReleaseWorldRetirement'].includes(name),
+      `unexpected Canvas action during deletion: ${name}`);
+    let result;
+    if (name === 'ListWorldSelections') result = { worldRef: q.worldRef, inventoryRevision: 'retirement-inventory:1',
+      sessionRefs: retirement.sessionRefs, retirementReservationRef: retirement.reservationRef };
+    else if (name === 'ReserveWorldRetirement') {
+      assert.equal(retirement.reservationRef, null, 'cannot reserve retirement twice');
+      assert.equal(q.expectedInventoryRevision, 'retirement-inventory:1');
+      retirement.reservationRef = 'retirement-reservation:1';
+      result = { worldRef: q.worldRef, reservationRef: retirement.reservationRef, inventoryRevision: q.expectedInventoryRevision };
+    } else {
+      assert.equal(q.reservationRef, retirement.reservationRef, 'release the exact held reservation');
+      result = { worldRef: q.worldRef, reservationRef: q.reservationRef, outcome: q.outcome,
+        inventoryRevision: 'retirement-inventory:2' };
+      retirement.reservationRef = null;
+    }
+    retirement.calls.push({ name, request: plain(q) });
+    return validateBoundResponse('canvas/v7', name, q,
+      { contractVersion: 'canvas/v7', requestId: q.requestId, result, error: null });
+  } });
+  async function create(displayName) {
+    const q = ask({ templateId: 'flat', displayName }), r = envelope(q, await f.local().createWorld(q));
+    assert.equal(r.error, null); assert.equal(r.result.displayName, displayName);
+    const worldPath = join(f.worlds, displayName);
+    const marker = JSON.parse(await fs.readFile(join(worldPath, 'hanaworlds-created-world.json'), 'utf8'));
+    assert.equal(marker.worldRef, r.result.worldRef, 'target has an independently observed real creation marker');
+    const selected = (await f.local().discover()).find(w => w.worldRef === r.result.worldRef);
+    assert.equal(selected.worldPath, worldPath);
+    return { ...r.result, worldPath, connectionRef: selected.connectionRef };
+  }
+  const target = await create('Delete target'), keep = await create('Keep same-source world');
+  const payload = { worldRef: target.worldRef, confirmationName: target.displayName };
+  const request = source => scoped(source, 'deleteWorld', payload);
+  function sequence(names, outcome) {
+    assert.deepEqual(retirement.calls.map(x => x.name), names, 'only the declared retirement sequence is allowed');
+    assert.ok(retirement.calls.every(x => x.request.worldRef === target.worldRef), 'never reserve or release the retained world');
+    if (outcome) assert.equal(retirement.calls.at(-1).request.outcome, outcome);
+    assert.equal(retirement.reservationRef, null, 'no leaked retirement reservation');
+  }
+  function refusal(q, r, code = 'TRANSACTION_CONFLICT') {
+    const out = envelope(q, r);
+    validateBoundResponse(WIRE, 'deleteWorld', { contractVersion: WIRE, requestId: q.requestId, ...q.payload }, r);
+    assert.deepEqual(out.error, { code, phase: 'apply', retryability: 'AFTER_NEW_FACTS', mutationState: 'NONE',
+      transactionRef: null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' });
+    assert.equal(out.result, null);
+  }
+  async function isolatedRemoval(before) {
+    await assert.rejects(fs.lstat(target.worldPath), e => e.code === 'ENOENT');
+    assert.deepEqual(await fs.readdir(f.worlds), [keep.displayName], 'only the exact target disappears; no staging/residue');
+    const after = await files(f.root);
+    const expected = before.filter(row => row[0] !== target.worldPath && !row[0].startsWith(target.worldPath + '/'))
+      .map(row => [...row]);
+    // Removing a child changes only its parent directory timestamp. All retained
+    // directory identities/modes and every other file's bytes/mtime must be exact.
+    const parent = expected.find(row => row[0] === f.worlds), current = after.find(row => row[0] === f.worlds);
+    assert.deepEqual(current.slice(0, 4), parent.slice(0, 4)); parent[4] = current[4];
+    assert.deepEqual(after, expected, 'no extra world, journal, source or profile file changes');
+  }
+  return { ...f, retirement, target, keep, payload, request, sequence, refusal, isolatedRemoval };
+}
+
 test('neutral descriptor advertises exact configured source, templates and closed fields without actions', async t => {
   const f = await setup(t), d = await f.audit(f.descriptor);
   keys(d, ['source', 'contractVersions', 'discoveryInput', 'templates']);
@@ -204,6 +270,66 @@ test('scoped create/discover/describe refer to the same newly supplied world and
   assert.equal(description.result.sourceStartupFacts.availability, 'KNOWN');
   assert.deepEqual((await f.descriptor()).source, d.source);
   assert.equal(f.actions.length, 0);
+});
+
+test('scoped delete succeeds on the exact safe created world, preserves its neighbour and source generation', async t => {
+  const f = await deletionFixture(t), d = await f.descriptor(), q = f.request(d.source);
+  const before = await files(f.root), actions = [...f.actions];
+  const r = envelope(q, await f.entry('callScoped')(q));
+  validateBoundResponse(WIRE, 'deleteWorld', { contractVersion: WIRE, requestId: q.requestId, ...q.payload }, r);
+  assert.equal(r.error, null);
+  assert.deepEqual(r.result, { worldRef: f.target.worldRef, confirmationName: f.target.displayName, deleted: true });
+  await f.isolatedRemoval(before); assert.deepEqual(f.actions, actions, 'safe deletion causes no engine/write/session actions');
+  f.sequence(['ListWorldSelections', 'ReserveWorldRetirement', 'ReleaseWorldRetirement'], 'RETIRED');
+  assert.deepEqual((await f.audit(f.descriptor)).source, d.source, 'deleting one world does not expire the source');
+  const inventoryQ = scoped(d.source, 'discover', d.discoveryInput);
+  const inventory = envelope(inventoryQ, await f.audit(() => f.entry('callScoped')(inventoryQ)));
+  assert.equal(inventory.error, null);
+  assert.deepEqual(inventory.result.worlds.map(w => [w.worldRef, w.displayName]), [[f.keep.worldRef, f.keep.displayName]]);
+  const repeated = f.request(d.source);
+  await f.audit(async () => f.refusal(repeated, await f.entry('callScoped')(repeated), 'WORLD_NOT_FOUND'));
+  f.sequence(['ListWorldSelections', 'ReserveWorldRetirement', 'ReleaseWorldRetirement'], 'RETIRED');
+});
+
+test('scoped delete rejects the retained world name as confirmation without deleting either world', async t => {
+  const f = await deletionFixture(t), d = await f.descriptor(), q = f.request(d.source);
+  q.payload.confirmationName = f.keep.displayName;
+  await f.audit(async () => f.refusal(q, await f.entry('callScoped')(q)));
+  assert.deepEqual((await fs.readdir(f.worlds)).sort(), [f.target.displayName, f.keep.displayName].sort());
+  f.sequence([]); assert.deepEqual((await f.descriptor()).source, d.source);
+});
+
+for (const paired of [false, true])
+  test(`scoped delete refuses an ${paired ? 'active paired connection' : 'open native lease'} with no misdeletion`, async t => {
+    const f = await deletionFixture(t), d = await f.descriptor();
+    const lease = await f.local().acquire({ connectionRef: f.target.connectionRef, requesterRef: 'fixture-native-owner',
+      userPath: f.user, action: 'BIND_RUNNING_WORLD' });
+    if (paired) await f.local().pair({ leaseRef: lease.leaseRef, connectionRef: f.target.connectionRef,
+      requesterRef: 'fixture-native-owner' });
+    const q = f.request(d.source);
+    await f.audit(async () => f.refusal(q, await f.entry('callScoped')(q)));
+    assert.deepEqual((await fs.readdir(f.worlds)).sort(), [f.target.displayName, f.keep.displayName].sort());
+    const inspected = await f.local().inspect({ leaseRef: lease.leaseRef, connectionRef: f.target.connectionRef,
+      requesterRef: 'fixture-native-owner' });
+    assert.equal(inspected.current, true, 'rejection cannot consume or stop the target lease');
+    f.sequence(['ListWorldSelections', 'ReserveWorldRetirement', 'ReleaseWorldRetirement'], 'ABORTED');
+    assert.deepEqual((await f.descriptor()).source, d.source);
+  });
+
+test('scoped delete keeps a world selected by a live Canvas session without acquiring retirement', async t => {
+  const f = await deletionFixture(t), d = await f.descriptor(); f.retirement.sessionRefs = ['session:live-target'];
+  const q = f.request(d.source);
+  await f.audit(async () => f.refusal(q, await f.entry('callScoped')(q)));
+  f.sequence(['ListWorldSelections']); assert.deepEqual((await f.descriptor()).source, d.source);
+});
+
+test('deletion fixture retains the direct deleteWorld ABI and executes actual filesystem safety/removal', async t => {
+  const f = await deletionFixture(t), q = ask(f.payload), before = await files(f.root), actions = [...f.actions];
+  const r = envelope(q, await f.local().deleteWorld(q));
+  validateBoundResponse(WIRE, 'deleteWorld', q, r);
+  assert.equal(r.error, null); assert.deepEqual(r.result, { ...f.payload, deleted: true });
+  await f.isolatedRemoval(before); assert.deepEqual(f.actions, actions);
+  f.sequence(['ListWorldSelections', 'ReserveWorldRetirement', 'ReleaseWorldRetirement'], 'RETIRED');
 });
 
 const payloads = { discover: f => ({ worldRoot: f.worlds }),
