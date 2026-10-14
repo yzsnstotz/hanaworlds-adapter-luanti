@@ -161,7 +161,7 @@ export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, 
     leases.delete(row.leaseRef);
     if (running.get(row.world.worldPath) === row) running.delete(row.world.worldPath);
   }
-  async function inspectRow(row) {
+  async function inspectRow(row, { readOnly = false } = {}) {
     let phase = 'PROVIDER';
     try {
       const host = provider(row);
@@ -176,7 +176,18 @@ export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, 
       if (!factsMatch(row, facts, 'CURRENT') || !sameWorld(row.world, await world(row.world.connectionRef))) deny();
       if (row.sourceCheck) await row.sourceCheck();
       return facts;
-    } catch { log('warn', `LOCAL_LEASE_${phase}_REJECTED`); forget(row); deny(); } // no provider error text or credentials escape
+    } catch (error) {
+      log('warn', `LOCAL_LEASE_${phase}_REJECTED`);
+      // A fact read cannot revoke a binding or prove the process stopped. Keep
+      // its custody record and require fresh evidence on the next read. Lease
+      // actions retain their original withdrawal on failure.
+      if (!readOnly) forget(row);
+      if (readOnly && error?.publicError !== undefined) {
+        validateType('Error', error.publicError);
+        throw error;
+      }
+      deny(); // no provider error text or credentials escape
+    }
   }
   function query(input, extra = []) {
     const q = fields(input, ['leaseRef', 'requesterRef', 'connectionRef', ...extra],
@@ -604,7 +615,7 @@ export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, 
       const row = [...running.values()].find(x => (x.publicConnectionRef ?? x.world.connectionRef) === connectionRef);
       if (!row || !row.paired) deny('WORLD_NOT_BOUND');
       if (row.runtimeStatusCheck) await row.runtimeStatusCheck();
-      const result = await inspectRow(row);
+      const result = await inspectRow(row, { readOnly: true });
       if (row.runtimeStatusCheck) await row.runtimeStatusCheck();
       return result;
     },

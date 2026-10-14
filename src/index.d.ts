@@ -2,7 +2,8 @@ export type { Ref, Positions, StateProfile, ScopedCells, ScopedWorldBinding, Err
 export type { CanvasFactsScope, CanvasSourceFacts, FactsProviderIdentity, FactSource } from '../dist/contracts-types/index.js';
 import type { ScopedWorldBinding, Ref, Positions, ReadCatalogueRequest, ReadCatalogueResponse,
  ReadMaterialSourcesRequest, ReadMaterialSourcesResponse, ReadEngineFactsRequest, ReadEngineFactsResponse,
- ReadWriteProfileRequest, ReadWriteProfileResponse, CanvasFactsScope, CanvasSourceFacts } from '../dist/contracts-types/index.js';
+ ReadWriteProfileRequest, ReadWriteProfileResponse, CanvasFactsScope, CanvasSourceFacts,
+ FactsProviderIdentity, CatalogueFacts, MaterialSourceFacts, Digest } from '../dist/contracts-types/index.js';
 import type { Error as ProtocolError, OpaqueValue, LocalWorldsCreateRequest, LocalWorldsCreateResponse,
  LocalWorldsDeleteRequest, LocalWorldsDeleteResponse, LocalWorldsDescribeSourceRequest, LocalWorldsDescribeSourceResponse,
  LocalWorldsDiscoverRequest, LocalWorldsDiscoverResponse, LocalWorldsPairRequest, LocalWorldsPairResponse } from '../dist/contracts-types/index.js';
@@ -68,12 +69,21 @@ export interface LocalWorldsHostPort {
 /** Read-only Host facts using the existing scoped transaction types. No wire operation
  * or synchronous guard; hashes retain the StateProfile rules of the paired source. */
 export type ScopedStateFacts = Pick<ScopedWorldBinding, 'worldRef' | 'stateProfile' | 'cells'>;
+export type MaterialReadScope = CanvasFactsScope;
+export interface TextureBytes { readonly bytesDigest: Digest; readonly bytes: Uint8Array }
+export interface CatalogueHostFacts { readonly provider: FactsProviderIdentity; readonly facts: CatalogueFacts }
+export interface MaterialSourcesHostFacts {
+ readonly provider: FactsProviderIdentity; readonly facts: MaterialSourceFacts;
+ readonly textures: ReadonlyArray<TextureBytes>;
+}
 /** Provided as hanaworldsWorldFacts. readScopedState requires the active registered
  * hanaworldsCanvasV5 provider/fiber in the same official Cordis root. */
 export interface WorldFactsHostPort {
  readonly contractVersion: 'world-facts/v1';
  readScopedState(connectionRef: Ref, positions: Positions): Promise<ScopedStateFacts>;
  readCanvasFacts(scope: CanvasFactsScope): Promise<CanvasSourceFacts>;
+ readCatalogue(scope: MaterialReadScope): Promise<CatalogueHostFacts>;
+ readMaterialSources(scope: MaterialReadScope): Promise<MaterialSourcesHostFacts>;
  call(operation: 'ReadCatalogue', request: ReadCatalogueRequest): Promise<ReadCatalogueResponse>;
  call(operation: 'ReadMaterialSources', request: ReadMaterialSourcesRequest): Promise<ReadMaterialSourcesResponse>;
  call(operation: 'ReadEngineFacts', request: ReadEngineFactsRequest): Promise<ReadEngineFactsResponse>;
@@ -86,6 +96,7 @@ export declare function discoverLocalWorlds(roots: readonly string[]): Promise<R
 export interface AdapterOptions {
  /** Fresh pairing requires the same validated source configuration. */
  transportSettings?: { courierResultWaitMs?: number; courierBodyBytes?: number };
+ materialSourceSettings?: { maxTextureBytes?: number; maxColorPixels?: number };
  localWorldRoots?: readonly string[];
  localUserPath?: string;
  localCreationRoot?: string;

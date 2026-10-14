@@ -8,7 +8,8 @@ import { randomUUID } from 'node:crypto';
 import { types } from 'node:util';
 import { validateRequest, validateResponse, validateRegionRead, validateRegionWrite, contractHandshake, validateBoundRequest, validateBoundResponse, admitRequest,
   validateCurrentRequest, validateType, schemaBundle, historicalReceiptResponse, digestValue, canonicalJSON, comparePosition, ContractError } from '#contracts';
-import { readWorldSourceFact, readCanvasSourceFacts, checkWritePathFacts } from './world-source-facts.mjs';
+import { readWorldSourceFact, readMaterialFacts, readCanvasSourceFacts, checkWritePathFacts } from './world-source-facts.mjs';
+import { MATERIAL_SOURCE_DEFAULTS } from './material-source-policy.mjs';
 import { createInspectionContext } from './inspection-context.mjs';
 import { LocalCourier } from './local-courier.mjs';
 import { NeutralEngine, WORLD_GEOMETRY, GEOMETRY_PROFILE } from './world-vocabulary.mjs';
@@ -37,7 +38,7 @@ const trackedCaller = (receiver, port, ctx) => types.isProxy(receiver) &&
   Object.getOwnPropertyDescriptor(receiver, 'ctx')?.value === ctx ? receiver.ctx : null;
 
 /** All dependencies below are in-process ports, never caller JSON facts. */
-export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, transportSettings = {}, log = message => console.warn(message) }) {
+export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegistry, resolveHistory, resolveOracle, resolveInspection, inspectConnection, transportSettings = {}, materialSourceSettings = MATERIAL_SOURCE_DEFAULTS, log = message => console.warn(message) }) {
   const rows = new Map(); let serial = Promise.resolve(), closed = false;
   const factsProvider=Object.freeze({providerRef:`facts-provider:${randomUUID()}`,providerRevision:`facts-generation:${randomUUID()}`});
   let activeCanvasCheck = () => {}, activeWriteRequest = null;
@@ -163,10 +164,10 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
         await check();
         const connection={worldRef:row.worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation};
         const first=await row.engine.materialMetadata();
-        const result=await resolveMaterialSources(first,connection);
+        const result=await resolveMaterialSources(first,connection,materialSourceSettings);
         const last=await row.engine.materialMetadata();
         if(canonicalJSON(first)!==canonicalJSON(last)) fail('CURRENT_WORLD_MISMATCH');
-        const confirmed=await resolveMaterialSources(last,connection);
+        const confirmed=await resolveMaterialSources(last,connection,materialSourceSettings);
         if(result.snapshot.sourceRevision!==confirmed.snapshot.sourceRevision) fail('CURRENT_WORLD_MISMATCH');
         await check();
         return confirmed;
@@ -221,19 +222,22 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       });
       serial = work.catch(() => {}); return work;
   }
-  function stage1Read(worldRef, read) {
+  function stage1Read(worldRef, read, checkAuthority = () => {}) {
     const work=serial.then(async()=>{
       if(closed) fail('ADAPTER_UNAVAILABLE');
+      checkAuthority();
       if(typeof worldRef!=='string'||!worldRef) fail('SCHEMA_INVALID');
       const matches=[...rows.values()].filter(row=>row.worldRef===worldRef);
       if(matches.length!==1) fail('WORLD_NOT_BOUND');
       const row=matches[0];
       const check=async()=>{
+        checkAuthority();
         await inspectConnection(row.connectionRef);
+        checkAuthority();
         if(closed||row.engine.closed||rows.get(row.connectionRef)!==row) fail('CURRENT_WORLD_MISMATCH');
       };
       await check();
-      const out=await read(row);
+      const out=await read(row,check);
       try { await check(); }
       catch(error) { stage1.withdrawWorld(worldRef,'CONNECTION_DOMAIN_CHANGED'); throw error; }
       return out;
@@ -258,7 +262,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       fail('CURRENT_WORLD_MISMATCH');
     return selection.context.localContext;
   }
-  function canvasCaller(caller, serviceName = 'hanaworldsCanvasV5') {
+  function canvasCaller(caller, serviceName = 'hanaworldsCanvasV5', method = 'call') {
     // Cordis's shadow records this callee context; its fiber records the actual caller.
     // Registration ownership, never a plugin/package name or JSON role, grants authority.
     const key = ctx?.[Symbol.for('cordis.isolate')]?.[serviceName];
@@ -266,7 +270,7 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     const value = registered?.value;
     const check = () => {
       const fiber = caller?.fiber;
-      if (!registered || !value || typeof value.call !== 'function' ||
+      if (!registered || !value || typeof value[method] !== 'function' ||
         caller?.[Symbol.for('cordis.shadow')] !== ctx || caller.root !== ctx.root ||
         !fiber || fiber.state !== 2 || fiber.ctx?.root !== ctx.root || fiber !== registered.fiber ||
         ctx.reflect.store[key] !== registered || registered.value !== value ||
@@ -520,7 +524,94 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
       };
     },
   };
+  // Capture registration records at access time. The returned function keeps
+  // no transferable authority: each read rechecks both actual providers.
+  function materialAuthority(receiver,operation) {
+    try {
+      const caller=trackedCaller(receiver,worldFacts,ctx);
+      const checkCaller=operation==='ReadCatalogue'?canvasCaller(caller):
+        canvasCaller(caller,'hanaworldsWorldInspectionContext','ReadInspectionContext');
+      const key=ctx?.[Symbol.for('cordis.isolate')]?.hanaworldsWorldFacts;
+      const registered=key&&ctx.reflect?.store?.[key];
+      const check=()=>{
+        checkCaller();
+        if(!registered||registered.fiber?.state!==2||registered.fiber!==ctx.fiber||
+          original(registered.value)!==worldFacts||ctx.reflect.store[key]!==registered||
+          original(ctx.get('hanaworldsWorldFacts'))!==worldFacts)fail('CAPABILITY_UNAVAILABLE');
+      };
+      check();return check;
+    }catch(error){return ()=>{throw error;};}
+  }
+  function materialFailure(error) {
+    if(error?.publicError!==undefined){validateType('Error',error.publicError);throw error;}
+    const nativeCode=error?.code??error?.message;
+    const code=schemaBundle.definitions.ErrorCode.enum.includes(nativeCode)?nativeCode:'CAPABILITY_UNAVAILABLE';
+    const refusal=new ContractError(code,'validate',
+      ['SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD'].includes(code)?'INVALID_SHAPE':'REQUIRED_FACT_UNKNOWN',
+      error?.source?{source:error.source}:{});
+    if(error instanceof Error&&Object.isExtensible(error)){
+      Object.assign(error,{publicError:refusal.publicError});throw error;
+    }
+    throw Object.assign(refusal,{cause:error});
+  }
+  function scopedMaterialReader(receiver,operation) {
+    const checkAuthority=materialAuthority(receiver,operation);
+    return async input=>{
+      try {
+        const scope=validateType('CanvasFactsScope',input);
+        if(closed)fail('ADAPTER_UNAVAILABLE');
+        checkAuthority();
+        const work=serial.then(async()=>{
+          if(closed)fail('ADAPTER_UNAVAILABLE');
+          checkAuthority();
+          const row=rows.get(scope.connectionRef);if(!row)fail('WORLD_NOT_BOUND');
+          const current=async()=>{
+            checkAuthority();
+            if(closed)fail('ADAPTER_UNAVAILABLE');
+            if(row.engine.closed||rows.get(scope.connectionRef)!==row||row.worldRef!==scope.worldRef||
+              row.incarnation!==scope.connectionIncarnationRef)fail('CURRENT_WORLD_MISMATCH');
+            try {await inspectConnection(scope.connectionRef);}
+            catch(error){
+              if(error?.publicError!==undefined){validateType('Error',error.publicError);throw error;}
+              if((error.code??error.message)==='WORLD_NOT_BOUND')fail('CURRENT_WORLD_MISMATCH');
+              throw error;
+            }
+            checkAuthority();
+            if(closed)fail('ADAPTER_UNAVAILABLE');
+            if(row.engine.closed||rows.get(scope.connectionRef)!==row)fail('CURRENT_WORLD_MISMATCH');
+          };
+          await current();
+          const result=await readMaterialFacts(operation,row,materialSourceSettings,current);
+          await current();return {provider:{...factsProvider},...result};
+        });
+        serial=work.catch(()=>{});return await work;
+      }catch(error){materialFailure(error);}
+    };
+  }
+  async function namedFactsCall(name,input,checkAuthority = () => {}) {
+    const wire='world-facts/v1';
+    const request=typeof input==='string'||input instanceof Uint8Array?admitRequest(wire,name,input):validateBoundRequest(wire,name,input);
+    let result=null,error=null;
+    try {result=await stage1Read(request.worldRef,(row,current)=>
+      readWorldSourceFact(name,row,materialSourceSettings,current),checkAuthority);}
+    catch(failure) {
+      if(sourceLog(failure))log(sourceLog(failure));
+      const cause=failure.code??failure.message;
+      const currency=['CURRENT_WORLD_MISMATCH','CATALOGUE_MISMATCH','SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD','UNSUPPORTED_VERSION'];
+      const code=currency.includes(cause)?cause:name==='ReadCatalogue'&&cause==='WORLD_NOT_BOUND'?'WORLD_NOT_BOUND'
+        :name==='ReadMaterialSources'?'CAPABILITY_UNAVAILABLE':'ADAPTER_UNAVAILABLE';
+      // Preserve a native failure's complete public uncertainty and identity.
+      // Locally derived ContractError refusals keep the original wire envelope.
+      if(failure.publicError!==undefined&&(!(failure instanceof ContractError)||failure.publicError.mutationState!=='NONE')){
+        validateType('Error',failure.publicError);throw failure;
+      }
+      error=new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN',failure.source?{source:failure.source}:{}).publicError;
+    }
+    return validateBoundResponse(wire,name,request,{contractVersion:wire,requestId:request.requestId,result,error});
+  }
   const worldFacts={ctx,[Symbol.for('cordis.tracker')]:{property:'ctx'},contractVersion:'world-facts/v1',contractHandshake,
+    get readCatalogue(){return scopedMaterialReader(this,'ReadCatalogue');},
+    get readMaterialSources(){return scopedMaterialReader(this,'ReadMaterialSources');},
     get readCanvasFacts() {
       const caller=trackedCaller(this,worldFacts,ctx);
       let check,refusal;
@@ -603,20 +694,19 @@ export function createLocalRuntime({ ctx, homePath, resolveCanvas, resolveRegist
     },
     protocolHandshake:validateType('ProtocolHandshake',{...worldAdapterProtocolHandshake,
       protocols:[{protocol:'world-facts',major:1,minor:1}],capabilities:['world-facts/v1:named-reads','world-facts/v1:transport-policy']}),
-    async call(name,input) {
-      const wire='world-facts/v1';
-      const request=typeof input==='string'||input instanceof Uint8Array?admitRequest(wire,name,input):validateBoundRequest(wire,name,input);
-      let result=null,error=null;
-      try { result=await stage1Read(request.worldRef,row=>readWorldSourceFact(name,row)); }
-      catch(failure) {
-        if(sourceLog(failure)) log(sourceLog(failure));
-        const cause=failure.code??failure.message;
-        const currency=['CURRENT_WORLD_MISMATCH','CATALOGUE_MISMATCH','SCHEMA_INVALID','UNKNOWN_REQUIRED_FIELD','UNSUPPORTED_VERSION'];
-        const code=currency.includes(cause)?cause:name==='ReadCatalogue'&&cause==='WORLD_NOT_BOUND'?'WORLD_NOT_BOUND'
-          :name==='ReadMaterialSources'?'CAPABILITY_UNAVAILABLE':'ADAPTER_UNAVAILABLE';
-        error=new ContractError(code,'validate','REQUIRED_FACT_UNKNOWN',failure.source?{source:failure.source}:{}).publicError;
-      }
-      return validateBoundResponse(wire,name,request,{contractVersion:wire,requestId:request.requestId,result,error});
-    }};
-  return { ...runtime, port, regionIO, worldFacts };
+    call:namedFactsCall};
+  return { ...runtime, port, regionIO, worldFacts,
+    publishWorldFacts(){
+      // The private runtime's named reader also serves algorithm-level fixtures.
+      // Publication always installs this guard before the service is reachable
+      // from a Host context; there is no unguarded public registration mode.
+      Object.defineProperty(worldFacts,'call',{enumerable:true,get(){
+        const catalogueCheck=materialAuthority(this,'ReadCatalogue');
+        const sourcesCheck=materialAuthority(this,'ReadMaterialSources');
+        return (name,input)=>namedFactsCall(name,input,
+          name==='ReadCatalogue'?catalogueCheck:name==='ReadMaterialSources'?sourcesCheck:undefined);
+      }});
+      ctx.provide('hanaworldsWorldFacts',worldFacts);
+    }
+  };
 }

@@ -10,7 +10,7 @@ Capability owner is the role `world-source`.
 | Operation | What this source supplies | Operation refusals |
 | --- | --- | --- |
 | ReadCatalogue | Opaque materials and empty material, neutral tags, display names, nullable sRGB colours and neutral orientation descriptors | ADAPTER_UNAVAILABLE, WORLD_NOT_BOUND |
-| ReadMaterialSources | Current asset snapshot, opaque asset/source names and matching presentation; bytes remain on the existing byte port | CAPABILITY_UNAVAILABLE |
+| ReadMaterialSources | Current asset snapshot, opaque asset/source names and matching presentation; matching bytes are available through the scoped Host method below | CAPABILITY_UNAVAILABLE |
 | ReadEngineFacts | voxel-grid/v1, partition edge [16,16,16], current mapgen bounds, frame, REQUIRED post-write lighting, declared write methods and backend | ADAPTER_UNAVAILABLE |
 | ReadWriteProfile | Backend and complete compilation configuration, supported methods and declared avatar envelope | ADAPTER_UNAVAILABLE, CAPABILITY_UNAVAILABLE |
 | ReadWorldSourceCapabilities | All write declarations, StateProfile, guard coverage and source-owned write path conclusions | ADAPTER_UNAVAILABLE |
@@ -206,3 +206,70 @@ source propagation, corrupted/permission journal tests and a real Luanti courier
 oversize test in a fresh test-only world. The default binary is the installed
 Luanti App; `HW_LUANTI_BINARY` may select another declared Luanti runtime.
 This verifies source/fixtures/real engine, not product Host, UI or owner acceptance.
+
+## D-176: original-role Catalogue and material bytes
+
+The public `hanaworldsWorldFacts` registration provides two additional local Host
+methods; the four wire operations and their request/result shapes are unchanged:
+
+```ts
+type MaterialReadScope = {worldRef: Ref; connectionRef: Ref; connectionIncarnationRef: Ref};
+type TextureBytes = {bytesDigest: Digest; bytes: Uint8Array};
+type CatalogueHostFacts = {provider: FactsProviderIdentity; facts: CatalogueFacts};
+type MaterialSourcesHostFacts = {
+  provider: FactsProviderIdentity; facts: MaterialSourceFacts; textures: readonly TextureBytes[];
+};
+// Canvas provider's actual Cordis context:
+const catalogue = await ctx.get('hanaworldsWorldFacts').readCatalogue(scope);
+// Bridge provider's actual Cordis context:
+const material = await ctx.get('hanaworldsWorldFacts').readMaterialSources(scope);
+```
+
+These types are exported by the package root. Scope is the exact already-paired
+world/connection/incarnation, not an authority token. `readCatalogue` requires the
+active `hanaworldsCanvasV5` provider fiber. `readMaterialSources` requires the active
+`hanaworldsWorldInspectionContext` provider fiber. Both require the original tracked
+receiver in the same official Cordis root, and recheck the captured registration
+value/fiber, source registration and current native connection throughout the read.
+Captured methods, copied objects, cross-root references, unloaded/replaced
+providers and callers with the wrong role are refused. The same original roles
+also govern public `call('ReadCatalogue', ...)` and `call('ReadMaterialSources', ...)`;
+their role failures use the original ADAPTER_UNAVAILABLE and CAPABILITY_UNAVAILABLE
+wire envelopes respectively. Private algorithm readers are not Host registrations.
+
+The two provider identity references are the current world-source instance's own
+values, identical to `readCanvasFacts` and stable until replacement. Host `facts`
+is the complete corresponding wire result. Every KNOWN texture's digest identifies
+one independently copied typed byte buffer, whose SHA-256 and length match its
+snapshot entry. Only opaque asset/source identities leave this path. Nothing loads
+a sibling plugin or a contract package. Metadata, Catalogue and selected asset bytes
+are observed twice; drift refuses CURRENT_WORLD_MISMATCH, with no cached fallback
+or retry. A stable new source or restored missing texture can be read on the same
+instance. UNKNOWN rows, missing colours and undecodable actual bytes remain explicit.
+
+Host failures reject with the existing complete `publicError` protocol. Unknown
+connections use WORLD_NOT_BOUND; stale known scope uses CURRENT_WORLD_MISMATCH;
+invalid/unknown scope fields use SCHEMA_INVALID/UNKNOWN_REQUIRED_FIELD; invalid
+role/receiver/registration uses CAPABILITY_UNAVAILABLE; closed Adapter uses
+ADAPTER_UNAVAILABLE. A complete original public failure, cause and UNKNOWN state
+are preserved with their original in-process exception identity. JSON is only a
+diagnostic view of that failure. Normal read refusals have mutationState NONE.
+Reads neither revoke bindings nor modify leases/history/worlds; lifecycle actions
+retain their existing safety gates. A failed read never proves a process stopped.
+
+Configure `materialSourceSettings: {maxTextureBytes, maxColorPixels}` on Adapter.
+Omitted keys default to 16700000 bytes and 1048576 pixels. Each must be a positive
+safe integer; unknown keys or invalid values refuse loading. `status().materialSourcePolicy`
+returns both effective values and `engineMediaMaxBytes: 16700000`. Exceeding either
+the configurable byte budget or the native media limit produces UNRESOLVED_SOURCE,
+without truncation. The colour pixel budget only suppresses the derived colour,
+preserving actual texture bytes and any legitimate declared colour.
+
+Canvas forwards its Catalogue through its own published path; Bridge forwards
+material sources through the original Host/Workshop path. Before use, those roles
+reread the current selection/binding and facts, comparing provider, scope, Catalogue
+digest/engine revisions and snapshot source revision. Adapter validates pairing,
+not the user's session selection: a still-paired old world must not be reused for
+a different selected world. Workshop/Painter/Skills gain no direct source-reading
+role. These checks implement ordinary desktop currency, not a synchronous guard
+or isolation against malicious same-account processes.

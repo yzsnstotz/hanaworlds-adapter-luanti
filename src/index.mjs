@@ -3,6 +3,7 @@ import { placementInvariants, ContractError, schemaBundle } from '#contracts';
 import { createLocalWorldPort } from './local-world-port.mjs';
 import { createLocalRuntime } from './local-runtime.mjs';
 import { ADAPTER_ID, ADAPTER_VERSION, PAYLOAD_VERSION } from './version.mjs';
+import { validateMaterialSourceSettings, materialSourcePolicy } from './material-source-policy.mjs';
 export { payloadDigest, discoverLocalWorlds } from './local-worlds.mjs';
 export const name = ADAPTER_ID;
 export const inject = ['webServer'];
@@ -24,9 +25,10 @@ function publicFailures(fn) {
 }
 export function apply(ctx, config = {}) {
   const transportSettings = validateTransportSettings(config.transportSettings === undefined ? {} : config.transportSettings);
+  const materialSourceSettings = validateMaterialSourceSettings(config.materialSourceSettings);
   const get = n => ctx.get?.(n);
   let local;
-  const runtime = createLocalRuntime({ ctx, transportSettings, homePath: get('dshHomePath'),
+  const runtime = createLocalRuntime({ ctx, transportSettings, materialSourceSettings, homePath: get('dshHomePath'),
     resolveCanvas: () => get('hanaworldsCanvasV5'), resolveRegistry: () => get('hanaworldsCanvasFootprintRegistry'),
     resolveHistory: () => get('hanaworldsCanvasHistoryFacts'), resolveOracle: () => get('hanaworldsWorldRevisionOracle'),
     resolveInspection: () => get('hanaworldsWorldInspectionContext'),
@@ -45,6 +47,7 @@ export function apply(ctx, config = {}) {
     },
     status: () => ({ adapterId: ADAPTER_ID, version: ADAPTER_VERSION, payloadVersion: PAYLOAD_VERSION,
       transportPolicy: transportPolicy(transportSettings),
+      materialSourcePolicy: materialSourcePolicy(materialSourceSettings),
       invariants: placementInvariants.filter(x => x.owner.includes('world-source')) }),
   };
   ctx.effect(() => () => service.close());
@@ -59,7 +62,7 @@ export function apply(ctx, config = {}) {
   // Keep the historical supplier unchanged until its separate alias retirement.
   // Do not evaluate the tracked Host getter into an untracked legacy function.
   for(const key of ['contractVersion','contractHandshake','protocolHandshake','call'])facts[key]=runtime.worldFacts[key];
-  ctx.provide('hanaworldsWorldFacts', runtime.worldFacts);
+  runtime.publishWorldFacts();
   ctx.provide('hanaworldsWorldSourceFacts', facts);
   ctx.provide('hanaworldsLuantiNativeFacts', facts);
   unregister = ctx.webServer.register({ kind: 'prefix', path: '/api-hanaworlds-luanti', handler(req, res) {

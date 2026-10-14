@@ -5,6 +5,7 @@ import { validateCanvasDeclarationFacts } from '#contracts';
 import { WORLD_GEOMETRY } from './world-vocabulary.mjs';
 import { engineGuardDeclaration } from './safety-capabilities.mjs';
 import { resolveMaterialSources, materialSourceFacts } from './material-sources.mjs';
+import { MATERIAL_SOURCE_DEFAULTS } from './material-source-policy.mjs';
 import { createHash } from 'node:crypto';
 const digest = (kind, value) => digestValue(kind, value).sha256;
 const opaqueRevision = value => createHash('sha256').update(canonicalJSON(value)).digest('hex');
@@ -68,32 +69,42 @@ export function checkWritePathFacts(catalogue,evidence) {
   return {scope:evidence.scope,writePath:evidence.writePath,verified,stricter};
 }
 
+/** One coherent material read shared by the old named wire projection and the
+ * scoped Host byte path. The caller supplies authority, never a request field. */
+export async function readMaterialFacts(operation,row,settings = MATERIAL_SOURCE_DEFAULTS,checkCurrent = () => {}) {
+  const engine=row.engine;
+  const connection={worldRef:row.worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation};
+  const catalogue=await engine.catalogue();await checkCurrent();
+  const metadata=await engine.materialMetadata();await checkCurrent();
+  if(canonicalJSON(metadata.catalogue)!==canonicalJSON(catalogue))refuse('CURRENT_WORLD_MISMATCH');
+  const sources=await resolveMaterialSources(metadata,connection,settings,checkCurrent);await checkCurrent();
+  const facts=materialSourceFacts(sources,engine.vocabulary.presentation,catalogue,connection,settings);
+  const confirmed=await engine.materialMetadata();await checkCurrent();
+  if(canonicalJSON(confirmed)!==canonicalJSON(metadata))refuse('CURRENT_WORLD_MISMATCH');
+  const reread=await resolveMaterialSources(confirmed,connection,settings,checkCurrent);await checkCurrent();
+  if(reread.snapshot.sourceRevision!==sources.snapshot.sourceRevision)refuse('CURRENT_WORLD_MISMATCH');
+  const confirmedCatalogue=await engine.catalogue();await checkCurrent();
+  if(canonicalJSON(catalogue)!==canonicalJSON(confirmedCatalogue))refuse('CURRENT_WORLD_MISMATCH');
+  if(operation==='ReadCatalogue') {
+    const orientations=[...new Set(Object.values(catalogue.materials).flatMap(m=>m.orientations??[]))].sort((a,b)=>a-b);
+    return {facts:validateCatalogueFacts({profileVersion:'catalogue-facts/v1',connection,catalogue,
+      catalogueDigest:digest('catalogue',catalogue),presentation:facts.presentation,
+      orientationIndex:orientations.map(orientation=>({orientation,quarterTurnsAboutUp:null,upsideDown:null}))},connection)};
+  }
+  return {facts,textures:sources.textures.map(({bytesDigest,bytes})=>({bytesDigest,bytes:new Uint8Array(bytes)}))};
+}
+
 /** Read-only projections from one loaded registry and the payload's own declaration.
  * The runtime checks connection currency before/after this operation. */
-export async function readWorldSourceFact(operation,row) {
+export async function readWorldSourceFact(operation,row,settings = MATERIAL_SOURCE_DEFAULTS,checkCurrent = () => {}) {
+  if(operation==='ReadCatalogue'||operation==='ReadMaterialSources')
+    return (await readMaterialFacts(operation,row,settings,checkCurrent)).facts;
   const engine=row.engine;
   const connection={worldRef:row.worldRef,connectionRef:row.connectionRef,connectionIncarnationRef:row.incarnation};
   const before=await engine.catalogue();
   const catalogueDigest=digest('catalogue',before);
   let out;
-  if(operation==='ReadCatalogue'||operation==='ReadMaterialSources') {
-    const metadata=await engine.materialMetadata();
-    if(canonicalJSON(metadata.catalogue)!==canonicalJSON(before))refuse('CURRENT_WORLD_MISMATCH');
-    const sources=await resolveMaterialSources(metadata,connection);
-    const materialFacts=materialSourceFacts(sources,engine.vocabulary.presentation,before,connection);
-    const presentation=materialFacts.presentation;
-    if(operation==='ReadCatalogue') {
-      const orientations=[...new Set(Object.values(before.materials).flatMap(m=>m.orientations??[]))].sort((a,b)=>a-b);
-      out=validateCatalogueFacts({profileVersion:'catalogue-facts/v1',connection,catalogue:before,catalogueDigest,
-        presentation,orientationIndex:orientations.map(orientation=>({orientation,quarterTurnsAboutUp:null,upsideDown:null}))},connection);
-    } else {
-      out=materialFacts;
-    }
-    const confirmed=await engine.materialMetadata();
-    if(canonicalJSON(confirmed)!==canonicalJSON(metadata))refuse('CURRENT_WORLD_MISMATCH');
-    const reread=await resolveMaterialSources(confirmed,connection);
-    if(reread.snapshot.sourceRevision!==sources.snapshot.sourceRevision)refuse('CURRENT_WORLD_MISMATCH');
-  } else {
+  {
     const declaration=async()=>{
       try {return await engine.sourceDeclaration();}
       catch(error){if(error.message!=='NOT_DECLARED_BY_PAYLOAD')throw error;return {notDeclared:true};}
