@@ -199,9 +199,32 @@ if (!process.env.SOURCE_FILE_ADAPTER_ROOT) {
   for (const mutation of ['missing', 'modified', 'rehashed', 'origin-modified', 'permissions-modified'])
     test(`actual packed source rejects ${mutation} release materials without any world/runtime actions`, () => {
       const p = prepareSourcePackage(), exportPath = releaseFixture(p);
-      const caseRoot = builtinFS.mkdtempSync(join(evidenceRoot, `release-${mutation}-`)), candidate = join(caseRoot, 'package');
-      builtinFS.cpSync(p.extracted, candidate, { recursive: true });
-      builtinFS.symlinkSync(join(p.consumer, 'node_modules'), join(caseRoot, 'node_modules'), 'dir');
+      // Each candidate gets a complete normal production installation. An
+      // extracted copy plus the consumer's top-level node_modules loses pnpm's
+      // package dependency context before the Adapter can inspect its materials.
+      const caseRoot = builtinFS.mkdtempSync(join(evidenceRoot, `release-${mutation}-`));
+      const env = { ...cleanEnv, HOME: join(caseRoot, 'home'), XDG_CONFIG_HOME: join(caseRoot, 'config'),
+        TMPDIR: join(caseRoot, 'tmp'), npm_config_cache: join(caseRoot, 'npm-cache') };
+      for (const directory of [env.HOME, env.XDG_CONFIG_HOME, env.TMPDIR]) builtinFS.mkdirSync(directory);
+      builtinFS.writeFileSync(join(caseRoot, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
+      observe(`source-release-install-${mutation}`, process.execPath,
+        [join(p.checkout, 'node_modules/pnpm/bin/pnpm.cjs'), 'install', '--prod', '--store-dir', join(caseRoot, 'store'),
+          p.packed, '@deepseek-ai/cordis@4.0.4'], caseRoot, env);
+      const pkg = JSON.parse(builtinFS.readFileSync(join(p.extracted, 'package.json')));
+      const candidate = builtinFS.realpathSync(join(caseRoot, 'node_modules', pkg.name));
+      verifyPackage(candidate);
+      assert.deepEqual(JSON.parse(builtinFS.readFileSync(join(candidate, exportPath))),
+        JSON.parse(builtinFS.readFileSync(join(p.extracted, exportPath))));
+      const publicControl = join(caseRoot, 'public-source-control.mjs');
+      builtinFS.writeFileSync(publicControl, `import assert from 'node:assert/strict';
+import {apply} from '${pkg.name}';
+import materials from '${pkg.name}/fixtures/source-release-materials.json' with {type:'json'};
+assert.equal(typeof apply,'function');
+assert.deepEqual(Object.keys(materials).sort(),['origin','permissions','release']);
+console.log(JSON.stringify({adapterURL:import.meta.resolve('${pkg.name}')}));\n`);
+      const { adapterURL } = JSON.parse(observe(`source-release-public-control-${mutation}`, process.execPath,
+        [publicControl], caseRoot, { ...env, PATH: dirname(process.execPath) }));
+      assert.equal(adapterURL, pathToFileURL(join(candidate, pkg.exports['.'].import)).href);
       const file = join(candidate, exportPath), value = JSON.parse(builtinFS.readFileSync(file));
       if (mutation === 'missing') builtinFS.rmSync(file);
       else {
@@ -228,8 +251,8 @@ if (!process.env.SOURCE_FILE_ADAPTER_ROOT) {
       }
       observe(`source-release-artifact-${mutation}`, process.execPath,
         [join(p.consumer, 'test/support/source-release-package-probe.mjs'), JSON.stringify({ evidencePath: join(caseRoot, 'refusal.json') })],
-        p.consumer, { ...cleanEnv, PATH: dirname(process.execPath),
-          SOURCE_RELEASE_ADAPTER_URL: pathToFileURL(join(candidate, 'dist/runtime/index.mjs')).href,
+        p.consumer, { ...env, PATH: dirname(process.execPath),
+          SOURCE_RELEASE_ADAPTER_URL: adapterURL,
           SOURCE_RELEASE_RUN: resolve(sourceRoot, '..') });
     });
   function nodePolicy(root) {
