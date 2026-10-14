@@ -1,0 +1,14 @@
+[
+  null,
+  false,
+  true,
+  0,
+  1.25,
+  "",
+  "\u0000混合é",
+  [],
+  {},
+  [null, false, {"trustedMods": ["untrusted"], "worldPath": "not-an-authority", "__proto__": {"polluted": true}}],
+  {"worldPath": "not-a-path", "trustedMods": ["not-a-permission"], "__proto__": {"polluted": true}, "key.with.dot": {"nil": null}},
+  {"array": [3, 1, null, {"unknown": [true, false]}], "constructor": {"prototype": {"polluted": true}}, "empty": ""}
+]
