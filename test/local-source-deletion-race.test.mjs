@@ -329,3 +329,167 @@ for (const relationship of ['same-world', 'different-worlds']) test(`concurrent 
     assert.ok(releases.every(a => a.request.reservationRef.startsWith(`r:${worldRef}:`)));
   }
 });
+
+// D-164: ordinary, observable changes DURING a compensation await. The first
+// Node move really completes before the EIO; no deletion or guard is replaced.
+// The control uses identical error injection, so keeping every residue without
+// attempting normal safe recovery cannot satisfy this public suite.
+for (const change of ['none-control', 'parent', 'staging'])
+  test(`D-164 public scoped compensation ${change} preserves original error and actual custody`, async t => {
+    const f = await fixture(t, true), d = await f.descriptor();
+    const cause = Object.assign(new Error('D164_ORIGINAL_IO_CAUSE'), { code: 'EIO' });
+    const original = Object.assign(new Error('D164_FORWARD_MOVE_COMPLETED', { cause }), { code: 'EIO' });
+    const realStat = fs.lstat, actorRename = builtinFS.renameSync;
+    const heldParent = join(f.user, 'Held-worlds');
+    const heldWorld = join(f.worlds, '.hanaworlds-preserved-original');
+    let movedPath, switched = false, replacementTree, afterForwardTree, afterActorTree;
+    const nodeMoves = [];
+    const restore = observeNodeRenames(t, event => {
+      nodeMoves.push(event);
+      if (event.from === f.target.worldPath && basename(event.to).startsWith('.hanaworlds-deleting-')) {
+        assert.equal(movedPath, undefined, 'the real forward move occurs once');
+        movedPath = event.to;
+        afterForwardTree = synchronousSnapshot(f.worlds);
+        f.receipt.forwardNodeAPI = event.api;
+        throw original; // error AFTER original Node rename completed
+      }
+    });
+    const statHook = t.mock.method(fs, 'lstat', async function (...args) {
+      try { return await realStat.apply(this, args); }
+      catch (error) {
+        if (change !== 'none-control' && movedPath && !switched &&
+            String(args[0]) === f.target.worldPath && error.code === 'ENOENT') {
+          // This is the recovery destination's real missing-directory result.
+          // Change directories while the caller is awaiting that observation,
+          // before its continuation can decide whether inverse movement is safe.
+          switched = true;
+          f.receipt.changeTiming = 'DURING_COMPENSATION_AWAIT_BEFORE_CONTINUATION';
+          if (change === 'parent') {
+            actorRename(f.worlds, heldParent);
+            builtinFS.mkdirSync(f.worlds);
+            builtinFS.mkdirSync(f.target.worldPath);
+            builtinFS.writeFileSync(join(f.target.worldPath, 'new-owner.txt'), 'replacement parent target');
+            builtinFS.mkdirSync(f.neighbour.worldPath);
+            builtinFS.writeFileSync(join(f.neighbour.worldPath, 'new-neighbour.txt'), 'replacement parent neighbour');
+            replacementTree = synchronousSnapshot(f.worlds);
+          } else {
+            actorRename(movedPath, heldWorld);
+            builtinFS.mkdirSync(movedPath);
+            builtinFS.writeFileSync(join(movedPath, 'new-owner.txt'), 'replacement staging owner');
+            replacementTree = synchronousSnapshot(movedPath);
+          }
+          afterActorTree = synchronousSnapshot(f.user);
+        }
+        throw error; // original observation failure; never a fabricated refusal
+      }
+    });
+    syncBuiltinESMExports();
+    const q = request(`d164:compensation:${change}`, { source: d.source, operation: 'deleteWorld',
+      payload: { worldRef: f.target.worldRef, confirmationName: 'Target' } });
+    let out;
+    try { out = await f.port().callScoped(q); }
+    finally { statHook.mock.restore(); restore(); syncBuiltinESMExports(); }
+    f.receipt.response = out; f.receipt.nodeMoves = nodeMoves; f.receipt.actions = f.actions;
+    f.receipt.originalFailure = { message: original.message, code: original.code, mutationState: original.mutationState,
+      causeMessage: original.cause?.message, causeCode: original.cause?.code, details: original.details };
+    assert.ok(movedPath, 'the original Node rename must really complete before error injection');
+    if (change !== 'none-control') assert.equal(switched, true,
+      'the real public deletion must reach a compensation await before its identity decision');
+    assert.deepEqual(out, { contractVersion: WIRE, requestId: q.requestId, result: null,
+      error: { code: 'TRANSACTION_CONFLICT', phase: 'apply', retryability: 'AFTER_NEW_FACTS', mutationState: 'UNKNOWN',
+        transactionRef: null, causeCode: null, reason: 'REQUIRED_FACT_UNKNOWN' } },
+    'later currency loss must not remap the original closed deletion refusal or report NONE/success');
+    assert.equal(original.cause, cause); assert.equal(original.code, 'EIO');
+    assert.equal(original.message, 'D164_FORWARD_MOVE_COMPLETED');
+    assert.equal(original.mutationState, 'UNKNOWN');
+    assert.deepEqual(f.nativeActions, []);
+    assert.equal(f.actions.at(-1).name, 'ReleaseWorldRetirement');
+    assert.equal(f.actions.at(-1).request.outcome, 'ABORTED');
+    if (change === 'none-control') {
+      assert.equal(nodeMoves.filter(event => event.from === movedPath && event.to === f.target.worldPath).length, 1,
+        'without any identity change the real public operation must safely recover once');
+      await preserved(f);
+      assert.deepEqual((await f.descriptor()).source, d.source);
+      return;
+    }
+    assert.equal(nodeMoves.filter(event => event.to === f.target.worldPath).length, 0,
+      'observed parent/staging replacement refuses any inverse move');
+    assert.equal(nodeMoves.filter(event => event.from === movedPath).length, 0,
+      'never move the replacement staging, even if it could later be moved back');
+    assert.equal(typeof original.details?.residuePath, 'string');
+    assert.equal(typeof original.details?.recoveryReason, 'string');
+    assert.ok(original.details.recoveryReason.length > 0);
+    const residue = change === 'parent' ? join(heldParent, basename(movedPath)) : heldWorld;
+    assert.equal(original.details.residuePath, residue, 'diagnostic names the real original directory, not its stale spelling');
+    assert.deepEqual(await snapshot(residue), f.receipt.before.target);
+    assert.deepEqual(await snapshot(f.user), afterActorTree, 'recovery performs no extra file action after observed replacement');
+    if (change === 'parent') {
+      assert.deepEqual(await snapshot(f.worlds), replacementTree);
+      assert.deepEqual(await snapshot(heldParent), afterForwardTree);
+      assert.deepEqual(await snapshot(join(heldParent, 'Neighbour')), f.receipt.before.neighbour);
+    } else {
+      assert.deepEqual(await snapshot(movedPath), replacementTree);
+      assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+      assert.equal(await fs.lstat(f.target.worldPath).catch(error => { if (error.code === 'ENOENT') return null; throw error; }), null);
+      assert.deepEqual((await f.descriptor()).source, d.source);
+    }
+    f.receipt.actualResiduePath = residue;
+    f.receipt.replacementTree = replacementTree;
+  });
+
+// Companion internal evidence: the public wire cannot expose Error identity.
+// These call the same genuine removal helper, not a replacement implementation.
+for (const change of ['parent', 'staging'])
+  test(`D-164 actual helper compensation ${change} retains the exact EIO object and cause`, async t => {
+    const f = await fixture(t), cause = new Error('D164_EXACT_INTERNAL_CAUSE');
+    const original = Object.assign(new Error('D164_INTERNAL_MOVE_COMPLETED', { cause }), { code: 'EIO' });
+    const actorRename = builtinFS.renameSync, actualStat = fs.lstat;
+    const heldParent = join(f.user, 'Held-worlds'), heldWorld = join(f.worlds, '.hanaworlds-preserved-original');
+    let movedPath, switched = false, afterForward, afterActor;
+    const moves = [];
+    const restore = observeNodeRenames(t, event => {
+      moves.push(event);
+      if (event.from === f.target.worldPath) { movedPath = event.to; afterForward = synchronousSnapshot(f.worlds); throw original; }
+    });
+    const hook = t.mock.method(fs, 'lstat', async function (...args) {
+      try { return await actualStat.apply(this, args); }
+      catch (error) {
+        if (movedPath && !switched && String(args[0]) === f.target.worldPath && error.code === 'ENOENT') {
+          switched = true;
+          if (change === 'parent') {
+            actorRename(f.worlds, heldParent); builtinFS.mkdirSync(f.worlds);
+            builtinFS.mkdirSync(f.target.worldPath); builtinFS.writeFileSync(join(f.target.worldPath, 'replacement'), 'new root owner');
+            builtinFS.mkdirSync(f.neighbour.worldPath); builtinFS.writeFileSync(join(f.neighbour.worldPath, 'replacement'), 'new neighbour');
+          } else {
+            actorRename(movedPath, heldWorld); builtinFS.mkdirSync(movedPath);
+            builtinFS.writeFileSync(join(movedPath, 'replacement'), 'new staging owner');
+          }
+          afterActor = synchronousSnapshot(f.user);
+        }
+        throw error;
+      }
+    }); syncBuiltinESMExports();
+    let failure;
+    try { await withSourceScope(async () => {}, async () => { bindSourceWorld(f.target); await removeWorldDirectory(f.target); }); }
+    catch (error) { failure = error; }
+    finally { hook.mock.restore(); restore(); syncBuiltinESMExports(); }
+    f.receipt.errorIdentityPreserved = failure === original;
+    f.receipt.exactCausePreserved = failure?.cause === cause;
+    f.receipt.moves = moves; f.receipt.changeTiming = switched && 'DURING_COMPENSATION_AWAIT_BEFORE_CONTINUATION';
+    assert.ok(movedPath, 'forward Node movement really completed');
+    assert.equal(switched, true, 'genuine recovery reaches the awaited destination observation');
+    assert.equal(failure, original, 'inverse refusal must retain the exact original exception, not substitute identity-change error');
+    assert.equal(failure.cause, cause); assert.equal(failure.code, 'EIO');
+    assert.equal(failure.message, 'D164_INTERNAL_MOVE_COMPLETED'); assert.equal(failure.mutationState, 'UNKNOWN');
+    assert.equal(moves.filter(event => event.to === f.target.worldPath || event.from === movedPath).length, 0);
+    const residue = change === 'parent' ? join(heldParent, basename(movedPath)) : heldWorld;
+    assert.equal(failure.details?.residuePath, residue);
+    assert.equal(typeof failure.details?.recoveryReason, 'string'); assert.ok(failure.details.recoveryReason.length);
+    assert.deepEqual(await snapshot(residue), f.receipt.before.target);
+    assert.deepEqual(await snapshot(f.user), afterActor, 'both replacement and original custody retain all identities and bytes');
+    if (change === 'parent') {
+      assert.deepEqual(await snapshot(heldParent), afterForward);
+      assert.deepEqual(await snapshot(join(heldParent, 'Neighbour')), f.receipt.before.neighbour);
+    } else assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+    f.receipt.refusal = { code: failure.code, mutationState: failure.mutationState, details: failure.details };
+  });
