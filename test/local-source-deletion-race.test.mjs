@@ -6,7 +6,7 @@ import * as builtinFS from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context } from '@deepseek-ai/cordis';
 import { apply, inject } from '../src/index.mjs';
@@ -99,17 +99,47 @@ async function preserved(f, swapped = false) {
   if (swapped) assert.deepEqual(await snapshot(f.saved), f.receipt.before.target);
   assert.deepEqual((await fs.readdir(f.worlds)).filter(n => n.startsWith('.hanaworlds-deleting-')), []);
 }
-function observeRename(t, f, after) {
-  const real = fs.rename;
-  const patched = t.mock.method(fs, 'rename', async (...args) => {
-    const result = await real(...args);
-    if (args[0] === f.target.worldPath && String(args[1]).includes('.hanaworlds-deleting-')) {
-      f.receipt.renameReached = true; await after(args[1]);
+async function atomicBinding() {
+  let module, failure;
+  try { module = await import('../src/source-atomic-native.mjs'); } catch (error) { failure = error; }
+  assert.equal(typeof module?.loadAtomicNative, 'function',
+    `ATOMIC_NATIVE_CAPABILITY_MISSING: deletion must use trusted OWN exclusive primitive (${failure?.code ?? 'missing capability'})`);
+  const binding = await module.loadAtomicNative();
+  assert.equal(typeof binding.moveDirectoryNoReplace, 'function', 'actual OWN atomic native movement is required');
+  return binding;
+}
+// Timing observer only: invoke the genuine loaded native primitive and inspect
+// its actual filesystem result. No success, guard, custody or history is faked.
+async function observeRename(t, f, after) {
+  const binding = await atomicBinding(), real = binding.moveDirectoryNoReplace;
+  const patched = t.mock.method(binding, 'moveDirectoryNoReplace', async function(handle, request) {
+    const result = await real.call(this, handle, request);
+    if (request.fromName === basename(f.target.worldPath) && request.toName.startsWith('.hanaworlds-deleting-')) {
+      f.receipt.renameReached = true; await after(join(f.worlds, request.toName), result);
     }
     return result;
-  }); syncBuiltinESMExports();
-  return () => { patched.mock.restore(); syncBuiltinESMExports(); };
+  });
+  return () => { patched.mock.restore(); };
 }
+
+test('public scoped safe deletion actually uses OWN exclusive movement and preserves source generation', async t => {
+  const f = await fixture(t, true), d = await f.descriptor();
+  const restore = await observeRename(t, f, () => {});
+  let out;
+  try { out = await f.port().callScoped(request('atomic:delete-success', { source: d.source, operation: 'deleteWorld',
+    payload: { worldRef: f.target.worldRef, confirmationName: 'Target' } })); }
+  finally { restore(); }
+  assert.equal(f.receipt.renameReached, true, 'normal public deletion must execute the genuine exclusive movement');
+  assert.equal(out.error, null); assert.deepEqual(out.result,
+    { worldRef: f.target.worldRef, confirmationName: 'Target', deleted: true });
+  assert.equal(await fs.lstat(f.target.worldPath).catch(e => { if (e.code === 'ENOENT') return null; throw e; }), null);
+  assert.deepEqual(await snapshot(f.neighbour.worldPath), f.receipt.before.neighbour);
+  assert.deepEqual((await fs.readdir(f.worlds)).sort(), ['Neighbour']);
+  assert.equal((await f.port().discover()).some(w => w.worldRef === f.target.worldRef), false);
+  assert.deepEqual((await f.descriptor()).source, d.source); assert.deepEqual(f.nativeActions, []);
+  assert.equal(f.actions.at(-1).request.outcome, 'RETIRED');
+  f.receipt.response = out; f.receipt.actions = f.actions;
+});
 
 test('helper rejects replacement during final await without hiding either directory', async t => {
   const f = await fixture(t); let checks = 0;
@@ -121,7 +151,7 @@ test('helper rejects replacement during final await without hiding either direct
 
 test('helper recovers exact moved directory when post-rename guard rejects', async t => {
   const f = await fixture(t), original = new Error('CURRENT_WORLD_MISMATCH'); let revoked = false;
-  const restore = observeRename(t, f, () => { revoked = true; });
+  const restore = await observeRename(t, f, () => { revoked = true; });
   try {
     await assert.rejects(withSourceScope(async () => { if (revoked) throw original; }, async () => {
       bindSourceWorld(f.target); await removeWorldDirectory(f.target);
@@ -132,7 +162,7 @@ test('helper recovers exact moved directory when post-rename guard rejects', asy
 
 test('helper recovers rename completion even when the primitive rejects after moving', async t => {
   const f = await fixture(t), original = Object.assign(new Error('EIO'), { code: 'EIO' });
-  const restore = observeRename(t, f, () => { throw original; });
+  const restore = await observeRename(t, f, () => { throw original; });
   try {
     await assert.rejects(withSourceScope(async () => {}, async () => {
       bindSourceWorld(f.target); await removeWorldDirectory(f.target);
@@ -143,7 +173,7 @@ test('helper recovers rename completion even when the primitive rejects after mo
 
 test('helper retains named residue instead of overwriting a newly occupied target', async t => {
   const f = await fixture(t), original = new Error('CURRENT_WORLD_MISMATCH'); let occupied, revoked = false;
-  const restore = observeRename(t, f, async () => {
+  const restore = await observeRename(t, f, async () => {
     await fs.mkdir(f.target.worldPath); await fs.writeFile(join(f.target.worldPath, 'new-owner.txt'), 'new owner');
     occupied = await snapshot(f.target.worldPath);
     revoked = true;
@@ -164,29 +194,25 @@ test('helper retains named residue instead of overwriting a newly occupied targe
 
 test('helper recovery never overwrites an empty target occupied at its rename primitive', async t => {
   const f = await fixture(t), original = new Error('CURRENT_WORLD_MISMATCH'); let revoked = false, occupiedIdentity;
-  const realRename = fs.rename, realSyncRename = builtinFS.default.renameSync;
+  const binding = await atomicBinding(), real = binding.moveDirectoryNoReplace;
   const occupy = () => {
     builtinFS.mkdirSync(f.target.worldPath);
     occupiedIdentity = id(builtinFS.lstatSync(f.target.worldPath, { bigint: true }));
     f.receipt.compensationOccupantIdentity = occupiedIdentity;
   };
-  // These wrappers call the actual FS primitive. The actor runs after any
-  // preceding destination observation; an empty directory is still owned data.
-  const asyncHook = t.mock.method(fs, 'rename', async (from, to) => {
-    if (to === f.target.worldPath) occupy();
-    const result = await realRename(from, to);
-    if (from === f.target.worldPath && String(to).includes('.hanaworlds-deleting-')) revoked = true;
+  // The external actor occupies the destination at the actual exclusive native
+  // primitive, after any preceding sample. Invoke the real syscall either way.
+  const hook = t.mock.method(binding, 'moveDirectoryNoReplace', async function(handle, request) {
+    if (request.toName === basename(f.target.worldPath)) occupy();
+    const result = await real.call(this, handle, request);
+    if (request.fromName === basename(f.target.worldPath) && request.toName.startsWith('.hanaworlds-deleting-')) revoked = true;
     return result;
   });
-  const syncHook = t.mock.method(builtinFS.default, 'renameSync', (from, to) => {
-    if (to === f.target.worldPath) occupy();
-    return realSyncRename(from, to);
-  }); syncBuiltinESMExports();
   let failure;
   try { await withSourceScope(async () => { if (revoked) throw original; }, async () => {
     bindSourceWorld(f.target); await removeWorldDirectory(f.target);
   }); } catch (e) { failure = e; }
-  finally { asyncHook.mock.restore(); syncHook.mock.restore(); syncBuiltinESMExports(); }
+  finally { hook.mock.restore(); }
   f.receipt.refusal = { message: failure?.message, mutationState: failure?.mutationState, details: failure?.details };
   assert.equal(failure, original);
   assert.ok(occupiedIdentity, 'the actual compensation rename must be reached');
@@ -228,7 +254,7 @@ test('public scoped deletion rejects last-await replacement and preserves discov
 
 test('public scoped deletion recovers after rename and a revoked source registration', async t => {
   const f = await fixture(t, true), d = await f.descriptor(), old = f.port();
-  const restore = observeRename(t, f, () => { f.owner.set('hanaworldsLocalWorlds', {}); });
+  const restore = await observeRename(t, f, () => { f.owner.set('hanaworldsLocalWorlds', {}); });
   let r;
   try { r = await old.callScoped(request('race:revoked', { source: d.source, operation: 'deleteWorld',
     payload: { worldRef: f.target.worldRef, confirmationName: 'Target' } })); }
