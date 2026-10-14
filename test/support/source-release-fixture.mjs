@@ -70,7 +70,7 @@ export async function setup(t) {
     c.provide('hanaworldsCanvasV5', { call: forbidden('canvas') });
   } });
   t.after(async () => { await service.close(); for (const fiber of fibers.reverse()) await fiber.dispose();
-    await ctx.fiber.dispose(); await fs.rm(root, { recursive: true, force: true }); });
+    await ctx.fiber.dispose(); }); // program owns cleanup; keep observed bytes
   const local = () => consumer.get('hanaworldsLocalWorlds');
   function entry(name) {
     const port = local(), method = port[name];
