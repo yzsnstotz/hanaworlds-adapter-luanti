@@ -20,6 +20,29 @@ export interface RuntimeSourceDescriptor {
 export interface RuntimeSourceResponse extends RuntimeSourceRequest {
  readonly result: RuntimeSourceDescriptor | null; readonly error: ProtocolError | null;
 }
+export interface SourceReleaseMaterialsRequest extends RuntimeSourceRequest {
+ readonly source: RuntimeSourceIdentity; readonly worldRef: Ref;
+}
+export interface SourceReleaseMaterials {
+ readonly source: RuntimeSourceIdentity; readonly worldRef: Ref; readonly connectionRef: Ref;
+ readonly directory: { readonly device: string; readonly inode: string };
+ readonly release: {
+  readonly format: 'hanaworlds-luanti-source-release/v1'; readonly releaseRef: Ref;
+  readonly adapterVersion: string; readonly payloadVersion: string; readonly payloadDigest: string;
+  readonly digestAlgorithm: 'sha256-name-newline-bytes/v1';
+  readonly files: ReadonlyArray<{ readonly name: string; readonly relativePath: string; readonly byteLength: number;
+   readonly sha256: string; readonly bytesBase64: string }>;
+  readonly layout: { readonly payloadDirectory: 'worldmods/hanaworlds_adapter'; readonly identityFile: 'payload.json';
+   readonly instanceFiles: readonly ['transport.json']; readonly extraFiles: 'REJECT' };
+ };
+ readonly origin: { readonly name: string; readonly version: string; readonly sourceUrl: string;
+  readonly license: 'MIT'; readonly noticePath: 'NOTICE' };
+ readonly permissions: { readonly securityEnabled: true; readonly httpMods: readonly ['hanaworlds_adapter'];
+  readonly trustedMods: readonly [] };
+}
+export interface SourceReleaseMaterialsResponse extends RuntimeSourceRequest {
+ readonly result: SourceReleaseMaterials | null; readonly error: ProtocolError | null;
+}
 type Payload<T> = Omit<T, 'contractVersion' | 'requestId'>;
 export type ScopedPairPayload = { readonly worldRef: Ref } & (
  { readonly connectionRef?: never; readonly connectionIncarnationRef?: never } |
@@ -35,6 +58,7 @@ export type LocalWorldsScopedResponse = LocalWorldsDiscoverResponse | LocalWorld
 export interface LocalWorldsHostPort {
  getRuntimeSource(request: RuntimeSourceRequest): Promise<RuntimeSourceResponse>;
  callScoped(request: LocalWorldsScopedRequest): Promise<LocalWorldsScopedResponse>;
+ readSourceReleaseMaterials(request: SourceReleaseMaterialsRequest): Promise<SourceReleaseMaterialsResponse>;
  discover(request: LocalWorldsDiscoverRequest): Promise<LocalWorldsDiscoverResponse>;
  createWorld(request: LocalWorldsCreateRequest): Promise<LocalWorldsCreateResponse>;
  pair(request: LocalWorldsPairRequest): Promise<LocalWorldsPairResponse>;

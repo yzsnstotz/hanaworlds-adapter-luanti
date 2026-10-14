@@ -38,7 +38,8 @@
       "types": "./src/world-source-facts-mock.d.ts",
       "import": "./dist/runtime/world-source-facts-mock.mjs"
     },
-    "./fixtures/world-source-facts.json": "./fixtures/world-source-facts.json"
+    "./fixtures/world-source-facts.json": "./fixtures/world-source-facts.json",
+    "./fixtures/source-release-materials.json": "./fixtures/source-release-materials.json"
   },
   "imports": {
     "#contracts": {
@@ -66,6 +67,7 @@
     "fixtures/local-worlds-v2.json",
     "src/source-locator.d.ts",
     "fixtures/local-world-source.json",
+    "fixtures/source-release-materials.json",
     "docs/source-locator.md",
     "src/world-source-facts-mock.d.ts",
     "fixtures/world-source-facts.json",

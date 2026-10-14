@@ -70,13 +70,13 @@ export async function sourceRead(run) {
   await checkSourceScope();
   return result;
 }
-export async function sourceWrite(run) {
+export async function sourceWrite(run, beforeWrite) {
   await checkSourceScope();
   const scope = scopes.getStore();
   // The asynchronous root check can yield after sampling the world. Check its
   // captured identity again without another JS yield before invoking a write.
-  if (scope) {
-    try {
+  try {
+    if (scope) {
       if (!scope.active) throw Error('CURRENT_WORLD_MISMATCH');
       for (const check of scope.extraChecks ?? []) check();
       if (scope.world) {
@@ -85,11 +85,15 @@ export async function sourceWrite(run) {
             String(stat.ino) !== held.inode || realpathSync(held.path) !== held.path)
           throw Error('CURRENT_WORLD_MISMATCH');
       }
-    } catch (error) {
-      if (['ENOENT', 'ENOTDIR'].includes(error.code)) error = new Error('CURRENT_WORLD_MISMATCH', { cause: error });
-      if (error.message === 'CURRENT_WORLD_MISMATCH') error.sourceCurrency = true;
-      throw error;
     }
+    // Captured filesystem custody checks also run before the mutation marker,
+    // synchronously with the write that follows. A refusal here has not written.
+    const checked = beforeWrite?.();
+    if (checked && typeof checked.then === 'function') throw Error('SOURCE_WRITE_CHECK_MUST_BE_SYNCHRONOUS');
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes(error.code)) error = new Error('CURRENT_WORLD_MISMATCH', { cause: error });
+    if (error.message === 'CURRENT_WORLD_MISMATCH') error.sourceCurrency = true;
+    throw error;
   }
   if (scope) scope.mutationState = 'UNKNOWN';
   try {

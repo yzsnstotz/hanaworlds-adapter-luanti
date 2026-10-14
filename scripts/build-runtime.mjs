@@ -16,7 +16,8 @@ for (const file of (await readdir(new URL('src/', root))).filter(x => x.endsWith
   for (const spec of m[1].split(',')) names.add(spec.trim().split(/\s+as\s+/)[0]);
  const compiled = source.replace(/(['"])#contracts\1/g, "'./contracts.mjs'")
   .replace(/(['"])\.\.\/fixtures\//g, '$1../../fixtures/')
-  .replace(/(['"])\.\.\/payload\//g, '$1../../payload/');
+  .replace(/(['"])\.\.\/payload\//g, '$1../../payload/')
+  .replace(/(['"])\.\.\/(NOTICE|LICENSE)\1/g, '$1../../$2$1');
  await writeFile(new URL(file, runtime), compiled);
  artifactHashes[`dist/runtime/${file}`] = hash(compiled);
 }
@@ -36,6 +37,7 @@ for(const directory of ['dist/contracts-types/','fixtures/','payload/']) {
 await writeFile(new URL('dist/protocol-source.json',root),await readFile(new URL('scripts/protocol-source.json',root)));
 artifactHashes['dist/protocol-source.json']=hash(await readFile(new URL('dist/protocol-source.json',root)));
 for(const name of ['dist/contracts-LICENSE','dist/contracts-NOTICE']) artifactHashes[name]=hash(await readFile(new URL(name,root)));
+for(const name of ['NOTICE','LICENSE']) artifactHashes[name]=hash(await readFile(new URL(name,root)));
 for(const file of (await readdir(new URL('src/',root))).filter(n=>n.endsWith('.d.ts')))artifactHashes['src/'+file]=hash(await readFile(new URL('src/'+file,root)));
 const supply=JSON.parse(await readFile(new URL('scripts/protocol-source.json',root)));
 const inputHashes={};

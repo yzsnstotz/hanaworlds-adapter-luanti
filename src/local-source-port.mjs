@@ -4,7 +4,8 @@ import { resolve, isAbsolute } from 'node:path';
 import { types } from 'node:util';
 import { canonicalJSON, ContractError } from '#contracts';
 import { LOCAL_SOURCE_VERSION, sourceRequest, sourceError } from './local-source-protocol.mjs';
-import { withSourceScope } from './source-scope.mjs';
+import { checkSourceScope, sourceMutationState, withSourceScope } from './source-scope.mjs';
+import { releaseRequest, readSourceReleaseMaterials } from './source-release-materials.mjs';
 
 const original = value => value?.[Symbol.for('cordis.original')] ?? value;
 const fail = code => { throw Object.assign(Error(code), { sourceCurrency: code === 'CURRENT_WORLD_MISMATCH' }); };
@@ -74,7 +75,7 @@ export function attachLocalSource(port, { ctx, roots, userPath, creationRoot, ma
       templates: [{ templateId: 'flat', displayName: '平地', description: '创建具有世界源内容与载荷的平地世界' },
         ...materials.map(({ templateId, displayName, description }) => ({ templateId, displayName, description }))] };
   }
-  async function execute(receiver, input, scoped, caller, captured) {
+  async function execute(receiver, input, scoped, caller, captured, release = false) {
     // Correlation never executes a caller's accessor before JSON admission.
     let requestId = null;
     try {
@@ -83,17 +84,25 @@ export function attachLocalSource(port, { ctx, roots, userPath, creationRoot, ma
     } catch { /* uncorrelatable input follows the documented Promise refusal */ }
     let q;
     try {
-      q = sourceRequest(input, scoped);
+      q = release ? releaseRequest(input) : sourceRequest(input, scoped);
       const checkRegistration = registration(receiver, caller, captured);
       const state = await observe(checkRegistration);
-      if (scoped && canonicalJSON(q.source) !== canonicalJSON(state.source)) fail('CURRENT_WORLD_MISMATCH');
+      if ((scoped || release) && canonicalJSON(q.source) !== canonicalJSON(state.source)) fail('CURRENT_WORLD_MISMATCH');
       const check = async () => {
         checkRegistration();
         const current = await observe(checkRegistration);
         if (current.signature !== state.signature || canonicalJSON(current.source) !== canonicalJSON(state.source)) fail('CURRENT_WORLD_MISMATCH');
       };
       let result;
-      if (!scoped) { await check(); result = descriptor(state); }
+      if (release) {
+        result = await withSourceScope(check, async () => {
+          await check();
+          const result = await readSourceReleaseMaterials({ source: state.source, worldRef: q.worldRef, roots: state.paths });
+          await checkSourceScope();
+          return result;
+        });
+      }
+      else if (!scoped) { await check(); result = descriptor(state); }
       else {
         result = await withSourceScope(check, async () => {
           await check();
@@ -101,14 +110,22 @@ export function attachLocalSource(port, { ctx, roots, userPath, creationRoot, ma
           const response = q.operation === 'pair' && q.payload.connectionRef ? await pair(q, check) : await port[q.operation](direct);
           // Original operation's business refusal/UNKNOWN is returned intact. It
           // cannot be remapped to scoped admission or erase actual side effects.
-          if (response.error) { await check(); return { response }; }
+          if (response.error) {
+            try { await check(); }
+            catch (error) {
+              // A post-action currency failure cannot replace the operation's
+              // original closed refusal. No old success is released here.
+              if (response.error.mutationState === 'NONE' && sourceMutationState() === 'NONE') throw error;
+            }
+            return { response };
+          }
           await check(); return { response };
         });
         return JSON.parse(canonicalJSON(result.response));
       }
       return { contractVersion: LOCAL_SOURCE_VERSION, requestId: q.requestId, result, error: null };
     } catch (error) {
-      const known = ['SCHEMA_INVALID', 'UNKNOWN_REQUIRED_FIELD', 'PAYLOAD_VERSION_MISMATCH', 'CURRENT_WORLD_MISMATCH', 'ADAPTER_UNAVAILABLE', 'CONNECTION_NOT_FOUND'];
+      const known = ['SCHEMA_INVALID', 'UNKNOWN_REQUIRED_FIELD', 'PAYLOAD_VERSION_MISMATCH', 'CURRENT_WORLD_MISMATCH', 'ADAPTER_UNAVAILABLE', 'CONNECTION_NOT_FOUND', ...(release ? ['WORLD_NOT_FOUND'] : [])];
       const code = error.publicError?.code ?? error.code ?? error.message;
       const named = known.includes(code) ? code : 'ADAPTER_UNAVAILABLE';
       const reason = ['SCHEMA_INVALID', 'UNKNOWN_REQUIRED_FIELD'].includes(named) ? 'INVALID_SHAPE'
@@ -118,12 +135,12 @@ export function attachLocalSource(port, { ctx, roots, userPath, creationRoot, ma
       return { contractVersion: LOCAL_SOURCE_VERSION, requestId, result: null, error: refusal };
     }
   }
-  for (const name of ['getRuntimeSource', 'callScoped']) Object.defineProperty(port, name, { enumerable: true,
+  for (const name of ['getRuntimeSource', 'callScoped', 'readSourceReleaseMaterials']) Object.defineProperty(port, name, { enumerable: true,
     get() {
       const caller = trackedCaller(this, port, ctx);
       const key = ctx?.[Symbol.for('cordis.isolate')]?.hanaworldsLocalWorlds;
       const captured = key && ctx.reflect?.store?.[key];
-      return function(input) { return execute(this, input, name === 'callScoped', caller, captured); };
+      return function(input) { return execute(this, input, name === 'callScoped', caller, captured, name === 'readSourceReleaseMaterials'); };
     } });
   return { invalidate };
 }

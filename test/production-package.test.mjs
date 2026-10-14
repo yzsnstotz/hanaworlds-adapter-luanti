@@ -45,7 +45,7 @@ test('packed public runtime and declarations work with no contract package or bu
   assert.equal(existsSync(join(dir, 'node_modules/hanaworlds-contracts')), false);
   assert.equal(existsSync(join(dir, 'node_modules/esbuild')), false);
   const installed = JSON.parse(readFileSync(join(dir, 'node_modules/hanaworlds-adapter-luanti/package.json')));
-  assert.deepEqual(Object.keys(installed.exports).sort(), ['.','./host','./inspection-context','./local-worlds-v2-mock','./source-locator','./world-source-facts-mock','./fixtures/local-world-source.json','./fixtures/world-source-facts.json'].sort());
+  assert.deepEqual(Object.keys(installed.exports).sort(), ['.','./host','./inspection-context','./local-worlds-v2-mock','./source-locator','./world-source-facts-mock','./fixtures/local-world-source.json','./fixtures/world-source-facts.json','./fixtures/source-release-materials.json'].sort());
   writeFileSync(join(dir,'package-graph.json'),JSON.stringify(verifyPackage(join(dir,'node_modules/hanaworlds-adapter-luanti')),null,2));
   assert.deepEqual(installed.imports['#contracts'], {development:'./dist/contracts.mjs',default:'./dist/runtime/contracts.mjs'});
   assert.equal(existsSync(join(dir,'node_modules/hanaworlds-adapter-luanti/dist/contracts.mjs')),false,'development value module must not be packed');
@@ -64,6 +64,11 @@ import { createWorldSourceFactsMock } from 'hanaworlds-adapter-luanti/world-sour
 import { SOURCE_LOCATOR_VERSION, SOURCE_STARTUP_VERSION } from 'hanaworlds-adapter-luanti/source-locator';
 import facts from 'hanaworlds-adapter-luanti/fixtures/world-source-facts.json' with { type: 'json' };
 import worlds from 'hanaworlds-adapter-luanti/fixtures/local-world-source.json' with { type: 'json' };
+import release from 'hanaworlds-adapter-luanti/fixtures/source-release-materials.json' with { type: 'json' };
+assert.deepEqual(Object.keys(release).sort(), ['origin','permissions','release']);
+assert.equal(release.release.files.length, 9);
+assert.equal(release.origin.license, 'MIT');
+assert.deepEqual(release.permissions, {securityEnabled:true,httpMods:['hanaworlds_adapter'],trustedMods:[]});
 assert.match(await payloadDigest(), /^[0-9a-f]{64}$/);
 assert.equal(typeof createNativeHost, 'function');
 assert.equal(typeof createInspectionContext({}).read, 'function');
