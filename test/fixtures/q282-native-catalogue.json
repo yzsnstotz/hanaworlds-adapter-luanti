@@ -1,0 +1,70 @@
+{
+  "profileVersion": "catalogue/v2",
+  "engineProfile": "luanti-runtime-registry",
+  "gameId": "fx_game",
+  "gameRevision": "000000000000000000000000000000000000000000000000000000006d908b85",
+  "modRevisions": {
+    "fx_a": "00000000000000000000000000000000000000000000000000000000d89eee74",
+    "fx_b": "0000000000000000000000000000000000000000000000000000000042ce7693",
+    "hanaworlds_adapter": "0000000000000000000000000000000000000000000000000000000050954c2b"
+  },
+  "nodes": {
+    "air": {
+      "displayName": null,
+      "color": null,
+      "walkable": false,
+      "collisionBoxes": [],
+      "liquidType": "none",
+      "damagePerSecond": 0,
+      "lightSource": 0,
+      "param2Type": "none",
+      "allowedParam2": [
+        0
+      ],
+      "hasCallbacks": false,
+      "hasPersistentState": false,
+      "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+      "unknownFields": []
+    },
+    "fx:placed": {
+      "displayName": null,
+      "color": null,
+      "walkable": true,
+      "collisionBoxes": null,
+      "liquidType": "none",
+      "damagePerSecond": 0,
+      "lightSource": 0,
+      "param2Type": "none",
+      "allowedParam2": [
+        7
+      ],
+      "hasCallbacks": false,
+      "hasPersistentState": false,
+      "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+      "unknownFields": [
+        "collisionBoxes"
+      ]
+    },
+    "ignore": {
+      "displayName": null,
+      "color": null,
+      "walkable": false,
+      "collisionBoxes": null,
+      "liquidType": "none",
+      "damagePerSecond": 0,
+      "lightSource": 0,
+      "param2Type": "none",
+      "allowedParam2": [
+        0
+      ],
+      "hasCallbacks": null,
+      "hasPersistentState": null,
+      "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+      "unknownFields": [
+        "collisionBoxes",
+        "hasCallbacks",
+        "hasPersistentState"
+      ]
+    }
+  }
+}

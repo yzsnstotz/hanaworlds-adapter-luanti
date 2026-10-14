@@ -1,0 +1,1636 @@
+{
+  "evidenceLevel": "DOCUMENT_FIXTURE",
+  "byteEncoding": "JSON integer arrays are diagnostic views; actual Host values are Uint8Array.",
+  "examples": [
+    {
+      "case": "catalogue-normal",
+      "precondition": "Current Canvas provider; current paired tuple; registry and texture observations stable.",
+      "role": "canvas",
+      "entry": "hanaworldsWorldFacts.readCatalogue",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "catalogue-facts/v1",
+            "connection": {
+              "worldRef": "example:world",
+              "connectionRef": "example:connection",
+              "connectionIncarnationRef": "example:incarnation"
+            },
+            "catalogue": {
+              "profileVersion": "catalogue/v3",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "emptyMaterialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+              "materials": {
+                "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                  "passable": true,
+                  "liquid": false,
+                  "hazardPerSecond": 0,
+                  "emitsLight": false,
+                  "placeable": true,
+                  "orientations": [
+                    0
+                  ],
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "unknownFields": [],
+                  "extension": {
+                    "native": {
+                      "displayName": null,
+                      "color": null,
+                      "walkable": false,
+                      "collisionBoxes": [],
+                      "liquidType": "none",
+                      "damagePerSecond": 0,
+                      "lightSource": 0,
+                      "param2Type": "none",
+                      "allowedParam2": [
+                        0
+                      ],
+                      "hasCallbacks": false,
+                      "hasPersistentState": false,
+                      "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                      "unknownFields": []
+                    }
+                  }
+                },
+                "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                  "passable": false,
+                  "liquid": false,
+                  "hazardPerSecond": 0,
+                  "emitsLight": false,
+                  "placeable": true,
+                  "orientations": [
+                    0
+                  ],
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "unknownFields": [],
+                  "extension": {
+                    "native": {
+                      "displayName": null,
+                      "color": null,
+                      "walkable": true,
+                      "collisionBoxes": null,
+                      "liquidType": "none",
+                      "damagePerSecond": 0,
+                      "lightSource": 0,
+                      "param2Type": "none",
+                      "allowedParam2": [
+                        7
+                      ],
+                      "hasCallbacks": false,
+                      "hasPersistentState": false,
+                      "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                      "unknownFields": [
+                        "collisionBoxes"
+                      ]
+                    }
+                  }
+                },
+                "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                  "passable": true,
+                  "liquid": false,
+                  "hazardPerSecond": 0,
+                  "emitsLight": false,
+                  "placeable": null,
+                  "orientations": [
+                    0
+                  ],
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "unknownFields": [
+                    "placeable"
+                  ],
+                  "extension": {
+                    "native": {
+                      "displayName": null,
+                      "color": null,
+                      "walkable": false,
+                      "collisionBoxes": null,
+                      "liquidType": "none",
+                      "damagePerSecond": 0,
+                      "lightSource": 0,
+                      "param2Type": "none",
+                      "allowedParam2": [
+                        0
+                      ],
+                      "hasCallbacks": null,
+                      "hasPersistentState": null,
+                      "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                      "unknownFields": [
+                        "collisionBoxes",
+                        "hasCallbacks",
+                        "hasPersistentState"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": "#ff0000"
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            },
+            "orientationIndex": [
+              {
+                "orientation": 0,
+                "quarterTurnsAboutUp": null,
+                "upsideDown": null
+              }
+            ]
+          }
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "material-normal",
+      "precondition": "Current Bridge provider; same paired tuple/provider/registry as Catalogue; actual source bytes observed twice.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "material-source-facts/v1",
+            "snapshot": {
+              "profileVersion": "material-sources/v2",
+              "connection": {
+                "worldRef": "example:world",
+                "connectionRef": "example:connection",
+                "connectionIncarnationRef": "example:incarnation"
+              },
+              "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+              "materials": [
+                {
+                  "materialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                },
+                {
+                  "materialRef": "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "availability": "KNOWN",
+                  "texture": {
+                    "textureName": "asset:7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+                    "sourceKind": "GAME",
+                    "sourceRef": "source:c0330c3893f84b343e18c5151e42cc5b9ea737ff89b8790789cfcfb17a7e135c",
+                    "interpretation": "SIMPLE_UNIFORM_NODE_TILES",
+                    "mediaType": "image/png",
+                    "bytesDigest": "7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+                    "byteLength": 70
+                  }
+                },
+                {
+                  "materialRef": "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5",
+                  "orientation": 0,
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                }
+              ],
+              "sourceRevision": "fb093d083173b4ef57edcf4ffded93ae5cb293c7f0976c94757b7bdef0c1dd1a"
+            },
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": "#ff0000"
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            }
+          },
+          "textures": [
+            {
+              "bytesDigest": "7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+              "bytes": [
+                137,
+                80,
+                78,
+                71,
+                13,
+                10,
+                26,
+                10,
+                0,
+                0,
+                0,
+                13,
+                73,
+                72,
+                68,
+                82,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                8,
+                6,
+                0,
+                0,
+                0,
+                31,
+                21,
+                196,
+                137,
+                0,
+                0,
+                0,
+                13,
+                73,
+                68,
+                65,
+                84,
+                120,
+                1,
+                99,
+                248,
+                207,
+                192,
+                240,
+                31,
+                0,
+                5,
+                0,
+                1,
+                255,
+                123,
+                233,
+                190,
+                239,
+                0,
+                0,
+                0,
+                0,
+                73,
+                69,
+                78,
+                68,
+                174,
+                66,
+                96,
+                130
+              ]
+            }
+          ]
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "unknown-connection",
+      "precondition": "No paired connection exists for input connectionRef.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:unknown",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "WORLD_NOT_BOUND",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "world-changed",
+      "precondition": "Known connection belongs to another world.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:other-world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CURRENT_WORLD_MISMATCH",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "connection-reopened",
+      "precondition": "Same connection text cannot name the previous runtime incarnation.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:old-incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CURRENT_WORLD_MISMATCH",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "source-provider-replaced",
+      "precondition": "Captured method: original facts registration replaced during native metadata await.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "bridge-provider-replaced",
+      "precondition": "Captured method: original inspection-context registration replaced during native metadata await.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "unloaded-caller",
+      "precondition": "The original Bridge fiber was disposed before the call.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "forged-receiver",
+      "precondition": "Getter called on a copied object carrying ctx/original symbols, not a Cordis tracked receiver.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "foreign-root",
+      "precondition": "Same original service object registered in a different Cordis root.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "wrong-role",
+      "precondition": "Canvas/Workshop/Painter calls the Bridge material-source Host method.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "registry-drift",
+      "precondition": "Actual native catalogue/metadata changes between the two observations.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CURRENT_WORLD_MISMATCH",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "texture-drift",
+      "precondition": "Actual selected texture file bytes change between the two complete resolutions.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CURRENT_WORLD_MISMATCH",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "lost-native-currency",
+      "precondition": "Known paired row loses current native lease/directory/runtime evidence.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "CURRENT_WORLD_MISMATCH",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "adapter-closed",
+      "precondition": "Adapter close completed; method was captured earlier.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "ADAPTER_UNAVAILABLE",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "missing-scope",
+      "precondition": "Caller omitted connection and incarnation.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "SCHEMA_INVALID",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "INVALID_SHAPE"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "extra-authority-field",
+      "precondition": "Caller added a field; JSON cannot supply provider authority.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation",
+        "providerRef": "forged"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "publicError": {
+            "code": "UNKNOWN_REQUIRED_FIELD",
+            "phase": "validate",
+            "retryability": "AFTER_NEW_FACTS",
+            "mutationState": "NONE",
+            "transactionRef": null,
+            "causeCode": null,
+            "reason": "INVALID_SHAPE"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "missing-texture",
+      "precondition": "Actual texture absent, no fallback asset.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "material-source-facts/v1",
+            "snapshot": {
+              "profileVersion": "material-sources/v2",
+              "connection": {
+                "worldRef": "example:world",
+                "connectionRef": "example:connection",
+                "connectionIncarnationRef": "example:incarnation"
+              },
+              "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+              "materials": [
+                {
+                  "materialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                },
+                {
+                  "availability": "UNKNOWN",
+                  "materialRef": "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "texture": null,
+                  "reason": "MISSING_TEXTURE"
+                },
+                {
+                  "materialRef": "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5",
+                  "orientation": 0,
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                }
+              ],
+              "sourceRevision": "2664d8db4ef6c1de5010175d5ce482ecf285231729db57ab8570311c14f2b08d"
+            },
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            }
+          },
+          "textures": []
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "texture-budget",
+      "precondition": "Configured maxTextureBytes=32; actual PNG exceeds it; no truncation.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "material-source-facts/v1",
+            "snapshot": {
+              "profileVersion": "material-sources/v2",
+              "connection": {
+                "worldRef": "example:world",
+                "connectionRef": "example:connection",
+                "connectionIncarnationRef": "example:incarnation"
+              },
+              "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+              "materials": [
+                {
+                  "materialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                },
+                {
+                  "availability": "UNKNOWN",
+                  "materialRef": "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "texture": null,
+                  "reason": "UNRESOLVED_SOURCE"
+                },
+                {
+                  "materialRef": "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5",
+                  "orientation": 0,
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                }
+              ],
+              "sourceRevision": "8cbb414f183c5525e14d56ffa0c74ff8209cd5a2f9c266f9a1e2bcf54db20ebe"
+            },
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            }
+          },
+          "textures": []
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "same-instance-recovery",
+      "precondition": "Restore exact original texture and stable facts on same provider and paired connection; explicit fresh call, no automatic retry.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "material-source-facts/v1",
+            "snapshot": {
+              "profileVersion": "material-sources/v2",
+              "connection": {
+                "worldRef": "example:world",
+                "connectionRef": "example:connection",
+                "connectionIncarnationRef": "example:incarnation"
+              },
+              "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+              "materials": [
+                {
+                  "materialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                },
+                {
+                  "materialRef": "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "availability": "KNOWN",
+                  "texture": {
+                    "textureName": "asset:7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+                    "sourceKind": "GAME",
+                    "sourceRef": "source:c0330c3893f84b343e18c5151e42cc5b9ea737ff89b8790789cfcfb17a7e135c",
+                    "interpretation": "SIMPLE_UNIFORM_NODE_TILES",
+                    "mediaType": "image/png",
+                    "bytesDigest": "7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+                    "byteLength": 70
+                  }
+                },
+                {
+                  "materialRef": "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5",
+                  "orientation": 0,
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                }
+              ],
+              "sourceRevision": "fb093d083173b4ef57edcf4ffded93ae5cb293c7f0976c94757b7bdef0c1dd1a"
+            },
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": "#ff0000"
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            }
+          },
+          "textures": [
+            {
+              "bytesDigest": "7d91c846b70d9450a30d1ea73dc15d2e7888dfa3b2a84b297bb5272ae23daf39",
+              "bytes": [
+                137,
+                80,
+                78,
+                71,
+                13,
+                10,
+                26,
+                10,
+                0,
+                0,
+                0,
+                13,
+                73,
+                72,
+                68,
+                82,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                8,
+                6,
+                0,
+                0,
+                0,
+                31,
+                21,
+                196,
+                137,
+                0,
+                0,
+                0,
+                13,
+                73,
+                68,
+                65,
+                84,
+                120,
+                1,
+                99,
+                248,
+                207,
+                192,
+                240,
+                31,
+                0,
+                5,
+                0,
+                1,
+                255,
+                123,
+                233,
+                190,
+                239,
+                0,
+                0,
+                0,
+                0,
+                73,
+                69,
+                78,
+                68,
+                174,
+                66,
+                96,
+                130
+              ]
+            }
+          ]
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "decode-failed",
+      "precondition": "Actual nonempty source file has PNG media type but cannot be decoded; no declared colour. Bytes stay exact, colour is null, downstream may not invent a colour/material.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "result": {
+          "provider": {
+            "providerRef": "example:provider",
+            "providerRevision": "example:provider-generation"
+          },
+          "facts": {
+            "profileVersion": "material-source-facts/v1",
+            "snapshot": {
+              "profileVersion": "material-sources/v2",
+              "connection": {
+                "worldRef": "example:world",
+                "connectionRef": "example:connection",
+                "connectionIncarnationRef": "example:incarnation"
+              },
+              "catalogueDigest": "6d71921c8161da683cc21b6f2b36db21a2f439b42c2d3b920f79cdae80947d58",
+              "engineRevisions": {
+                "registry": "000000000000000000000000000000000000000000000000000000006d908b85",
+                "source:0aa8e88dad12ce957804ed38c94ccf0c2076e4d2b573fa05d8c0357cc2429fa9": "00000000000000000000000000000000000000000000000000000000d89eee74",
+                "source:46469076af0a466d7be7f74faa488c073fffedd7e40ca4cf6941b51280b7be62": "0000000000000000000000000000000000000000000000000000000042ce7693",
+                "source:ed1291e09d78185980dff5469be1ddace67524584553106024cb7d354bae34f3": "0000000000000000000000000000000000000000000000000000000050954c2b"
+              },
+              "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+              "materials": [
+                {
+                  "materialRef": "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000006b8fb88d",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                },
+                {
+                  "materialRef": "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b",
+                  "orientation": 0,
+                  "definitionRevision": "000000000000000000000000000000000000000000000000000000001001cbfe",
+                  "availability": "KNOWN",
+                  "texture": {
+                    "textureName": "asset:c0163341cc94f821e531c57ae4812a33a0dd3f20e1258c61644bf96512584d81",
+                    "sourceKind": "GAME",
+                    "sourceRef": "source:c0330c3893f84b343e18c5151e42cc5b9ea737ff89b8790789cfcfb17a7e135c",
+                    "interpretation": "SIMPLE_UNIFORM_NODE_TILES",
+                    "mediaType": "image/png",
+                    "bytesDigest": "c0163341cc94f821e531c57ae4812a33a0dd3f20e1258c61644bf96512584d81",
+                    "byteLength": 10
+                  }
+                },
+                {
+                  "materialRef": "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5",
+                  "orientation": 0,
+                  "definitionRevision": "00000000000000000000000000000000000000000000000000000000ac010df1",
+                  "availability": "UNKNOWN",
+                  "texture": null,
+                  "reason": "UNSUPPORTED_APPEARANCE"
+                }
+              ],
+              "sourceRevision": "72695063ab93bd2d0826df296382588e69f546cf2a9084b245f775d112fff27d"
+            },
+            "presentation": {
+              "material:09fa4913a997a355a146e76e0bad9ce7066f861cb4ada08656ea4d462310db1b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:3d6acc0486dceb18466f6bbe3dc708e7eb788e944612b7abd2c628020167177b": {
+                "displayName": null,
+                "color": null
+              },
+              "material:7cc1ece60c8b4ee017b5e6583977ada7e3f169184a00b72c8296929260667dd5": {
+                "displayName": null,
+                "color": null
+              }
+            }
+          },
+          "textures": [
+            {
+              "bytesDigest": "c0163341cc94f821e531c57ae4812a33a0dd3f20e1258c61644bf96512584d81",
+              "bytes": [
+                98,
+                114,
+                111,
+                107,
+                101,
+                110,
+                32,
+                112,
+                110,
+                103
+              ]
+            }
+          ]
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-unknown-exception",
+      "precondition": "Native read rejects an original Error with original cause and this existing publicError. In-process rejection must be the exact same object.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.readMaterialSources",
+      "input": {
+        "worldRef": "example:world",
+        "connectionRef": "example:connection",
+        "connectionIncarnationRef": "example:incarnation"
+      },
+      "outcome": {
+        "promiseRejection": {
+          "name": "Error",
+          "message": "native read failed",
+          "publicError": {
+            "code": "CAPABILITY_UNAVAILABLE",
+            "phase": "readback",
+            "retryability": "NEVER",
+            "mutationState": "UNKNOWN",
+            "transactionRef": "example:prior-unknown",
+            "causeCode": "PAYLOAD_VERSION_MISMATCH",
+            "reason": "REQUIRED_FACT_UNKNOWN"
+          },
+          "cause": {
+            "name": "Error",
+            "message": "original-cause"
+          }
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadCatalogue",
+      "precondition": "Document example values only; corresponding original authorized role and current paired world required.",
+      "role": "canvas",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadCatalogue",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "result": {
+          "profileVersion": "catalogue-facts/v1",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogue": {
+            "profileVersion": "catalogue/v3",
+            "engineRevisions": {
+              "fixture-game": "fixture-game-1",
+              "fixture-mod": "fixture-mod-1"
+            },
+            "emptyMaterialRef": "air",
+            "materials": {
+              "air": {
+                "passable": true,
+                "liquid": false,
+                "hazardPerSecond": 0,
+                "emitsLight": false,
+                "placeable": true,
+                "orientations": [
+                  0
+                ],
+                "definitionRevision": "fixture-def-1",
+                "unknownFields": [],
+                "extension": {
+                  "collisionBoxes": [],
+                  "param2Type": "none"
+                }
+              },
+              "fixture:stone": {
+                "passable": false,
+                "liquid": false,
+                "hazardPerSecond": 0,
+                "emitsLight": false,
+                "placeable": true,
+                "orientations": [
+                  0
+                ],
+                "definitionRevision": "fixture-def-1",
+                "unknownFields": [],
+                "extension": {
+                  "collisionBoxes": [
+                    [
+                      -0.5,
+                      -0.5,
+                      -0.5,
+                      0.5,
+                      0.5,
+                      0.5
+                    ]
+                  ],
+                  "param2Type": "none"
+                }
+              }
+            }
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "presentation": {
+            "air": {
+              "displayName": null,
+              "color": null
+            },
+            "fixture:stone": {
+              "displayName": "Fixture stone",
+              "color": "#7f7f7f"
+            }
+          },
+          "orientationIndex": [
+            {
+              "orientation": 0,
+              "quarterTurnsAboutUp": 0,
+              "upsideDown": false
+            }
+          ]
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadMaterialSources",
+      "precondition": "Document example values only; corresponding original authorized role and current paired world required.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadMaterialSources",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-material-sources-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-material-sources-1",
+        "result": {
+          "profileVersion": "material-source-facts/v1",
+          "snapshot": {
+            "profileVersion": "material-sources/v2",
+            "connection": {
+              "worldRef": "fixture-world",
+              "connectionRef": "local-connection",
+              "connectionIncarnationRef": "socket-open-1"
+            },
+            "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+            "engineRevisions": {
+              "fixture-game": "fixture-game-1",
+              "fixture-mod": "fixture-mod-1"
+            },
+            "sourceBasis": "WORLD_SOURCE_ASSET_ONLY",
+            "materials": [
+              {
+                "availability": "UNKNOWN",
+                "materialRef": "air",
+                "orientation": 0,
+                "definitionRevision": "fixture-def-1",
+                "texture": null,
+                "reason": "UNSUPPORTED_APPEARANCE"
+              },
+              {
+                "availability": "KNOWN",
+                "materialRef": "fixture:stone",
+                "orientation": 0,
+                "definitionRevision": "fixture-def-1",
+                "texture": {
+                  "textureName": "fixture_stone.png",
+                  "sourceKind": "MOD",
+                  "sourceRef": "fixture-mod/textures/fixture_stone.png",
+                  "interpretation": "SIMPLE_UNIFORM_NODE_TILES",
+                  "mediaType": "image/png",
+                  "bytesDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+                  "byteLength": 96
+                }
+              }
+            ],
+            "sourceRevision": "ba12d6196a5c2becba11de6bbf439fb9648da89ce79818d49ac4ac6e5b600f68"
+          },
+          "presentation": {
+            "air": {
+              "displayName": null,
+              "color": null
+            },
+            "fixture:stone": {
+              "displayName": "Fixture stone",
+              "color": "#7f7f7f"
+            }
+          }
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadEngineFacts",
+      "precondition": "Document example values only; corresponding original authorized role and current paired world required.",
+      "role": "workshop",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadEngineFacts",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-engine-facts-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-engine-facts-1",
+        "result": {
+          "profileVersion": "engine-facts/v1",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "worldGeometry": {
+            "profileVersion": "world-geometry/v1",
+            "geometryProfiles": [
+              "voxel-grid/v1"
+            ],
+            "partition": {
+              "edge": [
+                16,
+                16,
+                16
+              ]
+            },
+            "postWriteLighting": "REQUIRED"
+          },
+          "engineBounds": {
+            "min": [
+              -30912,
+              -30912,
+              -30912
+            ],
+            "max": [
+              30927,
+              30927,
+              30927
+            ]
+          },
+          "frame": {
+            "axes": [
+              "+X",
+              "+Y",
+              "+Z"
+            ],
+            "handedness": "left",
+            "gridUnit": {
+              "name": "cell",
+              "metersPerGridUnit": 1
+            }
+          },
+          "writeMethods": [
+            "PER_CELL",
+            "REGION"
+          ],
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-world-source-cell-write/v1",
+              "revision": "fixture-world-source-rev-7"
+            }
+          }
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadWriteProfile",
+      "precondition": "Document example values only; corresponding original authorized role and current paired world required.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadWriteProfile",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "result": {
+          "profileVersion": "write-profile/v1",
+          "connection": {
+            "worldRef": "fixture-world",
+            "connectionRef": "local-connection",
+            "connectionIncarnationRef": "socket-open-1"
+          },
+          "catalogueDigest": "8429d43abbf2e574c8db6ce4045583924f9973ab615c86da0c876191ce745574",
+          "writeBackend": {
+            "availability": "KNOWN",
+            "basis": "LOADED_PAYLOAD_DECLARATION",
+            "writeBackend": {
+              "profileId": "fixture-world-source-cell-write/v1",
+              "revision": "fixture-world-source-rev-7"
+            }
+          },
+          "compilationConfig": {
+            "profileVersion": "compilation-config/v3",
+            "writeBackend": {
+              "profileId": "fixture-world-source-cell-write/v1",
+              "revision": "fixture-world-source-rev-7"
+            },
+            "overlapRule": "last-writer-wins",
+            "effectOrder": "numeric-x-y-z",
+            "compressionRule": "exact-final-effects-only"
+          },
+          "writeMethods": [
+            "PER_CELL",
+            "REGION"
+          ],
+          "avatarEnvelope": {
+            "availability": "KNOWN",
+            "basis": "WORLD_SOURCE_DECLARATION",
+            "size": {
+              "width": 0.6,
+              "height": 1.77,
+              "depth": 0.6
+            }
+          }
+        },
+        "error": null
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadCatalogue-ADAPTER_UNAVAILABLE",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "canvas",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadCatalogue",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadCatalogue-WORLD_NOT_BOUND",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "canvas",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadCatalogue",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-catalogue-1",
+        "result": null,
+        "error": {
+          "code": "WORLD_NOT_BOUND",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadMaterialSources-CAPABILITY_UNAVAILABLE",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadMaterialSources",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-material-sources-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-material-sources-1",
+        "result": null,
+        "error": {
+          "code": "CAPABILITY_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadEngineFacts-ADAPTER_UNAVAILABLE",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "workshop",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadEngineFacts",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-engine-facts-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-engine-facts-1",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadWriteProfile-ADAPTER_UNAVAILABLE",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadWriteProfile",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "result": null,
+        "error": {
+          "code": "ADAPTER_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    },
+    {
+      "case": "original-wire-ReadWriteProfile-CAPABILITY_UNAVAILABLE",
+      "precondition": "Original operation refusal: unavailable/current role refused, or unknown world for WORLD_NOT_BOUND. No native action performed.",
+      "role": "desktop-bridge",
+      "entry": "hanaworldsWorldFacts.call",
+      "operation": "ReadWriteProfile",
+      "input": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "worldRef": "fixture-world"
+      },
+      "outcome": {
+        "contractVersion": "world-facts/v1",
+        "requestId": "read-write-profile-1",
+        "result": null,
+        "error": {
+          "code": "CAPABILITY_UNAVAILABLE",
+          "phase": "validate",
+          "retryability": "AFTER_NEW_FACTS",
+          "mutationState": "NONE",
+          "transactionRef": null,
+          "causeCode": null,
+          "reason": "REQUIRED_FACT_UNKNOWN"
+        }
+      },
+      "zeroExtraActions": true
+    }
+  ]
+}

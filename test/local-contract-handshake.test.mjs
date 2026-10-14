@@ -1,4 +1,6 @@
 // SOURCE/FIXTURE: real provider construction, installed-package handshake and G3 advertisements.
+import './q282-material-reads.test.mjs';
+import './q282-material-document.test.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { apply } from '../src/index.mjs';

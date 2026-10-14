@@ -156,6 +156,17 @@ assert.notEqual(missing.status,0); assert.match(missing.stderr,/ERR_MODULE_NOT_F
 await noBundle.rename(new URL('./contracts.saved.mjs',bundle),bundle);
 console.log('packed runtime without external contracts PASS');\n`);
   assert.match(run(process.execPath, ['consumer.mjs'], dir, env), /PASS/);
+  // Q282: the same normal strict tgz must run the full original-role material
+  // reader cases, using its own Cordis singleton and runtime. Native = fixture.
+  cpSync(join(root,'test/q282-material-reads.test.mjs'),join(dir,'q282-material-reads.test.mjs'));
+  mkdirSync(join(dir,'fixtures'));
+  cpSync(join(root,'test/fixtures/q282-native-catalogue.json'),join(dir,'fixtures/q282-native-catalogue.json'));
+  const materialEnv={...env,HW_Q282_PACKAGE_ROOT:join(dir,'node_modules/hanaworlds-adapter-luanti'),
+   HW_ADAPTER_TEST_ROOT:process.env.HW_ADAPTER_TEST_ROOT??join(root,'../tmp/q282-packed-worlds')};
+  delete materialEnv.NODE_TEST_CONTEXT;
+  const materialRun=spawnSync(process.execPath,['--test','q282-material-reads.test.mjs'],{cwd:dir,env:materialEnv,encoding:'utf8'});
+  writeFileSync(join(dir,'q282-material-reads.log'),materialRun.stdout+materialRun.stderr);
+  assert.equal(materialRun.status,0,materialRun.stdout+materialRun.stderr);
   assert.match(run(process.execPath, ['--input-type=module','-e',"import assert from 'node:assert/strict'; await assert.rejects(import('hanaworlds-contracts'), e=>e.code==='ERR_MODULE_NOT_FOUND'); console.log('NO_DEVELOPMENT_RESOLUTION');"], dir, env), /NO_DEVELOPMENT_RESOLUTION/);
   // Retain the former denial gate after ordinary default-condition execution succeeds.
   assert.match(run(process.execPath, ['--import', './deny-contract-import.mjs', 'consumer.mjs'], dir, env), /PASS/);
@@ -187,6 +198,8 @@ facts.readScopedState('connection',[[0,0]]);
 const service:WorldFactsHostPort=apply({}).worldFacts;
 export type PublicTypes = [NativeHostOptions, Host, Inspection, Worlds, Facts, typeof locatorVersion, typeof result, typeof service];\n`);
   run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--strict', '--noEmit', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts'], dir, env);
+  cpSync(join(root,'test/q282-material-reads-types.mts'),join(dir,'q282-material-reads-types.mts'));
+  run(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--strict','--noEmit','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','q282-material-reads-types.mts'],dir,env);
   const upstream=await import('#contracts');
   for(const error of JSON.parse(readFileSync(join(dir,'host-errors.json'))))
    assert.deepEqual(JSON.parse(JSON.stringify(upstream.validateType('Error',error))),error);
