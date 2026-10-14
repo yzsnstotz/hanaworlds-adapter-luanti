@@ -420,7 +420,7 @@ export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, 
             if (again.worldRef !== f.world.worldRef || again.device !== f.world.device || again.inode !== f.world.inode) deny();
             removalState = 'UNKNOWN';
             try { await removeWorldDirectory(f.world); }
-            catch (error) { if (error.message === 'DELETE_INCOMPLETE') removalState = 'PARTIAL'; throw error; }
+            catch (error) { removalState = error.mutationState ?? (error.message === 'DELETE_INCOMPLETE' ? 'PARTIAL' : removalState); throw error; }
           };
           if (f.control) {
             const control = f.control, host = provider(control);
@@ -434,20 +434,27 @@ export function createLocalWorldPort({ ctx, roots = [], userPath, creationRoot, 
               if (!used) deny();
             } catch (error) {
               log('warn', `LOCAL_DELETE_STOP_REJECTED ${error?.message}`);
-              if (error?.message === 'DELETE_INCOMPLETE') throw error;
-              deny();
+              throw error;
             } finally { active = false; }
           } else await remove();
           const listed = (await discover()).some(row => row.connectionRef === f.world.connectionRef || row.worldPath === f.world.worldPath);
-          const exists = !!await lstat(f.world.worldPath).catch(() => null);
+          const exists = !!await lstat(f.world.worldPath).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
           if (listed || exists) deny('READBACK_MISMATCH', { listed, pathExists: exists });
           managed.delete(f.world.worldPath); controls.delete(f.world.worldPath);
           log('info', `LOCAL_WORLD_DELETED ${f.world.connectionRef}`);
           return { deleted: true, worldRef: request.worldRef, confirmationName: request.confirmationName };
         }); } catch (error) {
-          // SDK ContractError exposes mutationState through a read-only getter.
-          // Wrap the failure with this provider's filesystem observation instead.
-          throw Object.assign(new Error(error.code ?? error.message), { mutationState: removalState });
+          const mutationState = error.mutationState && error.mutationState !== 'NONE' ? error.mutationState : removalState;
+          try {
+            Object.defineProperty(error, 'mutationState', { value: mutationState, configurable: true });
+          } catch {
+            // Preserve the exact cause when an SDK error forbids annotation.
+            throw Object.assign(new Error(error.code ?? error.message, { cause: error }), {
+              mutationState, ...(error.details ? { details: error.details } : {}),
+              ...(error.source ? { source: error.source } : {}), ...(error.sourceCurrency ? { sourceCurrency: true } : {}),
+            });
+          }
+          throw error;
         }
       }));
     },

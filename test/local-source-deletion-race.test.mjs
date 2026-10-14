@@ -168,6 +168,7 @@ test('helper recovery never overwrites an empty target occupied at its rename pr
   const occupy = () => {
     builtinFS.mkdirSync(f.target.worldPath);
     occupiedIdentity = id(builtinFS.lstatSync(f.target.worldPath, { bigint: true }));
+    f.receipt.compensationOccupantIdentity = occupiedIdentity;
   };
   // These wrappers call the actual FS primitive. The actor runs after any
   // preceding destination observation; an empty directory is still owned data.
@@ -186,6 +187,7 @@ test('helper recovery never overwrites an empty target occupied at its rename pr
     bindSourceWorld(f.target); await removeWorldDirectory(f.target);
   }); } catch (e) { failure = e; }
   finally { asyncHook.mock.restore(); syncHook.mock.restore(); syncBuiltinESMExports(); }
+  f.receipt.refusal = { message: failure?.message, mutationState: failure?.mutationState, details: failure?.details };
   assert.equal(failure, original);
   assert.ok(occupiedIdentity, 'the actual compensation rename must be reached');
   assert.deepEqual(id(await fs.lstat(f.target.worldPath, { bigint: true })), occupiedIdentity,

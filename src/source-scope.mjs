@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { lstat, realpath } from 'node:fs/promises';
+import { lstatSync, realpathSync } from 'node:fs';
 
 // Internal call lifetime, never a caller-supplied JSON credential. All source I/O
 // checks the captured registration/root/world before and after yielding.
@@ -72,6 +73,24 @@ export async function sourceRead(run) {
 export async function sourceWrite(run) {
   await checkSourceScope();
   const scope = scopes.getStore();
+  // The asynchronous root check can yield after sampling the world. Check its
+  // captured identity again without another JS yield before invoking a write.
+  if (scope) {
+    try {
+      if (!scope.active) throw Error('CURRENT_WORLD_MISMATCH');
+      for (const check of scope.extraChecks ?? []) check();
+      if (scope.world) {
+        const held = scope.world, stat = lstatSync(held.path, { bigint: true });
+        if (!stat.isDirectory() || stat.isSymbolicLink() || String(stat.dev) !== held.device ||
+            String(stat.ino) !== held.inode || realpathSync(held.path) !== held.path)
+          throw Error('CURRENT_WORLD_MISMATCH');
+      }
+    } catch (error) {
+      if (['ENOENT', 'ENOTDIR'].includes(error.code)) error = new Error('CURRENT_WORLD_MISMATCH', { cause: error });
+      if (error.message === 'CURRENT_WORLD_MISMATCH') error.sourceCurrency = true;
+      throw error;
+    }
+  }
   if (scope) scope.mutationState = 'UNKNOWN';
   try {
     const result = await run();
